@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from .scores import ScoreFunction
 
 def find_slices(df, score_functions, max_features=3, n_slices=10, algorithm='recursive'):
     """

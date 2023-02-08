@@ -15,7 +15,7 @@ class ScoreFunctionBase:
         self.score_type = score_type
         self.data = data
 
-    def calculate_score(self, slice, mask) :
+    def calculate_score(self, slice, mask):
         """
         Calculates the score for a single slice.
         
@@ -27,6 +27,18 @@ class ScoreFunctionBase:
         """
 
         return 0.0
+    
+    def subslice(self, indexes):
+        """
+        Returns a different score function object that corresponds to the same
+        score function but computed over only the given indexes.
+        
+        :param indexes: A boolean or index array indicating which rows of the
+            input data to use to compute the score.
+            
+        :return: a new score function object
+        """
+        return ScoreFunctionBase(self.score_type, self.data[indexes])
     
 class EntropyScore(ScoreFunctionBase):
     """
@@ -63,6 +75,9 @@ class EntropyScore(ScoreFunctionBase):
             return self.high_entropy(mask)
         return self.low_entropy(mask)
     
+    def subslice(self, indexes):
+        return EntropyScore(self.data[indexes], priority=self.priority, eps=self.eps)
+    
 class MeanDifferenceScore(ScoreFunctionBase):
     """
     A score function that returns higher values when the absolute difference in
@@ -74,6 +89,9 @@ class MeanDifferenceScore(ScoreFunctionBase):
         
     def calculate_score(self, slice, mask):
         return np.abs(self.data[mask].mean() - self.data[~mask].mean()) / self.std
+    
+    def subslice(self, indexes):
+        return MeanDifferenceScore(self.data[indexes])
     
 class SliceSizeScore(ScoreFunctionBase):
     """
@@ -97,6 +115,9 @@ class SliceSizeScore(ScoreFunctionBase):
         frac = mask.sum() / len(mask)
         return np.exp(-0.5 * ((frac - self.ideal_frac) / self.spread) ** 2)
         
+    def subslice(self, indexes):
+        return SliceSizeScore(ideal_fraction=self.ideal_fraction, spread=self.spread)
+    
 class NumFeaturesScore(ScoreFunctionBase):
     """
     A score function that penalizes slices with too many feature values
@@ -107,6 +128,9 @@ class NumFeaturesScore(ScoreFunctionBase):
         
     def calculate_score(self, slice, mask):
         return 1 / np.log2(1 + len(slice.feature_values))
+    
+    def subslice(self, indexes):
+        return NumFeaturesScore()
     
 class OutcomeRateScore(ScoreFunctionBase):
     """
@@ -130,6 +154,9 @@ class OutcomeRateScore(ScoreFunctionBase):
             return (self.eps + self.data[~mask].mean()) / (self.eps + self.data[mask].mean())
         return (self.eps + self.data[mask].mean()) / (self.eps + self.data[~mask].mean())
 
+    def subslice(self, indexes):
+        return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps)
+
 class OutcomeShareScore(ScoreFunctionBase):
     """
     A score function that prioritizes slices that contain a higher percentage
@@ -145,3 +172,6 @@ class OutcomeShareScore(ScoreFunctionBase):
         
     def calculate_score(self, slice, mask):
         return self.data[mask].mean() / self.data.mean()
+
+    def subslice(self, indexes):
+        return OutcomeShareScore(self.data[indexes])
