@@ -59,16 +59,18 @@ class EntropyScore(ScoreFunctionBase):
         assert priority in (None, "low", "high")
         self.priority = priority
         self.eps = eps
+        
+        self._base_entropy = self._calc_entropy(self.data)
        
     def _calc_entropy(self, discrete_vals):
         _, counts = np.unique(discrete_vals, return_counts=True)
         return -np.sum((counts / len(discrete_vals)) * np.log2(counts / len(discrete_vals)))
  
     def high_entropy(self, mask):
-        return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._calc_entropy(self.data[~mask]))
+        return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._base_entropy)
 
     def low_entropy(self, mask):
-        return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._calc_entropy(self.data[~mask]))
+        return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._base_entropy)
 
     def calculate_score(self, slice, mask):
         if self.priority == 'high':
@@ -85,10 +87,11 @@ class MeanDifferenceScore(ScoreFunctionBase):
     """
     def __init__(self, data):
         super().__init__("mean", data)
-        self.std = self.data.std()
+        self._std = self.data.std()
+        self._mean = self.data.mean()
         
     def calculate_score(self, slice, mask):
-        return np.abs(self.data[mask].mean() - self.data[~mask].mean()) / self.std
+        return np.abs(self.data[mask].mean() - self._mean) / self._std
     
     def subslice(self, indexes):
         return MeanDifferenceScore(self.data[indexes])
@@ -113,7 +116,7 @@ class SliceSizeScore(ScoreFunctionBase):
         
     def calculate_score(self, slice, mask):
         frac = mask.sum() / len(mask)
-        return np.exp(-0.5 * ((frac - self.ideal_frac) / self.spread) ** 2)
+        return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
         
     def subslice(self, indexes):
         return SliceSizeScore(ideal_fraction=self.ideal_fraction, spread=self.spread)
@@ -148,11 +151,12 @@ class OutcomeRateScore(ScoreFunctionBase):
         super().__init__("outcome_rate", data)
         self.inverse = inverse
         self.eps = eps
+        self._mean = self.data.mean()
         
     def calculate_score(self, slice, mask):
         if self.inverse: 
-            return (self.eps + self.data[~mask].mean()) / (self.eps + self.data[mask].mean())
-        return (self.eps + self.data[mask].mean()) / (self.eps + self.data[~mask].mean())
+            return (self.eps + self._mean) / (self.eps + self.data[mask].mean())
+        return (self.eps + self.data[mask].mean()) / (self.eps + self._mean)
 
     def subslice(self, indexes):
         return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps)
@@ -169,9 +173,10 @@ class OutcomeShareScore(ScoreFunctionBase):
         :param data: A binary outcome to compare
         """
         super().__init__("outcome_share", data)
+        self._sum = self.data.sum()
         
     def calculate_score(self, slice, mask):
-        return self.data[mask].mean() / self.data.mean()
+        return self.data[mask].sum() / self._sum
 
     def subslice(self, indexes):
         return OutcomeShareScore(self.data[indexes])

@@ -1,18 +1,9 @@
 import numpy as np
 import pandas as pd
-from .utils import RankedList
+from .utils import RankedList, make_mask
 from .slices import Slice, RankedSliceList
 import tqdm
 
-def make_mask(inputs, slice_obj, existing_mask=None):
-    mask = existing_mask
-    for col, val in slice_obj.feature_values.items():
-        if mask is None:
-            mask = inputs[col] == val
-        else:
-            mask &= inputs[col] == val
-    return mask
-    
 def explore_groups_beam_search(inputs, 
                                source_row, 
                                score_fns, 
@@ -21,7 +12,7 @@ def explore_groups_beam_search(inputs,
                                max_features=5, 
                                min_items=5, 
                                min_weight=0.0, 
-                               max_weight=2.0, 
+                               max_weight=5.0, 
                                num_candidates=20):
     scored_slices = []
     # Maintain a ranking for each function separately, as different slices may
@@ -56,7 +47,7 @@ def explore_groups_beam_search(inputs,
                     # Add to each ranking the score where only the current score
                     # function's value is maximized
                     score = sum((max_weight if f == fn_name else min_weight) * new_slice.score_values[f] for f in score_fns)
-                    best_groups[fn_name].add(*new_slice, score)
+                    best_groups[fn_name].add(new_slice, score)
 
     return scored_slices
 
@@ -69,6 +60,8 @@ def find_slices_by_sampling(inputs,
                             num_samples=10, 
                             num_candidates=20,
                             holdout_fraction=0.5,
+                            min_weight=0.0,
+                            max_weight=5.0,
                             show_progress=True):
     """
     Finds slices by sampling input rows and expanding slices that contain each
@@ -93,6 +86,10 @@ def find_slices_by_sampling(inputs,
         from. A separate top-k list is maintained for each score function.
     :param holdout_fraction: Proportion of the dataset that will be kept for
         final slice scoring.
+    :param min_weight: The minimum weight that will be used to calculate a score
+        value from an individual score function.
+    :param max_weight: The maximum weight that will be used to calculate a score
+        value from an individual score function.
     :param show_progress: If True, show a tqdm progress bar during computation.
     
     :return: a `RankedSliceList` object containing the identified slices.
@@ -119,16 +116,20 @@ def find_slices_by_sampling(inputs,
                            for fn_name, fn in score_fns.items()}
     for sample_idx in bar:
         source_row = inputs.iloc[sample_idx]
-        all_scores += explore_groups_beam_search(inputs,
+        all_scores += explore_groups_beam_search(inputs[discovery_mask].reset_index(drop=True),
                                                  source_row,
                                                  discovery_score_fns,
                                                  seen_slices=seen_slices,
                                                  group_filter=group_filter,
                                                  max_features=max_features,
                                                  min_items=min_items,
-                                                 num_candidates=num_candidates)
+                                                 num_candidates=num_candidates,
+                                                 min_weight=min_weight,
+                                                 max_weight=max_weight)
         
     return RankedSliceList(list(set(all_scores)),
-                           {fn_name: fn.subslice(~discovery_mask)
-                            for fn_name, fn in score_fns.items()},
-                           eval_indexes=~discovery_mask)
+                           inputs,
+                           score_fns,
+                           eval_indexes=~discovery_mask,
+                           min_weight=min_weight,
+                           max_weight=max_weight)
