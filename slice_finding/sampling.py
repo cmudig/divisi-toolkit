@@ -15,35 +15,33 @@ def explore_groups_beam_search(inputs,
                                max_weight=5.0, 
                                num_candidates=20):
     scored_slices = set()
-    # Maintain a ranking for each function separately, as different slices may
-    # maximize different functions
-    best_groups = {fn_name: RankedList(num_candidates, [(Slice({}, {}), -1e9)])
-                   for fn_name in score_fns}
+    if num_candidates is not None:
+        # Maintain a ranking for each function separately, as different slices may
+        # maximize different functions
+        best_groups = {fn_name: RankedList(num_candidates, [(Slice({}, {}), -1e9)]) 
+                        for fn_name in score_fns}
+    else:
+        best_groups = set([Slice({}, {})])
 
     # Iterate over the columns max_features times
     for col_size in range(max_features):
-        saved_groups = set([g for _, gset in best_groups.items() for g in gset.items])
+        if num_candidates is not None:
+            saved_groups = set([g for _, gset in best_groups.items() for g in gset.items])
+        else:
+            saved_groups = set(g for g in best_groups)
         for base_slice in saved_groups:
-            print_stuff = False # ('occupation' in base_slice and base_slice['occupation'] == 1) or ('relationship' in base_slice and base_slice['relationship'] == 5)
-            if print_stuff:
-                print(col_size, saved_groups, base_slice)
             for col in inputs.columns:
                 # Skip if we've already looked at this column
                 if col in base_slice and base_slice[col] == source_row[col]: continue
-                if print_stuff:
-                    print("\t", col, source_row[col])
                 
                 new_slice = base_slice.subslice(col, source_row[col])
                 
                 # Skip if the user wants to filter this slice out
                 if new_slice in seen_slices and len(new_slice.feature_values) == max_features:
-                    if print_stuff: print("\tin seen slices previous")
                     continue
                 if new_slice in scored_slices: 
-                    if print_stuff: print("\tin seen slices")
                     continue
                 if group_filter is not None and not group_filter(new_slice): 
-                    if print_stuff: print("\tdoesn't match group filter")
                     continue
                 seen_slices.add(new_slice)
                 if len(seen_slices) % 10000 == 0: print("Seen {} groups".format(len(seen_slices)))
@@ -51,19 +49,19 @@ def explore_groups_beam_search(inputs,
                 # Generate a mask for the slice and score it
                 mask = make_mask(inputs, new_slice)
                 if mask.sum() < min_items: 
-                    if print_stuff: print("\ttoo small")
                     continue
                 for key, scorer in score_fns.items():
                     new_slice.score_values[key] = scorer.calculate_score(new_slice, mask)
                 scored_slices.add(new_slice)
                 
-                for fn_name in score_fns:
-                    # Add to each ranking the score where only the current score
-                    # function's value is maximized
-                    score = sum((max_weight if f == fn_name else min_weight) * new_slice.score_values[f] for f in score_fns)
-                    if print_stuff:
-                        print("\t", fn_name, score)
-                    best_groups[fn_name].add(new_slice, score)
+                if num_candidates is not None:
+                    for fn_name in score_fns:
+                        # Add to each ranking the score where only the current score
+                        # function's value is maximized
+                        score = sum((max_weight if f == fn_name else min_weight) * new_slice.score_values[f] for f in score_fns)
+                        best_groups[fn_name].add(new_slice, score)
+                else:
+                    best_groups.add(new_slice)
 
     return list(scored_slices)
 
@@ -99,7 +97,8 @@ def find_slices_by_sampling(inputs,
     :param num_samples: The number of rows to sample from input when computing
         slices.
     :param num_candidates: The number of top-k candidates to generate subslices
-        from. A separate top-k list is maintained for each score function.
+        from. A separate top-k list is maintained for each score function. If
+        set to None, all candidates will be kept.
     :param holdout_fraction: Proportion of the dataset that will be kept for
         final slice scoring.
     :param min_weight: The minimum weight that will be used to calculate a score
