@@ -1,34 +1,6 @@
 import itertools
-from old_score_functions import *
-
-
-# Class to hold data about a particular slice which includes it's score, features and values for the features.
-# TODO: replaces usages of this class with Slice class in slices.py
-class Slice:
-    def __init__(self, score, features, values):
-        self.score = score
-        self.features = features
-        self.values = values
-
-    def __lt__(self, other):
-        return self.score < other.score
-
-
-def add_to_top_k_list(top_k_list, k, item):
-    """
-    Adds item to a list where we want to hold only top k items
-
-    :param top_k_list: original list that has to be updated with item
-    :param k: number of maximum items that top_k_list should hold
-    :param item: a new object that we wish to add to top_k_list
-    :return: void
-    """
-    if len(top_k_list) < k:
-        top_k_list.append(item)
-    else:
-        min_index = top_k_list.index(min(top_k_list))
-        if top_k_list[min_index].score < item.score:
-            top_k_list[min_index] = item
+from .slices import Slice
+from .utils import make_mask, RankedList
 
 
 # function to assign values and generate combinations for selected features of a slice
@@ -42,7 +14,7 @@ def generate_values_for_feature_set(discrete_df, feature_set):
     """
     ranges = []
     for feature in feature_set:
-        ranges.append(range(discrete_df[feature].max()))
+        ranges.append(range(discrete_df[feature].max() + 1))
 
     # using itertools to generate all unique combinations of n features
     combinations = list(itertools.product(*ranges))
@@ -50,34 +22,32 @@ def generate_values_for_feature_set(discrete_df, feature_set):
 
 
 # calculate scores for slices and store it in a list
-def calculate_scores(discrete_df, discrete_outcomes, feature_set, combinations, K, top_k_slices):
+def calculate_scores(discrete_df, score_functions, weights, feature_set, combinations, top_k_slices, min_items=None):
     """
     Function that will calculate score for a slice and add it to top_k_slices if it has a better score
 
     :param discrete_df: input discrete dataframe built from the raw dataset
-    :param discrete_outcomes: list of a particular outcome column in the dataset
+    :param score_functions: dictionary of score functions
+    :param weights: dictionary of weights to multiply score functions by
     :param feature_set: a set of unique features for which slice finding will be done
     :param combinations: a set of values for each feature in feature_set considered for slice finding
-    :param K: number of maximum items that top_k_list should hold
     :param top_k_slices: original list of top slices that needs to be updated if required
+    :param min_items: minimum number of items in a slice for it to be scored
     :return: void
     """
-    current_slice = []
-
     # here a combination is set of discrete values for a particular feature set
     for combination in combinations:
-        for index in range(len(feature_set)):
-            if index == 0:
-                current_slice = discrete_df[feature_set[index]] == combination[index]
-            else:
-                current_slice = current_slice & (discrete_df[feature_set[index]] == combination[index])
+        current_slice = Slice(dict(zip(feature_set, combination)))
+        mask = make_mask(discrete_df, current_slice)
 
-        if current_slice.sum() > 0:
-            score = entropy_difference(discrete_outcomes, current_slice) + \
-                    mean_difference_l1(discrete_outcomes, current_slice) + \
-                    group_size(discrete_outcomes, current_slice)
-            new_slice = Slice(score, feature_set, combination)
-            add_to_top_k_list(top_k_slices, K, new_slice)
+        if min_items is None or mask.sum() >= min_items:
+            current_slice = current_slice.rescore(
+                {fn_name: fn.calculate_score(current_slice, mask)
+                 for fn_name, fn in score_functions.items()}
+            )
+            score = sum(weight * current_slice.score_values[fn_name]
+                        for fn_name, weight in weights.items())
+            top_k_slices.add(current_slice, score)
 
 
 # function to generate all feature combinations of size m
@@ -98,21 +68,68 @@ def generate_feature_combinations(features, M):
 
 
 # function to populate top_k_slices with data considering at the most M features
-def populate_slices(discrete_df, discrete_outcomes, M, K, top_k_slices):
+def populate_slices(discrete_df, score_functions, weights, M, top_k_slices, min_items=None):
     """
     This is a helper function that first generates all possible feature sets.
     Once all feature sets are generated, it generates all possible valid values for a particular feature set.
     And further it calls calculate_scores function that computes scores and actually populates the top_k_slices list.
 
     :param discrete_df: input discrete dataframe built from the raw dataset
-    :param discrete_outcomes: list of a particular outcome column in the dataset
+    :param score_functions: dictionary of score functions
+    :param weights: dictionary of weights to multiply score functions by
     :param M: maximum number of features to consider to generate a combination
-    :param K: number of maximum items that top_k_list should hold
     :param top_k_slices: original list of top slices that needs to be updated if required
+    :param min_items: minimum number of items in a slice for it to be scored
     :return: void
     """
     print("Slice finding for", M, "feature(s)")
     for value in generate_feature_combinations(discrete_df.columns, M):
         combinations = generate_values_for_feature_set(discrete_df, value)
-        calculate_scores(discrete_df, discrete_outcomes, value, combinations, K, top_k_slices)
+        calculate_scores(discrete_df, score_functions, weights, value, combinations, top_k_slices, min_items=min_items)
     print("Done for: ", M)
+
+
+def find_slices_recursive(discrete_df,
+                          score_functions, 
+                          max_features_to_consider, 
+                          desired_top_slice_count,
+                          weights=None,
+                          min_items=None):
+    """
+    Api to find top k slices considering at max m features for a dataset
+    
+    Example usage of the find_slices API:
+    ```
+    >>> slices = find_slices_recursive(df, [], 4, 10)
+
+    >>> for a_slice in slices:
+    ...    print(a_slice.score, a_slice.features, a_slice.values)
+    ```
+
+    :param discrete_df: input discrete dataframe
+    :param score_functions: dictionary of score function names to score function
+        objects
+    :param max_features_to_consider: maximum number of features to consider for a particular slice
+    :param desired_top_slice_count: maximum number of top slices that we are interested in
+    :param weights: dictionary of weights to multiply score functions by. If not
+        provided, score functions are uniformly weighted
+    
+    :return: a list of top desired_top_slice_count slices considering at the most max_features_to_consider features
+    """
+
+    if weights is None:
+        weights = {fn_name: 1.0 for fn_name in score_functions}
+        
+    top_k_slices = RankedList(desired_top_slice_count)
+
+    # populate slices from size 1 to max_features_to_consider
+    for index in range(1, max_features_to_consider + 1):
+        populate_slices(discrete_df, 
+                        score_functions, 
+                        weights, 
+                        index, 
+                        top_k_slices, 
+                        min_items=min_items)
+        print(len(top_k_slices.items))
+
+    return top_k_slices.items

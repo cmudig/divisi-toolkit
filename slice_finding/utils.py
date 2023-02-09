@@ -30,6 +30,9 @@ class RankedList:
         if not added and len(self.items) < self.k: 
             self.items.append(item)
             self.scores.append(score)
+        if len(self.items) > self.k:
+            self.items = self.items[:self.k]
+            self.scores = self.scores[:self.k]
 
 def pairwise_jaccard_similarities(mat):
     """

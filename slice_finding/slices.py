@@ -45,6 +45,17 @@ class Slice:
         """
         return Slice(self.feature_values, new_scores)
 
+    def __str__(self):
+        base = "<Slice: "
+        base += ", ".join(f"{feature}: {value}" for feature, value in self.feature_values.items())
+        if self.score_values:
+            base += "; scores: "
+            base += ", ".join(f"{score_name}: {value}" for score_name, value in self.score_values.items())
+        base += ">"
+        return base
+
+    def __repr__(self):
+        return str(self)
 
 class RankedSliceList:
     """
@@ -158,7 +169,7 @@ class RankedSliceList:
         top_train_indexes = self._rank_weighted_indexes(self.train_scores, weights, num_to_rescore)
 
         # Rescore these using evaluation data and rank
-        eval_scored_slices, eval_scores, mask_mat = self.rescore(top_train_indexes)
+        eval_scored_slices, eval_scores, mask_mat = self.rescore(top_train_indexes, return_masks=True)
         top_eval_indexes = self._rank_weighted_indexes(eval_scores, weights)
 
         # Remove results with too-high jaccard similarity
