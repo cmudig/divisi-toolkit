@@ -8,6 +8,7 @@ class Slice:
         self.feature_values = feature_values
         self.score_values = score_values
 
+
 class RankedSliceList:
     def __init__(self, results, score_functions):
         """
