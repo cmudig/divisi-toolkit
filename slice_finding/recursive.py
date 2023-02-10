@@ -33,12 +33,14 @@ def calculate_scores(discrete_df, score_functions, weights, feature_set, combina
     :param combinations: a set of values for each feature in feature_set considered for slice finding
     :param top_k_slices: original list of top slices that needs to be updated if required
     :param min_items: minimum number of items in a slice for it to be scored
-    :return: void
+    :return: number of slices scored
     """
     # here a combination is set of discrete values for a particular feature set
+    num_scored = 0
     for combination in combinations:
         current_slice = Slice(dict(zip(feature_set, combination)))
         mask = make_mask(discrete_df, current_slice)
+        num_scored += 1
 
         if min_items is None or mask.sum() >= min_items:
             current_slice = current_slice.rescore(
@@ -48,6 +50,7 @@ def calculate_scores(discrete_df, score_functions, weights, feature_set, combina
             score = sum(weight * current_slice.score_values[fn_name]
                         for fn_name, weight in weights.items())
             top_k_slices.add(current_slice, score)
+    return num_scored
 
 
 # function to generate all feature combinations of size m
@@ -80,13 +83,15 @@ def populate_slices(discrete_df, score_functions, weights, M, top_k_slices, min_
     :param M: maximum number of features to consider to generate a combination
     :param top_k_slices: original list of top slices that needs to be updated if required
     :param min_items: minimum number of items in a slice for it to be scored
-    :return: void
+    :return: number of slices scored
     """
     print("Slice finding for", M, "feature(s)")
+    num_scored = 0
     for value in generate_feature_combinations(discrete_df.columns, M):
         combinations = generate_values_for_feature_set(discrete_df, value)
-        calculate_scores(discrete_df, score_functions, weights, value, combinations, top_k_slices, min_items=min_items)
-    print("Done for: ", M)
+        num_scored += calculate_scores(discrete_df, score_functions, weights, value, combinations, top_k_slices, min_items=min_items)
+    print("Done for: ", M, ", scored", num_scored, "slices")
+    return num_scored
 
 
 def find_slices_recursive(discrete_df,
@@ -130,6 +135,5 @@ def find_slices_recursive(discrete_df,
                         index, 
                         top_k_slices, 
                         min_items=min_items)
-        print(len(top_k_slices.items))
 
     return top_k_slices.items

@@ -43,16 +43,24 @@ def explore_groups_beam_search(inputs,
                     continue
                 if group_filter is not None and not group_filter(new_slice): 
                     continue
-                seen_slices.add(new_slice)
-                if len(seen_slices) % 10000 == 0: print("Seen {} groups".format(len(seen_slices)))
 
-                # Generate a mask for the slice and score it
-                mask = make_mask(inputs, new_slice)
-                if mask.sum() < min_items: 
-                    continue
-                for key, scorer in score_fns.items():
-                    new_slice.score_values[key] = scorer.calculate_score(new_slice, mask)
-                scored_slices.add(new_slice)
+                if new_slice in seen_slices:
+                    # Retrieve existing scores
+                    slice_scores = seen_slices[new_slice]
+                    if not slice_scores: continue
+                    new_slice.score_values = slice_scores
+                else:
+                    # Generate a mask for the slice and score it
+                    mask = make_mask(inputs, new_slice)
+                    if mask.sum() < min_items: 
+                        seen_slices[new_slice] = None
+                        continue
+                    for key, scorer in score_fns.items():
+                        new_slice.score_values[key] = scorer.calculate_score(new_slice, mask)
+                    scored_slices.add(new_slice)
+                
+                seen_slices[new_slice] = new_slice.score_values
+                if len(seen_slices) % 10000 == 0: print("Seen {} groups".format(len(seen_slices)))
                 
                 if num_candidates is not None:
                     for fn_name in score_fns:
@@ -110,7 +118,7 @@ def find_slices_by_sampling(inputs,
     :return: a `RankedSliceList` object containing the identified slices.
     """
     all_scores = []
-    seen_slices = set()
+    seen_slices = {}
     
     discovery_mask = (np.random.uniform(size=len(inputs)) >= holdout_fraction)
     if source_mask is not None:
