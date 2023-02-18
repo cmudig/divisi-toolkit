@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import anywidget from 'anywidget/vite';
+import postcss from './postcss.config.js';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -34,4 +35,5 @@ export default defineConfig({
       },
     },
   ],
+  css: { postcss },
 });
