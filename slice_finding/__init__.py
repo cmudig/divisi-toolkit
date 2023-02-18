@@ -1,3 +1,8 @@
+import importlib.metadata
+
+__version__ = importlib.metadata.version("slice_finding")
+
+from .widget import SliceFinderWidget
 from .sampling import find_slices_by_sampling
 from .recursive import find_slices_recursive
 from .scores import *

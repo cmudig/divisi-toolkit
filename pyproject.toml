@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slice_finding"
+authors = [
+    {name = "Venkatesh Sivaraman", email = "venkats@cmu.edu"},
+]
+description = "Slice finding interactive widget"
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = ["AI", "machine learning", "notebook", "jupyter", "data science"]
+license = {text = "BSD-3-Clause"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "scipy",
+    "numpy",
+    "ipywidgets",
+    "anywidget",
+    'importlib-metadata; python_version<"3.8"',
+]
+version = "0.1.0"
+
+[tool.setuptools]
+packages = ["slice_finding"]
