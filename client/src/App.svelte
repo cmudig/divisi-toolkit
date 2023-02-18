@@ -13,9 +13,3 @@
     The count is {$count}, yay!
   </div>
 </main>
-
-<style global lang="postcss">
-  @tailwind utilities;
-  @tailwind components;
-  @tailwind base;
-</style>
