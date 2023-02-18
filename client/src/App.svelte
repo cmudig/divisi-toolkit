@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { syncValue } from './stores';
+  import { traitlet } from './stores';
 
   export let model;
 
-  let count = syncValue(model, 'count', 0);
+  let count = traitlet(model, 'count', 0);
 </script>
 
 <main>
