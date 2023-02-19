@@ -7,5 +7,5 @@ export default {
   variants: {
     extend: {},
   },
-  darkMode: 'media', // or false or 'class'
+  darkMode: 'class', // or 'media' or false
 };

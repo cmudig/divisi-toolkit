@@ -7,7 +7,7 @@
 </script>
 
 <main>
-  <h1 class="text-3xl text-blue-900 font-bold">Basic Widget Component</h1>
+  <h1 class="text-3xl font-bold">Basic Widget Component</h1>
 
   <div class="card m-6 shadow-lg bg-blue-200 rounded">
     The count is {$count}, yay!
