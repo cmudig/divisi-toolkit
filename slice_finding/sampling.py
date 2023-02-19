@@ -73,6 +73,86 @@ def explore_groups_beam_search(inputs,
 
     return list(scored_slices)
 
+class SamplingSliceFinder:
+    """
+    A class that finds slices by sampling input rows and expanding slices that
+    contain each sample row. This class can be instantiated and used multiple
+    times, while saving previously seen slices.
+    """
+    def __init__(self,
+                 inputs, 
+                 score_fns, 
+                 source_mask=None, 
+                 group_filter=None, 
+                 max_features=3, 
+                 min_items=100, 
+                 num_candidates=20,
+                 holdout_fraction=0.0,
+                 min_weight=0.0,
+                 max_weight=5.0,
+                 show_progress=True):
+        self.inputs = inputs
+        self.score_fns = score_fns
+        self.source_mask = source_mask
+        self.group_filter = group_filter
+        self.max_features = max_features
+        self.min_items = min_items
+        self.num_candidates = num_candidates
+        self.holdout_fraction = holdout_fraction
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+        self.show_progress = show_progress
+
+        self.all_scores = []
+        self.seen_slices = {}        
+        self.discovery_mask = (np.random.uniform(size=len(self.inputs)) >= self.holdout_fraction)
+        self.sampled_idxs = np.zeros(len(self.inputs), dtype=bool)
+        
+    def sample(self, num_samples):
+        """
+        Runs the sampling slice finder for a set number of samples.
+        
+        :param num_samples: The number of samples to draw from the dataset
+        :return: All slices found so far in a RankedSliceList object
+        """
+        if self.source_mask is not None:
+            source_mask = (self.source_mask.values if isinstance(self.source_mask, pd.Series) else self.source_mask).copy()
+            source_mask &= self.discovery_mask
+        else:
+            source_mask = self.discovery_mask & self.sampled_idxs
+            
+        source_mask &= ~self.sampled_idxs
+        allowed_indexes = np.argwhere(source_mask).flatten()
+        sample_idxs = np.random.choice(allowed_indexes, 
+                                    size=min(len(allowed_indexes), num_samples), 
+                                    replace=False)
+        self.sampled_idxs[sample_idxs] = True
+            
+        bar = tqdm.tqdm(sample_idxs) if self.show_progress else sample_idxs
+        # Use only score functions within the discovery subset of the data
+        discovery_score_fns = {fn_name: fn.subslice(self.discovery_mask)
+                            for fn_name, fn in self.score_fns.items()}
+        
+        for sample_idx in bar:
+            source_row = self.inputs.iloc[sample_idx]
+            self.all_scores += explore_groups_beam_search(self.inputs[self.discovery_mask].reset_index(drop=True),
+                                                        source_row,
+                                                        discovery_score_fns,
+                                                        seen_slices=self.seen_slices,
+                                                        group_filter=self.group_filter,
+                                                        max_features=self.max_features,
+                                                        min_items=self.min_items,
+                                                        num_candidates=self.num_candidates,
+                                                        min_weight=self.min_weight,
+                                                        max_weight=self.max_weight)
+            
+        return RankedSliceList(list(set(self.all_scores)),
+                            self.inputs,
+                            self.score_fns,
+                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
+                            min_weight=self.min_weight,
+                            max_weight=self.max_weight), sample_idxs
+    
 def find_slices_by_sampling(inputs, 
                             score_fns, 
                             source_mask=None, 
@@ -117,43 +197,16 @@ def find_slices_by_sampling(inputs,
     
     :return: a `RankedSliceList` object containing the identified slices.
     """
-    all_scores = []
-    seen_slices = {}
     
-    discovery_mask = (np.random.uniform(size=len(inputs)) >= holdout_fraction)
-    if source_mask is not None:
-        if isinstance(source_mask, pd.Series):
-            source_mask = source_mask.values
-        source_mask &= discovery_mask
-        sample_idxs = np.random.choice(np.argwhere(source_mask).flatten(), 
-                                       size=num_samples, 
-                                       replace=False)
-    else:
-        sample_idxs = np.random.choice(np.arange(len(inputs))[discovery_mask], 
-                                       size=num_samples, 
-                                       replace=False)
-        
-    bar = tqdm.tqdm(sample_idxs) if show_progress else sample_idxs
-    # Use only score functions within the discovery subset of the data
-    discovery_score_fns = {fn_name: fn.subslice(discovery_mask)
-                           for fn_name, fn in score_fns.items()}
-    
-    for sample_idx in bar:
-        source_row = inputs.iloc[sample_idx]
-        all_scores += explore_groups_beam_search(inputs[discovery_mask].reset_index(drop=True),
-                                                 source_row,
-                                                 discovery_score_fns,
-                                                 seen_slices=seen_slices,
-                                                 group_filter=group_filter,
-                                                 max_features=max_features,
-                                                 min_items=min_items,
-                                                 num_candidates=num_candidates,
-                                                 min_weight=min_weight,
-                                                 max_weight=max_weight)
-        
-    return RankedSliceList(list(set(all_scores)),
-                           inputs,
-                           score_fns,
-                           eval_indexes=~discovery_mask if holdout_fraction > 0.0 else None,
-                           min_weight=min_weight,
-                           max_weight=max_weight)
+    finder = SamplingSliceFinder(inputs,
+                                score_fns,
+                                source_mask=source_mask, 
+                                group_filter=group_filter, 
+                                max_features=max_features, 
+                                min_items=min_items, 
+                                num_candidates=num_candidates,
+                                holdout_fraction=holdout_fraction,
+                                min_weight=min_weight,
+                                max_weight=max_weight,
+                                show_progress=show_progress)
+    return finder.sample(num_samples)[0]
