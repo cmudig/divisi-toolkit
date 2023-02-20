@@ -107,6 +107,7 @@ class SamplingSliceFinder:
         self.seen_slices = {}        
         self.discovery_mask = (np.random.uniform(size=len(self.inputs)) >= self.holdout_fraction)
         self.sampled_idxs = np.zeros(len(self.inputs), dtype=bool)
+        self.results = None
         
     def sample(self, num_samples):
         """
@@ -146,12 +147,13 @@ class SamplingSliceFinder:
                                                         min_weight=self.min_weight,
                                                         max_weight=self.max_weight)
             
-        return RankedSliceList(list(set(self.all_scores)),
+        self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
                             self.score_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
                             min_weight=self.min_weight,
-                            max_weight=self.max_weight), sample_idxs
+                            max_weight=self.max_weight)
+        return self.results, sample_idxs
     
 def find_slices_by_sampling(inputs, 
                             score_fns, 
