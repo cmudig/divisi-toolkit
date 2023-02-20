@@ -69,3 +69,14 @@ h1 {
 .btn-blue:hover {
   @apply bg-blue-700;
 }
+
+.btn-slate {
+  @apply bg-slate-300;
+}
+.btn-slate:hover {
+  @apply bg-slate-400;
+}
+
+button[disabled] {
+  pointer-events: none;
+}

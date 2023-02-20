@@ -1,6 +1,8 @@
 <script lang="ts">
   import SliceTable from './SliceTable.svelte';
   import { traitlet } from './stores';
+  import { format } from 'd3-format';
+  import IncrementButtons from './IncrementButtons.svelte';
 
   export let model;
 
@@ -12,7 +14,19 @@
   let runningSampler = traitlet(model, 'running_sampler', false);
   let samplerRunProgress = traitlet(model, 'sampler_run_progress', 0.0);
 
-  $: console.log('drawn', $numSamplesDrawn, 'samples');
+  let scoreWeights = traitlet(model, 'score_weights', {});
+
+  let scoreNames: Array<string>;
+  $: {
+    scoreNames = Object.keys($scoreWeights);
+    scoreNames.sort();
+  }
+
+  function updateScoreWeight(scoreName: string, value: number) {
+    let newScoreWeights = Object.assign({}, $scoreWeights);
+    newScoreWeights[scoreName] = value;
+    $scoreWeights = newScoreWeights;
+  }
 </script>
 
 <main class="w-full">
@@ -30,29 +44,51 @@
       </div>
     </div>
   {/if}
-  <div class="flex h-full" class:disable-div={$runningSampler}>
-    <div class="p-4 mr-4 bg-slate-200 rounded w-300">
-      <div class="text-sm font-bold">Number of samples</div>
-      <div class="mt-1 flex items-center w-full">
-        <div style="width: 24px;">{$numSamples}</div>
-        <input
-          class="flex-auto ml-3"
-          type="range"
-          bind:value={$numSamples}
-          min="1"
-          max="100"
-          step="1"
-        />
-      </div>
-      <div class="mt-2">
-        <button
-          class="btn btn-blue disabled:opacity-50"
-          disabled={$runningSampler}
-          on:click={() => ($shouldRerun = true)}>Find Slices</button
-        >
+  <div class="flex h-96" class:disable-div={$runningSampler}>
+    <div class="h-full overflow-y-scroll mr-4" style="width: 250px;">
+      <div class="p-4 bg-slate-200 rounded w-full min-h-full">
+        <div class="text-sm font-bold">Number of samples</div>
+        <div class="mt-1 flex items-center w-full">
+          <div style="width: 24px;">{$numSamples}</div>
+          <input
+            class="flex-auto ml-3"
+            type="range"
+            bind:value={$numSamples}
+            min="1"
+            max="100"
+            step="1"
+          />
+        </div>
+        <div class="mt-2 mb-4">
+          <button
+            class="btn btn-blue disabled:opacity-50"
+            disabled={$runningSampler}
+            on:click={() => ($shouldRerun = true)}>Find Slices</button
+          >
+        </div>
+        <div>
+          <div class="text-sm font-bold">Score weights</div>
+          {#each scoreNames as score}
+            <div class="mb-1 flex flex-wrap items-center text-sm">
+              <div class="flex-auto">
+                {score}
+              </div>
+              <div class="font-bold mr-2">
+                {format('.1f')($scoreWeights[score])}
+              </div>
+              <IncrementButtons
+                value={$scoreWeights[score]}
+                on:change={(e) => updateScoreWeight(score, e.detail)}
+                min={0}
+                max={5}
+                step={0.1}
+              />
+            </div>
+          {/each}
+        </div>
       </div>
     </div>
-    <div class="flex-auto overflow-scroll h-96">
+    <div class="flex-auto overflow-scroll h-full">
       {#if $slices.length > 0}
         <SliceTable slices={$slices} />
         <div class="mt-2">

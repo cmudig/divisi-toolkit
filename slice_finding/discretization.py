@@ -15,7 +15,7 @@ class DiscretizedData:
             dataframe.
         """
         super().__init__()
-        self.df = discrete_data
+        self.df = discrete_data.astype(np.uint8)
         self.value_names = value_names
         
     def describe_slice(self, slice_obj):

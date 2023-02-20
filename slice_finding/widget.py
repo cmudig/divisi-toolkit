@@ -41,10 +41,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self._css = DEV_CSS_URL if kwargs.get('dev', False) else (BUNDLE_DIR / "style.css").read_text()
         except FileNotFoundError:
             raise ValueError("No built widget source found, and dev is set to False. To resolve, run npx vite build from the client directory.")
-        super().__init__(*args, **kwargs)
         self.slice_finder = slice_finder
+        super().__init__(*args, **kwargs)
         if len(self.score_weights) == 0:
             self.score_weights = {s: 1.0 for s in self.slice_finder.score_fns}
+        else:
+            self.score_weights = {**self.score_weights,
+                                  **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
         
     @traitlets.observe("num_slices")
     def num_slices_changed(self, change):
@@ -86,6 +89,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.logs += e
             raise e
 
+    @traitlets.observe("score_weights")
+    def rerank_results(self, change=None):
+        if not self.slice_finder or not self.slice_finder.results: return
+        weights = change.new if change is not None else self.score_weights
+        ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
+        self.update_slices(ranked_results)
+        
     def update_slices(self, ranked_results):
         self.slices = [
             self.slice_finder.results.generate_slice_description(slice_obj)
