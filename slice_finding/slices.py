@@ -2,6 +2,7 @@ from scipy.sparse import csr_matrix
 import numpy as np
 import pandas as pd
 from .utils import pairwise_jaccard_similarities, make_mask
+from .discretization import DiscretizedData
 
 class Slice:
     def __init__(self, feature_values, score_values=None):
@@ -68,16 +69,18 @@ class RankedSliceList:
     slice-finding operation.
     """
     
-    def __init__(self, results, df, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0):
+    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0):
         """
         :param results: A list of Slice objects representing the results of a
             slice-finding operation
-        :param df: The original discrete-valued dataframe used to compute scores
+        :param data: The original discrete-valued dataframe or DiscretizedData
+            used to compute scores
         :param score_functions: A dictionary of score names to score function
             objects
         """
         self.results = results
-        self.df = df
+        self.data = data
+        self.df = data.df if isinstance(data, DiscretizedData) else data
         self.eval_indexes = eval_indexes
         if eval_indexes is not None:
             self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
@@ -184,3 +187,21 @@ class RankedSliceList:
         # Return top n_slices results
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
         return ranked_results[:min(len(ranked_results), n_slices)]
+    
+    def generate_slice_description(self, slice_obj):
+        """
+        Creates JSON-serializable slice descriptions for a slice.
+        
+        :param slice: A Slice object
+        :return: A dictionary containing metadata and user-readable
+            descriptions for the slice.
+        """
+        slice_desc = {
+            "scoreValues": slice_obj.score_values, 
+            "rawFeatureValues": slice_obj.feature_values
+        }
+        if isinstance(self.data, DiscretizedData):
+            slice_desc["featureValues"] = self.data.describe_slice(slice_obj)
+        else:
+            slice_desc["featureValues"] = slice_obj.feature_values
+        return slice_desc

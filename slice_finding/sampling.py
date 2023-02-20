@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from .utils import RankedList, make_mask
 from .slices import Slice, RankedSliceList
+from .discretization import DiscretizedData
 import tqdm
 
 def explore_groups_beam_search(inputs, 
@@ -92,6 +93,7 @@ class SamplingSliceFinder:
                  max_weight=5.0,
                  show_progress=True):
         self.inputs = inputs
+        self.raw_inputs = inputs.df if isinstance(inputs, DiscretizedData) else inputs
         self.score_fns = score_fns
         self.source_mask = source_mask
         self.group_filter = group_filter
@@ -105,8 +107,8 @@ class SamplingSliceFinder:
 
         self.all_scores = []
         self.seen_slices = {}        
-        self.discovery_mask = (np.random.uniform(size=len(self.inputs)) >= self.holdout_fraction)
-        self.sampled_idxs = np.zeros(len(self.inputs), dtype=bool)
+        self.discovery_mask = (np.random.uniform(size=len(self.raw_inputs)) >= self.holdout_fraction)
+        self.sampled_idxs = np.zeros(len(self.raw_inputs), dtype=bool)
         self.results = None
         
     def sample(self, num_samples):
@@ -135,8 +137,8 @@ class SamplingSliceFinder:
                             for fn_name, fn in self.score_fns.items()}
         
         for sample_idx in bar:
-            source_row = self.inputs.iloc[sample_idx]
-            self.all_scores += explore_groups_beam_search(self.inputs[self.discovery_mask].reset_index(drop=True),
+            source_row = self.raw_inputs.iloc[sample_idx]
+            self.all_scores += explore_groups_beam_search(self.raw_inputs[self.discovery_mask].reset_index(drop=True),
                                                         source_row,
                                                         discovery_score_fns,
                                                         seen_slices=self.seen_slices,

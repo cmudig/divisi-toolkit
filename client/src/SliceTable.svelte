@@ -105,7 +105,7 @@
   }
 
   th.feature {
-    min-width: 200px;
+    min-width: 240px;
   }
 
   th.score {

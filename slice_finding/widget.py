@@ -88,7 +88,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
 
     def update_slices(self, ranked_results):
         self.slices = [
-            {"featureValues": slice_obj.feature_values,
-            "scoreValues": slice_obj.score_values}
+            self.slice_finder.results.generate_slice_description(slice_obj)
             for slice_obj in ranked_results
         ]

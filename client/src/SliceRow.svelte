@@ -28,7 +28,7 @@
           <span class="bg-sky-100 px-2 py-1 mr-1 rounded shadow-sm font-mono"
             >{col}</span
           >
-          = {slice.featureValues[col]}
+          {slice.featureValues[col]}
         {/if}
       </td>
     {/each}

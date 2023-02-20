@@ -6,6 +6,7 @@ from .widget import SliceFinderWidget
 from .sampling import find_slices_by_sampling
 from .recursive import find_slices_recursive
 from .scores import *
+from .discretization import DiscretizedData
 
 def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=5.0, algorithm='recursive', **kwargs):
     """
@@ -36,9 +37,13 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
     import pandas as pd
     import numpy as np
     
+    if isinstance(df, DiscretizedData):
+        df_to_run = df.df
+    else:
+        df_to_run = df
     # Check inputs
-    for col in df.columns:
-        if np.issubdtype(df[col].dtype, np.floating):
+    for col in df_to_run.columns:
+        if np.issubdtype(df_to_run[col].dtype, np.floating):
             raise ValueError(f"Dataframe column '{col}' has floating point dtype which is unsupported")
     
     if algorithm.lower() == 'recursive':
@@ -46,7 +51,7 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
         n_slices = kwargs['n_slices']
         del kwargs['n_slices']
         return find_slices_recursive(
-            df,
+            df_to_run,
             score_functions,
             max_features,
             n_slices,
