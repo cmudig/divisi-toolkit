@@ -1,4 +1,6 @@
 import numpy as np
+import pandas as pd
+from scipy import sparse as sps
 
 class RankedList:
     """
@@ -70,14 +72,21 @@ def make_mask(inputs, slice_obj, existing_mask=None):
     :param existing_mask: if provided, a binary mask that will be intersected
         with the mask for the given slice
         
-    :return: a binary array/series where 1 indicates that a row is part of the
+    :return: a binary array where 1 indicates that a row is part of the
         slice
     """
     mask = existing_mask
     for col, val in slice_obj.feature_values.items():
-        if mask is None:
-            mask = inputs[col] == val
+        if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
+            if mask is None:
+                mask = (inputs[:,col] == val).toarray().flatten()
+            else:
+                mask &= (inputs[:,col] == val).toarray().flatten()
         else:
-            mask &= inputs[col] == val
+            if mask is None:
+                mask = inputs[col] == val
+            else:
+                mask &= inputs[col] == val
+    if isinstance(mask, pd.Series): mask = mask.values
     return mask
     

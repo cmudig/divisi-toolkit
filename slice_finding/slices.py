@@ -72,7 +72,8 @@ class RankedSliceList:
         """
         :param results: A list of Slice objects representing the results of a
             slice-finding operation
-        :param df: The original discrete-valued dataframe used to compute scores
+        :param df: The original discrete-valued dataframe or matrix used t
+            compute scores
         :param score_functions: A dictionary of score names to score function
             objects
         """
@@ -80,7 +81,12 @@ class RankedSliceList:
         self.df = df
         self.eval_indexes = eval_indexes
         if eval_indexes is not None:
-            self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
+            if isinstance(self.df, pd.DataFrame):
+                self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
+            else:
+                self.eval_df = self.df[self.eval_indexes]
+                if isinstance(self.eval_df, csr_matrix):
+                    self.eval_df = self.eval_df.tocsc()
             self.score_functions = {fn_name: fn.subslice(self.eval_indexes)
                                     for fn_name, fn in score_functions.items()}
         else:
@@ -126,7 +132,7 @@ class RankedSliceList:
 
         for result_idx in result_indexes:
             slice_obj = self.results[result_idx]
-            mask = make_mask(self.eval_df, slice_obj).values
+            mask = make_mask(self.eval_df, slice_obj)
             group_scores = {key: item.calculate_score(slice_obj, mask)
                             for key, item in self.score_functions.items()}
             eval_scores.append(group_scores)
