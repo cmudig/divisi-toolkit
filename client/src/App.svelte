@@ -18,6 +18,9 @@
 
   let scoreWeights = traitlet(model, 'score_weights', {});
 
+  let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
+  let sliceScoreResults = traitlet(model, 'slice_score_results', {});
+
   let scoreNames: Array<string>;
   $: {
     scoreNames = Object.keys($scoreWeights);
@@ -98,6 +101,8 @@
             ...(Object.keys($overallSlice).length > 0 ? [$overallSlice] : []),
             ...$slices,
           ]}
+          bind:sliceRequests={$sliceScoreRequests}
+          bind:sliceRequestResults={$sliceScoreResults}
         />
         <div class="mt-2">
           <button

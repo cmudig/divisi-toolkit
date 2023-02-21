@@ -17,6 +17,14 @@ class DiscretizedData:
         super().__init__()
         self.df = discrete_data.astype(np.uint8)
         self.value_names = value_names
+        # TODO track if positive only
+        
+        # Create inverse mapping from decoded values to encoded ones, to support
+        # converting back user-created slices
+        self.inverse_value_mapping = {}
+        value_names_iter = enumerate(self.value_names) if isinstance(self.value_names, list) else self.value_names.items()
+        for enc_key, (dec_key, dec_values) in value_names_iter:
+            self.inverse_value_mapping[dec_key] = (enc_key, {v: k for k, v in dec_values.items()})
         
     def describe_slice(self, slice_obj):
         """
@@ -31,6 +39,19 @@ class DiscretizedData:
             col_values = self.value_names[col]
             results[col_values[0]] = col_values[1][val]
         return results
+    
+    def encode_slice(self, decoded_feature_values):
+        """
+        Creates a Slice representing the given feature values, but converted
+        back into the discretized numerical representation.
+        """
+        from .slices import Slice
+        
+        feature_values = {}
+        for dec_key, dec_value in decoded_feature_values.items():
+            enc_key, enc_mapping = self.inverse_value_mapping[dec_key]
+            feature_values[enc_key] = enc_mapping[dec_value]
+        return Slice(feature_values)
     
 def _represent_bin(bins, i, quantile=False):
     if quantile:

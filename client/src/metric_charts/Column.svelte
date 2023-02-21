@@ -52,7 +52,7 @@
     {@const colWidth = $xScale.bandwidth ? $xScale.bandwidth() : columnWidth(d)}
     {@const yValue = $y(d)}
     <rect
-      class="group-rect"
+      class="group-rect transition-all duration-300 ease-in-out"
       data-id={i}
       data-range={$x(d)}
       data-count={yValue}

@@ -36,6 +36,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
     slices = traitlets.List([]).tag(sync=True)
     overall_slice = traitlets.Dict({}).tag(sync=True)
     
+    slice_score_requests = traitlets.Dict({}).tag(sync=True)
+    slice_score_results = traitlets.Dict({}).tag(sync=True)
+    
     thread_starter = traitlets.Any(default_thread_starter)
     
     def __init__(self, slice_finder, *args, **kwargs):
@@ -51,16 +54,18 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             self.score_weights = {**self.score_weights,
                                   **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
+        self._slice_description_cache = {}
         
-    def make_overall_slice(self):
+    def get_slice_description(self, slice_obj, metrics=None):
         """
-        Creates a slice dictionary representing the entire dataset (for
-        visual comparison).
+        Retrieves a description of the given slice (either from a cache or from
+        the slice finder results).
         """
         if not self.slice_finder or not self.slice_finder.results: return
-        overall_slice = Slice({})
-        overall_slice = overall_slice.rescore(self.slice_finder.results.score_slice(overall_slice))
-        self.overall_slice = self.slice_finder.results.generate_slice_description(overall_slice, metrics=self.metrics)
+        if slice_obj not in self._slice_description_cache:
+            slice_obj = slice_obj.rescore(self.slice_finder.results.score_slice(slice_obj))
+            self._slice_description_cache[slice_obj] = self.slice_finder.results.generate_slice_description(slice_obj, metrics=metrics or self.metrics)
+        return self._slice_description_cache[slice_obj]
         
     @traitlets.observe("num_slices")
     def num_slices_changed(self, change):
@@ -71,7 +76,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     @traitlets.observe("metrics")
     def metrics_changed(self, change):
         if not self.slice_finder or not self.slice_finder.results: return
-        self.overall_slice = {}
+        self._slice_description_cache = {}
         self.slices = []
         ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
         self.update_slices(ranked_results, metrics=change.new)
@@ -119,8 +124,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     def update_slices(self, ranked_results, metrics=None):
         if not self.overall_slice:
-            self.make_overall_slice()
+            self.overall_slice = self.get_slice_description(Slice({}), metrics=metrics or self.metrics)
         self.slices = [
-            self.slice_finder.results.generate_slice_description(slice_obj, metrics=metrics or self.metrics)
+            self.get_slice_description(slice_obj, metrics=metrics or self.metrics)
             for slice_obj in ranked_results
         ]
+
+    @traitlets.observe("slice_score_requests")
+    def slice_score_request(self, change):
+        if not self.slice_finder or not self.slice_finder.results: return
+        self.slice_score_results = {k: self.get_slice_description(self.slice_finder.results.encode_slice(f)) 
+                                    for k, f in change.new.items()}

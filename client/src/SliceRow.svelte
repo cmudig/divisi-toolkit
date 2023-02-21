@@ -4,12 +4,19 @@
   import { format } from 'd3-format';
   import SliceMetricHistogram from './metric_charts/SliceMetricHistogram.svelte';
   import SliceMetricCategoryBar from './metric_charts/SliceMetricCategoryBar.svelte';
+  import { createEventDispatcher } from 'svelte';
+  import Fa from 'svelte-fa/src/fa.svelte';
+  import { faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+
+  const dispatch = createEventDispatcher();
 
   export let slice: Slice;
   export let maxFeatures: number = 0;
   export let scoreNames: Array<string> = [];
   export let showScores = false;
   export let metricNames: Array<string> = [];
+
+  export let temporarySlice: Slice = null; // if a variable is adjusted dynamically
 
   export let scoreCellWidth = 100;
   export let scoreWidthScalers = {};
@@ -24,9 +31,12 @@
 
   let isEntireDataset = false;
   $: isEntireDataset = Object.keys(slice.featureValues).length == 0;
+
+  let sliceToShow: Slice;
+  $: sliceToShow = temporarySlice || slice;
 </script>
 
-{#if !!slice}
+{#if !!sliceToShow}
   <tr
     class:hover:bg-slate-100={!isEntireDataset}
     class:border-b-2={isEntireDataset}
@@ -37,15 +47,24 @@
         {#if isEntireDataset && i == 0}
           <span class="text-slate-600 text-base">Evaluation Dataset</span>
         {:else if col.length > 0}
-          <span class="bg-sky-100 px-2 py-1 mr-1 rounded shadow-sm font-mono"
-            >{col}</span
+          {@const featureDisabled =
+            !sliceToShow.featureValues.hasOwnProperty(col) &&
+            slice.featureValues.hasOwnProperty(col)}
+          <button
+            class="bg-sky-100 hover:bg-sky-200 px-2 py-1 mr-1 rounded shadow-sm font-mono"
+            class:opacity-50={featureDisabled}
+            on:click={() => dispatch('toggle', col)}>{col}</button
           >
-          {slice.featureValues[col]}
+          {#if featureDisabled}
+            <Fa icon={faEyeSlash} style="display: inline;" class="opacity-50" />
+          {:else}
+            {sliceToShow.featureValues[col]}
+          {/if}
         {/if}
       </td>
     {/each}
     {#each metricNames as name}
-      {@const metric = slice.metrics[name]}
+      {@const metric = sliceToShow.metrics[name]}
       <td class="p-2">
         {#if metric.type == 'binary'}
           <SliceMetricBar
@@ -87,7 +106,7 @@
       {#each scoreNames as scoreName}
         <td class="p-2">
           <SliceMetricBar
-            value={slice.scoreValues[scoreName]}
+            value={sliceToShow.scoreValues[scoreName]}
             scale={scoreWidthScalers[scoreName] || ((v) => v)}
             width={scoreCellWidth}
           />

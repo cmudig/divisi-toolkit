@@ -109,6 +109,15 @@ class RankedSliceList:
             results = results[:k]
         return results
     
+    def encode_slice(self, feature_values):
+        """
+        Returns a discretized version of the slice defined by the given feature
+        values.
+        """
+        if isinstance(self.data, DiscretizedData):
+            return self.data.encode_slice(feature_values)
+        return Slice(feature_values)
+        
     def score_slice(self, slice_obj, return_mask=False):
         mask = make_mask(self.eval_df, slice_obj).values
         group_scores = {key: item.calculate_score(slice_obj, mask)
