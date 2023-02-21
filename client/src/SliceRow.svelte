@@ -5,8 +5,6 @@
   import SliceMetricHistogram from './metric_charts/SliceMetricHistogram.svelte';
   import SliceMetricCategoryBar from './metric_charts/SliceMetricCategoryBar.svelte';
   import { createEventDispatcher } from 'svelte';
-  import Fa from 'svelte-fa/src/fa.svelte';
-  import { faEyeSlash } from '@fortawesome/free-solid-svg-icons';
 
   const dispatch = createEventDispatcher();
 
@@ -56,7 +54,7 @@
             on:click={() => dispatch('toggle', col)}>{col}</button
           >
           {#if featureDisabled}
-            <Fa icon={faEyeSlash} style="display: inline;" class="opacity-50" />
+            <span class="opacity-50">(any value)</span>
           {:else}
             {sliceToShow.featureValues[col]}
           {/if}
