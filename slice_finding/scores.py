@@ -136,7 +136,7 @@ class NumFeaturesScore(ScoreFunctionBase):
         super().__init__("num_features")
 
     def calculate_score(self, slice, mask):
-        return 1 / np.log2(1 + len(slice.feature_values))
+        return 1 / (1 + np.log2(1 + len(slice.feature_values)))
     
     def subslice(self, indexes):
         return NumFeaturesScore()

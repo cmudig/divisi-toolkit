@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 class RankedList:
     """
@@ -79,5 +80,36 @@ def make_mask(inputs, slice_obj, existing_mask=None):
             mask = inputs[col] == val
         else:
             mask &= inputs[col] == val
+    if mask is None:
+        mask = np.ones(len(inputs), dtype=bool)
+        if isinstance(inputs, (pd.DataFrame, pd.Series)):
+            mask = pd.Series(mask, index=inputs.index)
     return mask
     
+def detect_data_type(arr):
+    """
+    :param arr: An array to check the type of
+    :return: 'binary' if the data is 0/1, 'categorical' if contains a small number
+        of unique values or is non-numeric, or 'continuous' if contains a large
+        number of numerical values
+    """
+    if arr.dtype == np.dtype('object'):
+        return 'categorical'
+    uniques = np.unique(arr)
+    if len(uniques) == 2 and np.allclose(uniques, np.arange(2)):
+        return 'binary'
+    
+    unique_ratio = len(uniques) / len(arr)
+    if unique_ratio < 0.05:
+        return 'categorical'
+    
+    return 'continuous'
+
+def convert_to_native_types(o):
+    if isinstance(o, dict):
+        return {convert_to_native_types(k): convert_to_native_types(v) for k, v in o.items()}
+    elif isinstance(o, list):
+        return [convert_to_native_types(v) for v in o]
+    elif isinstance(o, np.generic):
+        return o.item()
+    return o

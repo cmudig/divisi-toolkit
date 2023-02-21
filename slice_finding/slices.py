@@ -1,7 +1,7 @@
 from scipy.sparse import csr_matrix
 import numpy as np
 import pandas as pd
-from .utils import pairwise_jaccard_similarities, make_mask
+from .utils import pairwise_jaccard_similarities, make_mask, detect_data_type, convert_to_native_types
 from .discretization import DiscretizedData
 
 class Slice:
@@ -86,9 +86,11 @@ class RankedSliceList:
             self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
             self.score_functions = {fn_name: fn.subslice(self.eval_indexes)
                                     for fn_name, fn in score_functions.items()}
+            self.eval_mask = self.eval_indexes
         else:
             self.eval_df = self.df
             self.score_functions = score_functions
+            self.eval_mask = np.arange(len(self.df))
             
         self.min_weight = min_weight
         self.max_weight = max_weight
@@ -106,6 +108,14 @@ class RankedSliceList:
         if k is not None:
             results = results[:k]
         return results
+    
+    def score_slice(self, slice_obj, return_mask=False):
+        mask = make_mask(self.eval_df, slice_obj).values
+        group_scores = {key: item.calculate_score(slice_obj, mask)
+                        for key, item in self.score_functions.items()}
+        if return_mask:
+            return group_scores, mask
+        return group_scores
         
     def rescore(self, result_indexes, return_masks=False):
         """
@@ -129,9 +139,8 @@ class RankedSliceList:
 
         for result_idx in result_indexes:
             slice_obj = self.results[result_idx]
-            mask = make_mask(self.eval_df, slice_obj).values
-            group_scores = {key: item.calculate_score(slice_obj, mask)
-                            for key, item in self.score_functions.items()}
+            group_scores, mask = self.score_slice(slice_obj, return_mask=True)
+            
             eval_scores.append(group_scores)
             eval_scored_slices.append(slice_obj.rescore(group_scores))
             
@@ -188,11 +197,15 @@ class RankedSliceList:
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
         return ranked_results[:min(len(ranked_results), n_slices)]
     
-    def generate_slice_description(self, slice_obj):
+    def generate_slice_description(self, slice_obj, metrics=None):
         """
         Creates JSON-serializable slice descriptions for a slice.
         
         :param slice: A Slice object
+        :param metrics: If provided, a dictionary mapping metric names to
+            series/arrays matching the shape of the original inputs. These metrics
+            will be aggregated (histogram for continuous values, mean for
+            binary values, value counts for categorical values)
         :return: A dictionary containing metadata and user-readable
             descriptions for the slice.
         """
@@ -204,4 +217,26 @@ class RankedSliceList:
             slice_desc["featureValues"] = self.data.describe_slice(slice_obj)
         else:
             slice_desc["featureValues"] = slice_obj.feature_values
-        return slice_desc
+            
+        slice_metrics = {}
+        mask = np.arange(len(self.df))[self.eval_mask][make_mask(self.eval_df, slice_obj)]
+        slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / len(self.eval_df)}
+        if metrics:
+            for metric_name, data in metrics.items():
+                data_type = detect_data_type(data)
+                if data_type == "binary":
+                    slice_metrics[metric_name] = {"type": data_type, 
+                                                  "mean": data[mask].mean(), 
+                                                  "share": data[mask].sum() / data[self.eval_mask].sum()}
+                elif data_type == "categorical":
+                    slice_metrics[metric_name] = {"type": data_type, 
+                                                  "counts": dict(zip(*np.unique(data[mask], return_counts=True)))}
+                else:
+                    hist_bins = np.histogram_bin_edges(data, bins=10)
+                    hist_values, _ = np.histogram(data[mask], bins=hist_bins)
+                    slice_metrics[metric_name] = {"type": data_type,
+                                                  "hist": dict(zip(hist_bins, hist_values)),
+                                                  "mean": data[mask].mean()}
+        slice_desc["metrics"] = slice_metrics
+            
+        return convert_to_native_types(slice_desc)

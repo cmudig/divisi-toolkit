@@ -1,16 +1,19 @@
 <script lang="ts">
   import type { Slice } from './slice.type';
+  import SliceMetricBar from './metric_charts/SliceMetricBar.svelte';
   import { format } from 'd3-format';
-  import { interpolateBlues } from 'd3-scale-chromatic';
-  import TableCellBar from './TableCellBar.svelte';
+  import SliceMetricHistogram from './metric_charts/SliceMetricHistogram.svelte';
+  import SliceMetricCategoryBar from './metric_charts/SliceMetricCategoryBar.svelte';
 
   export let slice: Slice;
   export let maxFeatures: number = 0;
   export let scoreNames: Array<string> = [];
   export let showScores = false;
+  export let metricNames: Array<string> = [];
 
   export let scoreCellWidth = 100;
   export let scoreWidthScalers = {};
+  export let metricInfo = {};
 
   let featureOrder = [];
   $: if (slice) {
@@ -18,13 +21,22 @@
     featureOrder.sort();
     while (featureOrder.length < maxFeatures) featureOrder.push('');
   }
+
+  let isEntireDataset = false;
+  $: isEntireDataset = Object.keys(slice.featureValues).length == 0;
 </script>
 
 {#if !!slice}
-  <tr class="hover:bg-slate-100">
-    {#each featureOrder as col}
+  <tr
+    class:hover:bg-slate-100={!isEntireDataset}
+    class:border-b-2={isEntireDataset}
+    class:border-dotted={isEntireDataset}
+  >
+    {#each featureOrder as col, i}
       <td class="py-3 px-2">
-        {#if col.length > 0}
+        {#if isEntireDataset && i == 0}
+          <span class="text-slate-600 text-base">Evaluation Dataset</span>
+        {:else if col.length > 0}
           <span class="bg-sky-100 px-2 py-1 mr-1 rounded shadow-sm font-mono"
             >{col}</span
           >
@@ -32,21 +44,53 @@
         {/if}
       </td>
     {/each}
+    {#each metricNames as name}
+      {@const metric = slice.metrics[name]}
+      <td class="p-2">
+        {#if metric.type == 'binary'}
+          <SliceMetricBar
+            value={metric.mean}
+            scale={metricInfo[name].scale}
+            width={scoreCellWidth}
+          >
+            <span slot="caption">
+              <strong>{format('.1%')(metric.mean)}</strong>
+              {#if metric.hasOwnProperty('share')}
+                ({format('.1%')(metric.share)} of total)
+              {/if}
+            </span>
+          </SliceMetricBar>
+        {:else if metric.type == 'count'}
+          <SliceMetricBar value={metric.share} width={scoreCellWidth}>
+            <span slot="caption">
+              <strong>{format(',')(metric.count)}</strong> ({format('.1%')(
+                metric.share
+              )})
+            </span>
+          </SliceMetricBar>
+        {:else if metric.type == 'continuous'}
+          <SliceMetricHistogram
+            mean={metric.mean}
+            histValues={metric.hist}
+            width={scoreCellWidth}
+          />
+        {:else if metric.type == 'categorical'}
+          <SliceMetricCategoryBar
+            order={metricInfo[name].order}
+            counts={metric.counts}
+            width={scoreCellWidth}
+          />
+        {/if}
+      </td>
+    {/each}
     {#if showScores}
       {#each scoreNames as scoreName}
         <td class="p-2">
-          {#if !!scoreWidthScalers[scoreName]}
-            <TableCellBar
-              maxWidth={scoreCellWidth}
-              fraction={scoreWidthScalers[scoreName](
-                slice.scoreValues[scoreName]
-              )}
-              colorScale={interpolateBlues}
-            />
-          {/if}
-          <div class="text-xs text-slate-800">
-            {format('.3')(slice.scoreValues[scoreName])}
-          </div>
+          <SliceMetricBar
+            value={slice.scoreValues[scoreName]}
+            scale={scoreWidthScalers[scoreName] || ((v) => v)}
+            width={scoreCellWidth}
+          />
         </td>
       {/each}
     {/if}

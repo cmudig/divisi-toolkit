@@ -9,15 +9,22 @@
   export let showScores = false;
 
   let maxFeatures = 0;
+  let metricNames = [];
+  let metricInfo = {};
   let scoreNames = [];
   let scoreWidthScalers = {};
 
   $: if (slices.length > 0) {
+    console.log('slices', slices);
+    let testSlice = slices[0];
+
     maxFeatures = slices.reduce(
       (curr, next) => Math.max(curr, Object.keys(next.featureValues).length),
       0
     );
-    scoreNames = Object.keys(slices[0].scoreValues);
+
+    // tabulate score names and normalize
+    scoreNames = Object.keys(testSlice.scoreValues);
     scoreNames.sort();
 
     scoreWidthScalers = {};
@@ -35,10 +42,50 @@
       scoreWidthScalers[n] = (v: number) =>
         (v - minScore) / (maxScore - minScore);
     });
+
+    // tabulate metric names and normalize
+    if (!!testSlice.metrics) {
+      metricNames = Object.keys(testSlice.metrics);
+      metricNames.sort();
+
+      metricInfo = {};
+      metricNames.forEach((n) => {
+        if (
+          testSlice.metrics[n].type == 'binary' ||
+          testSlice.metrics[n].type == 'count'
+        ) {
+          let maxScore =
+            slices.reduce(
+              (curr, next) => Math.max(curr, next.metrics[n].mean),
+              -1e9
+            ) + 0.01;
+          let minScore =
+            slices.reduce(
+              (curr, next) => Math.min(curr, next.metrics[n].mean),
+              1e9
+            ) - 0.01;
+          metricInfo[n] = { scale: (v: number) => v / maxScore };
+        } else if (testSlice.metrics[n].type == 'categorical') {
+          let uniqueKeys: Set<string> = new Set();
+          slices.forEach((s) =>
+            Object.keys(s.metrics[n].counts).forEach((v) => uniqueKeys.add(v))
+          );
+          let order = Array.from(uniqueKeys);
+          order.sort(
+            (a, b) =>
+              testSlice.metrics[n].counts[b] - testSlice.metrics[n].counts[a]
+          );
+          metricInfo[n] = { order };
+        }
+      });
+      console.log('metric info:', metricInfo, testSlice.metrics);
+    }
   } else {
     maxFeatures = 0;
     scoreNames = [];
     scoreWidthScalers = {};
+    metricNames = [];
+    metricInfo = {};
   }
 </script>
 
@@ -51,6 +98,13 @@
             <th class="bg-slate-100 feature" class:rounded-tl={i == 0}>
               <div class="p-2 border-b border-slate-600">
                 Feature {i + 1}
+              </div></th
+            >
+          {/each}
+          {#each metricNames as name}
+            <th class="bg-slate-100 metric">
+              <div class="p-2 border-b border-slate-600">
+                {name}
               </div></th
             >
           {/each}
@@ -88,6 +142,8 @@
             scoreCellWidth={100}
             {scoreWidthScalers}
             {showScores}
+            {metricNames}
+            {metricInfo}
           />
         {/each}
       </tbody>
@@ -108,8 +164,12 @@
     min-width: 240px;
   }
 
+  th.metric {
+    min-width: 160px;
+  }
+
   th.score {
-    width: 100px;
+    min-width: 100px;
   }
 
   tr {

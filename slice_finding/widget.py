@@ -4,6 +4,7 @@ import traitlets
 import threading
 import numpy as np
 import time
+from .slices import Slice
 
 def default_thread_starter(fn, args=[], kwargs={}):
     thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
@@ -30,8 +31,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
     num_samples_drawn = traitlets.Int(0).tag(sync=True)
     sampler_run_progress = traitlets.Float(0.0).tag(sync=True)
     score_weights = traitlets.Dict({}).tag(sync=True)
+    metrics = traitlets.Dict({})
     
     slices = traitlets.List([]).tag(sync=True)
+    overall_slice = traitlets.Dict({}).tag(sync=True)
     
     thread_starter = traitlets.Any(default_thread_starter)
     
@@ -49,10 +52,29 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.score_weights = {**self.score_weights,
                                   **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
         
+    def make_overall_slice(self):
+        """
+        Creates a slice dictionary representing the entire dataset (for
+        visual comparison).
+        """
+        if not self.slice_finder or not self.slice_finder.results: return
+        overall_slice = Slice({})
+        overall_slice = overall_slice.rescore(self.slice_finder.results.score_slice(overall_slice))
+        self.overall_slice = self.slice_finder.results.generate_slice_description(overall_slice, metrics=self.metrics)
+        
     @traitlets.observe("num_slices")
     def num_slices_changed(self, change):
+        if not self.slice_finder or not self.slice_finder.results: return
         ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=change.new)
         self.update_slices(ranked_results)
+        
+    @traitlets.observe("metrics")
+    def metrics_changed(self, change):
+        if not self.slice_finder or not self.slice_finder.results: return
+        self.overall_slice = {}
+        self.slices = []
+        ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
+        self.update_slices(ranked_results, metrics=change.new)
             
     @traitlets.observe("should_rerun")
     def rerun_flag_changed(self, change):
@@ -86,18 +108,19 @@ class SliceFinderWidget(anywidget.AnyWidget):
         except Exception as e:
             print(e)
             self.running_sampler = False
-            self.logs += e
             raise e
 
     @traitlets.observe("score_weights")
     def rerank_results(self, change=None):
         if not self.slice_finder or not self.slice_finder.results: return
         weights = change.new if change is not None else self.score_weights
-        ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
+        ranked_results = self.slice_finder.results.rank(weights, n_slices=self.num_slices)
         self.update_slices(ranked_results)
         
-    def update_slices(self, ranked_results):
+    def update_slices(self, ranked_results, metrics=None):
+        if not self.overall_slice:
+            self.make_overall_slice()
         self.slices = [
-            self.slice_finder.results.generate_slice_description(slice_obj)
+            self.slice_finder.results.generate_slice_description(slice_obj, metrics=metrics or self.metrics)
             for slice_obj in ranked_results
         ]
