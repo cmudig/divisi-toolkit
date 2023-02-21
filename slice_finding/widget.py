@@ -25,7 +25,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     name = traitlets.Unicode().tag(sync=True)
     
     num_slices = traitlets.Int(10).tag(sync=True)
-    num_samples = traitlets.Int(10).tag(sync=True)
+    num_samples = traitlets.Int(50).tag(sync=True)
     should_rerun = traitlets.Bool(False).tag(sync=True)
     running_sampler = traitlets.Bool(False).tag(sync=True)
     num_samples_drawn = traitlets.Int(0).tag(sync=True)
@@ -75,6 +75,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("metrics")
     def metrics_changed(self, change):
+        assert all(isinstance(d, np.ndarray) and len(d.shape) == 1 for d in change.new.values()), "All metrics must be 1D ndarrays"
         if not self.slice_finder or not self.slice_finder.results: return
         self._slice_description_cache = {}
         self.slices = []

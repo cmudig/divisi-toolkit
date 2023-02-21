@@ -7,7 +7,7 @@
   export let model;
 
   let numSlices = traitlet(model, 'num_slices', 10);
-  let numSamples = traitlet(model, 'num_samples', 10);
+  let numSamples = traitlet(model, 'num_samples', 50);
   let shouldRerun = traitlet(model, 'should_rerun', false);
   let numSamplesDrawn = traitlet(model, 'num_samples_drawn', 0);
   let runningSampler = traitlet(model, 'running_sampler', false);
@@ -38,7 +38,7 @@
   {#if $runningSampler}
     <div class="pt-2 pb-4">
       <div class="text-sm text-gray-700">
-        Running sampler ({$numSamplesDrawn} total samples drawn)...
+        Running sampler ({($samplerRunProgress * 100).toFixed(1)}% complete)...
       </div>
       <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1 dark:bg-gray-700">
         <div
@@ -64,6 +64,9 @@
             max="100"
             step="1"
           />
+        </div>
+        <div class="mt-1 text-sm text-slate-500">
+          {$numSamplesDrawn} samples drawn so far
         </div>
         <div class="mt-2 mb-4">
           <button

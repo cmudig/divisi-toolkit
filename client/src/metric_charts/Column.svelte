@@ -4,6 +4,7 @@
  -->
 <script>
   import { createEventDispatcher, getContext } from 'svelte';
+  import { onMount } from 'svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -42,6 +43,13 @@
   const selectStrokeWidth = 3;
 
   let hoveredIndex = null;
+
+  // Disable transition until after loaded
+  onMount(() => {
+    setTimeout(() => (loaded = true), 100);
+  });
+
+  let loaded = false;
 </script>
 
 <g class="column-group">
@@ -52,7 +60,8 @@
     {@const colWidth = $xScale.bandwidth ? $xScale.bandwidth() : columnWidth(d)}
     {@const yValue = $y(d)}
     <rect
-      class="group-rect transition-all duration-300 ease-in-out"
+      class="group-rect"
+      class:animated={loaded}
       data-id={i}
       data-range={$x(d)}
       data-count={yValue}
@@ -97,5 +106,9 @@
   }
   .hover-zone {
     pointer-events: all;
+  }
+
+  .animated {
+    @apply transition-all duration-300 ease-in-out;
   }
 </style>

@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, getContext } from 'svelte';
+  import { createEventDispatcher, getContext, onMount } from 'svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -19,13 +19,19 @@
   } = getContext('LayerCake');
 
   let hoveredIndex = null;
+
+  // Disable transition until after loaded
+  onMount(() => {
+    setTimeout(() => (loaded = true), 100);
+  });
+
+  let loaded = false;
 </script>
 
 {#each $data as d, i}
   <span
     class="bar absolute"
-    class:rounded-l-full={i == 0}
-    class:rounded-r-full={i == $data.length - 1}
+    class:animated={loaded}
     class:border={hoveredIndex == d.index}
     class:border-black={hoveredIndex == d.index}
     style="top: 0; left: {$xGet(d)}px; width: {$xScale($z(d)) -
@@ -44,5 +50,10 @@
 <style>
   .bar {
     height: 6px;
+  }
+
+  .animated {
+    transition-property: width, left;
+    @apply duration-300 ease-in-out;
   }
 </style>

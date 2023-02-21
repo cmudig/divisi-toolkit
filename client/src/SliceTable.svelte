@@ -3,7 +3,6 @@
   import SliceRow from './SliceRow.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
   import { faAngleLeft, faAngleRight } from '@fortawesome/free-solid-svg-icons';
-  import { sliceToString } from './utils';
 
   export let slices: Array<Slice> = [];
 
@@ -138,8 +137,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each slices as slice, i}
-          {@const sliceRep = sliceToString(slice)}
+        {#each slices as slice, i (slice.stringRep || i)}
           <SliceRow
             {slice}
             {maxFeatures}
@@ -149,15 +147,16 @@
             {showScores}
             {metricNames}
             {metricInfo}
-            temporarySlice={sliceRequestResults[sliceRep]}
+            temporarySlice={sliceRequestResults[slice.stringRep]}
             on:toggle={(e) => {
               let allRequests = Object.assign({}, sliceRequests);
               let r;
-              if (!!allRequests[sliceRep]) r = allRequests[sliceRep];
+              if (!!allRequests[slice.stringRep])
+                r = allRequests[slice.stringRep];
               else r = Object.assign({}, slice.featureValues);
               if (r.hasOwnProperty(e.detail)) delete r[e.detail];
               else r[e.detail] = slice.featureValues[e.detail];
-              allRequests[sliceRep] = r;
+              allRequests[slice.stringRep] = r;
               sliceRequests = allRequests;
               console.log(sliceRequests);
             }}

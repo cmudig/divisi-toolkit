@@ -12,6 +12,7 @@ export interface SliceMetric {
 }
 
 export interface Slice {
+  stringRep?: string;
   featureValues: any;
   scoreValues: any;
   metrics?: { [key: string]: SliceMetric };

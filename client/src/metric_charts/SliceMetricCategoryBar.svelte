@@ -51,7 +51,10 @@
   }
 </script>
 
-<div style="width: {width}px; height: 6px;" class="inline-block">
+<div
+  style="width: {width}px; height: 6px;"
+  class="inline-block rounded overflow-hidden"
+>
   <LayerCake
     padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
     x="start"

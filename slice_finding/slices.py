@@ -57,6 +57,9 @@ class Slice:
 
     def __repr__(self):
         return str(self)
+    
+    def string_rep(self):
+        return str(self.tuple_rep)
 
 class RankedSliceList:
     """
@@ -220,7 +223,8 @@ class RankedSliceList:
         """
         slice_desc = {
             "scoreValues": slice_obj.score_values, 
-            "rawFeatureValues": slice_obj.feature_values
+            "rawFeatureValues": slice_obj.feature_values,
+            "stringRep": slice_obj.string_rep()
         }
         if isinstance(self.data, DiscretizedData):
             slice_desc["featureValues"] = self.data.describe_slice(slice_obj)

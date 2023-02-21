@@ -15,6 +15,9 @@ class ScoreFunctionBase:
             None if the score function does not require additional data.
         """
         self.score_type = score_type
+        if data is not None:
+            assert isinstance(data, np.ndarray), "Score function data must be of type ndarray"
+            assert len(data.shape) == 1, "Score function data must be 1D"
         self.data = data
 
     def calculate_score(self, slice, mask):
