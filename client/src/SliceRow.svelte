@@ -64,39 +64,41 @@
     {#each metricNames as name}
       {@const metric = sliceToShow.metrics[name]}
       <td class="p-2">
-        {#if metric.type == 'binary'}
-          <SliceMetricBar
-            value={metric.mean}
-            scale={metricInfo[name].scale}
-            width={scoreCellWidth}
-          >
-            <span slot="caption">
-              <strong>{format('.1%')(metric.mean)}</strong>
-              {#if metric.hasOwnProperty('share')}
-                ({format('.1%')(metric.share)} of total)
-              {/if}
-            </span>
-          </SliceMetricBar>
-        {:else if metric.type == 'count'}
-          <SliceMetricBar value={metric.share} width={scoreCellWidth}>
-            <span slot="caption">
-              <strong>{format(',')(metric.count)}</strong> ({format('.1%')(
-                metric.share
-              )})
-            </span>
-          </SliceMetricBar>
-        {:else if metric.type == 'continuous'}
-          <SliceMetricHistogram
-            mean={metric.mean}
-            histValues={metric.hist}
-            width={scoreCellWidth}
-          />
-        {:else if metric.type == 'categorical'}
-          <SliceMetricCategoryBar
-            order={metricInfo[name].order}
-            counts={metric.counts}
-            width={scoreCellWidth}
-          />
+        {#if !!metricInfo[name] && metricInfo[name].visible}
+          {#if metric.type == 'binary'}
+            <SliceMetricBar
+              value={metric.mean}
+              scale={metricInfo[name].scale}
+              width={scoreCellWidth}
+            >
+              <span slot="caption">
+                <strong>{format('.1%')(metric.mean)}</strong>
+                {#if metric.hasOwnProperty('share')}
+                  ({format('.1%')(metric.share)} of total)
+                {/if}
+              </span>
+            </SliceMetricBar>
+          {:else if metric.type == 'count'}
+            <SliceMetricBar value={metric.share} width={scoreCellWidth}>
+              <span slot="caption">
+                <strong>{format(',')(metric.count)}</strong> ({format('.1%')(
+                  metric.share
+                )})
+              </span>
+            </SliceMetricBar>
+          {:else if metric.type == 'continuous'}
+            <SliceMetricHistogram
+              mean={metric.mean}
+              histValues={metric.hist}
+              width={scoreCellWidth}
+            />
+          {:else if metric.type == 'categorical'}
+            <SliceMetricCategoryBar
+              order={metricInfo[name].order}
+              counts={metric.counts}
+              width={scoreCellWidth}
+            />
+          {/if}
         {/if}
       </td>
     {/each}

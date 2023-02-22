@@ -80,3 +80,39 @@ h1 {
 button[disabled] {
   pointer-events: none;
 }
+
+.potential-drop-zone.drop-zone {
+  position: relative;
+}
+
+.potential-drop-zone::after {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+.potential-drop-zone.drop-zone::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  bottom: 0;
+  top: 0;
+  width: 12px;
+  background-color: #64748b;
+  border-radius: 4px;
+  @apply drop-shadow;
+}
+
+.potential-drop-zone.drop-zone.drop-zone-r::after {
+  left: unset;
+  z-index: 1;
+  right: 0px;
+  bottom: 0;
+  top: 0;
+  width: 12px;
+  background-color: #64748b;
+  border-radius: 4px;
+}
+
+.drop-zone * {
+  pointer-events: none;
+}

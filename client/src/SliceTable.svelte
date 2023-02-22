@@ -2,7 +2,14 @@
   import type { Slice } from './slice.type';
   import SliceRow from './SliceRow.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
-  import { faAngleLeft, faAngleRight } from '@fortawesome/free-solid-svg-icons';
+  import Hoverable from './Hoverable.svelte';
+  import {
+    faAngleLeft,
+    faAngleRight,
+    faEye,
+    faEyeSlash,
+    faGripLinesVertical,
+  } from '@fortawesome/free-solid-svg-icons';
 
   export let slices: Array<Slice> = [];
 
@@ -48,42 +55,7 @@
 
     // tabulate metric names and normalize
     if (!!testSlice.metrics) {
-      metricNames = Object.keys(testSlice.metrics);
-      metricNames.sort();
-
-      metricInfo = {};
-      metricNames.forEach((n) => {
-        if (
-          testSlice.metrics[n].type == 'binary' ||
-          testSlice.metrics[n].type == 'count'
-        ) {
-          let maxScore =
-            testSlice.metrics[n].type == 'count'
-              ? slices.reduce(
-                  (curr, next) => Math.max(curr, next.metrics[n].mean),
-                  -1e9
-                ) + 0.01
-              : 1;
-          let minScore =
-            slices.reduce(
-              (curr, next) => Math.min(curr, next.metrics[n].mean),
-              1e9
-            ) - 0.01;
-          metricInfo[n] = { scale: (v: number) => v / maxScore };
-        } else if (testSlice.metrics[n].type == 'categorical') {
-          let uniqueKeys: Set<string> = new Set();
-          slices.forEach((s) =>
-            Object.keys(s.metrics[n].counts).forEach((v) => uniqueKeys.add(v))
-          );
-          let order = Array.from(uniqueKeys);
-          order.sort(
-            (a, b) =>
-              testSlice.metrics[n].counts[b] - testSlice.metrics[n].counts[a]
-          );
-          metricInfo[n] = { order };
-        }
-      });
-      console.log('metric info:', metricInfo, testSlice.metrics);
+      updateMetricInfo(testSlice.metrics);
     }
   } else {
     maxFeatures = 0;
@@ -91,6 +63,94 @@
     scoreWidthScalers = {};
     metricNames = [];
     metricInfo = {};
+  }
+
+  function updateMetricInfo(testMetrics) {
+    metricNames = Object.keys(testMetrics);
+    metricNames.sort();
+
+    metricInfo = {};
+    metricNames.forEach((n) => {
+      if (testMetrics[n].type == 'binary' || testMetrics[n].type == 'count') {
+        let maxScore =
+          testMetrics[n].type == 'count'
+            ? slices.reduce(
+                (curr, next) => Math.max(curr, next.metrics[n].mean),
+                -1e9
+              ) + 0.01
+            : 1;
+        let minScore =
+          slices.reduce(
+            (curr, next) => Math.min(curr, next.metrics[n].mean),
+            1e9
+          ) - 0.01;
+        metricInfo[n] = { visible: true, scale: (v: number) => v / maxScore };
+      } else if (testMetrics[n].type == 'categorical') {
+        let uniqueKeys: Set<string> = new Set();
+        slices.forEach((s) =>
+          Object.keys(s.metrics[n].counts).forEach((v) => uniqueKeys.add(v))
+        );
+        let order = Array.from(uniqueKeys);
+        order.sort(
+          (a, b) => testMetrics[n].counts[b] - testMetrics[n].counts[a]
+        );
+        metricInfo[n] = { visible: true, order };
+      } else {
+        metricInfo[n] = { visible: true };
+      }
+    });
+    console.log('metric info:', metricInfo, testMetrics);
+  }
+
+  // Drag and drop metrics logic
+
+  let clickingColumn = null; // prepare for drag
+  let draggingColumn = null; // track drag action
+  let droppingColumn = null;
+  let dropRight = false;
+
+  function metricDragStart(e, colName) {
+    e.dataTransfer.effectAllowed = 'move';
+    draggingColumn = colName;
+  }
+
+  function metricDragEnd(e: any, colName: string) {
+    draggingColumn = null;
+  }
+
+  function metricDragEnter(e: any, colName: string) {
+    if (colName == draggingColumn) {
+      droppingColumn = null;
+      return false;
+    }
+    let startIdx = metricNames.indexOf(draggingColumn);
+    let endIdx = metricNames.indexOf(colName);
+    dropRight = startIdx < endIdx;
+    e.target.classList.add('drop-zone');
+    e.target.classList.add(dropRight ? 'drop-zone-r' : 'drop-zone-l');
+  }
+
+  function metricDragLeave(e: any, colName: string) {
+    e.target.classList.remove('drop-zone');
+    e.target.classList.remove('drop-zone-r');
+    e.target.classList.remove('drop-zone-l');
+  }
+
+  function metricDrop(e: any, colName: string) {
+    e.target.classList.remove('drop-zone');
+    if (draggingColumn != colName) {
+      let startIdx = metricNames.indexOf(draggingColumn);
+      let endIdx = metricNames.indexOf(colName);
+      let newOrder = Array.from(metricNames);
+      newOrder.splice(startIdx, 1);
+      metricNames = [
+        ...newOrder.slice(0, endIdx),
+        draggingColumn,
+        ...newOrder.slice(endIdx),
+      ];
+    }
+    droppingColumn = null;
+    return false;
   }
 </script>
 
@@ -107,11 +167,58 @@
             >
           {/each}
           {#each metricNames as name}
-            <th class="bg-slate-100 metric">
-              <div class="p-2 border-b border-slate-600">
-                {name}
-              </div></th
+            <th
+              class="bg-slate-100 hover:bg-slate-200"
+              class:metric={metricInfo[name].visible}
+              class:opacity-30={draggingColumn == name}
+              draggable={clickingColumn == name}
+              on:dragstart={(e) => metricDragStart(e, name)}
+              on:dragend={(e) => metricDragEnd(e, name)}
+              on:dragover|preventDefault={() => false}
+              on:dragenter={(e) => metricDragEnter(e, name)}
+              on:dragleave={(e) => metricDragLeave(e, name)}
+              on:drop|preventDefault|stopPropagation={(e) =>
+                metricDrop(e, name)}
             >
+              <Hoverable
+                class="potential-drop-zone p-2 border-b border-slate-600"
+                let:hovering
+              >
+                {#if metricInfo[name].visible}
+                  <div class="flex items-center">
+                    <div>{name}</div>
+                    <div class="flex-1" />
+                    <button
+                      class="bg-transparent hover:opacity-60"
+                      class:opacity-0={!hovering}
+                      class:disabled={!hovering}
+                      on:click={(e) => {
+                        let mi = Object.assign({}, metricInfo);
+                        mi[name].visible = !mi[name].visible;
+                        metricInfo = mi;
+                      }}><Fa icon={faEye} /></button
+                    >
+                    <button
+                      class="ml-2 bg-transparent text-slate-400 cursor-move"
+                      on:mousedown={() => (clickingColumn = name)}
+                      on:mouseup={() => (clickingColumn = null)}
+                      class:opacity-0={!hovering}
+                      class:disabled={!hovering}
+                      ><Fa icon={faGripLinesVertical} /></button
+                    >
+                  </div>
+                {:else}
+                  <button
+                    class="bg-transparent opacity-30 hover:opacity-60"
+                    on:click={(e) => {
+                      let mi = Object.assign({}, metricInfo);
+                      mi[name].visible = !mi[name].visible;
+                      metricInfo = mi;
+                    }}><Fa icon={faEyeSlash} /></button
+                  >
+                {/if}
+              </Hoverable>
+            </th>
           {/each}
           {#if showScores}
             {#each scoreNames as score, i}
