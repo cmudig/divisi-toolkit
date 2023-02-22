@@ -83,10 +83,16 @@ class RankedSliceList:
         """
         self.results = results
         self.data = data
-        self.df = data.df if isinstance(data, DiscretizedData) else data
+        self.df = data.df if hasattr(data, 'df') else data
         self.eval_indexes = eval_indexes
         if eval_indexes is not None:
-            self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
+            print(type(self.df))
+            if isinstance(self.df, pd.DataFrame):
+                self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
+            else:
+                self.eval_df = self.df[self.eval_indexes]
+                if isinstance(self.eval_df, csr_matrix):
+                    self.eval_df = self.eval_df.tocsc()
             self.score_functions = {fn_name: fn.subslice(self.eval_indexes)
                                     for fn_name, fn in score_functions.items()}
             self.eval_mask = self.eval_indexes
@@ -117,12 +123,13 @@ class RankedSliceList:
         Returns a discretized version of the slice defined by the given feature
         values.
         """
-        if isinstance(self.data, DiscretizedData):
+        try:
             return self.data.encode_slice(feature_values)
-        return Slice(feature_values)
+        except AttributeError:
+            return Slice(feature_values)
         
     def score_slice(self, slice_obj, return_mask=False):
-        mask = make_mask(self.eval_df, slice_obj).values
+        mask = make_mask(self.eval_df, slice_obj)
         group_scores = {key: item.calculate_score(slice_obj, mask)
                         for key, item in self.score_functions.items()}
         if return_mask:
@@ -189,6 +196,9 @@ class RankedSliceList:
             evaluation data.
         """
         
+        if not self.results:
+            return []
+        
         # Get the top num_to_rescore using the training scores
         top_train_indexes = self._rank_weighted_indexes(self.train_scores, weights, num_to_rescore)
 
@@ -226,9 +236,9 @@ class RankedSliceList:
             "rawFeatureValues": slice_obj.feature_values,
             "stringRep": slice_obj.string_rep()
         }
-        if isinstance(self.data, DiscretizedData):
+        try:
             slice_desc["featureValues"] = self.data.describe_slice(slice_obj)
-        else:
+        except AttributeError:
             slice_desc["featureValues"] = slice_obj.feature_values
             
         slice_metrics = {}
@@ -245,7 +255,7 @@ class RankedSliceList:
                     slice_metrics[metric_name] = {"type": data_type, 
                                                   "counts": dict(zip(*np.unique(data[mask], return_counts=True)))}
                 else:
-                    hist_bins = np.histogram_bin_edges(data, bins=10)
+                    hist_bins = np.histogram_bin_edges(data, bins=min(len(np.unique(data)), 10))
                     hist_values, _ = np.histogram(data[mask], bins=hist_bins)
                     slice_metrics[metric_name] = {"type": data_type,
                                                   "hist": dict(zip(hist_bins, hist_values)),

@@ -48,7 +48,7 @@
       </div>
     </div>
   {:else}
-    <h1 class="text-2xl font-bold mt-2 mb-3">Slice Finder</h1>
+    <h1 class="text-2xl font-bold mt-2 mb-3">Slice Sampler (temporary name)</h1>
   {/if}
   <div class="flex h-96" class:disable-div={$runningSampler}>
     <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">

@@ -58,10 +58,12 @@
           testSlice.metrics[n].type == 'count'
         ) {
           let maxScore =
-            slices.reduce(
-              (curr, next) => Math.max(curr, next.metrics[n].mean),
-              -1e9
-            ) + 0.01;
+            testSlice.metrics[n].type == 'count'
+              ? slices.reduce(
+                  (curr, next) => Math.max(curr, next.metrics[n].mean),
+                  -1e9
+                ) + 0.01
+              : 1;
           let minScore =
             slices.reduce(
               (curr, next) => Math.min(curr, next.metrics[n].mean),

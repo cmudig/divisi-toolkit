@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from scipy import sparse as sps
 
 class RankedList:
     """
@@ -71,19 +72,24 @@ def make_mask(inputs, slice_obj, existing_mask=None):
     :param existing_mask: if provided, a binary mask that will be intersected
         with the mask for the given slice
         
-    :return: a binary array/series where 1 indicates that a row is part of the
+    :return: a binary array where 1 indicates that a row is part of the
         slice
     """
     mask = existing_mask
     for col, val in slice_obj.feature_values.items():
-        if mask is None:
-            mask = inputs[col] == val
+        if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
+            if mask is None:
+                mask = (inputs[:,col] == val).toarray().flatten()
+            else:
+                mask &= (inputs[:,col] == val).toarray().flatten()
         else:
-            mask &= inputs[col] == val
+            if mask is None:
+                mask = inputs[col] == val
+            else:
+                mask &= inputs[col] == val
     if mask is None:
         mask = np.ones(len(inputs), dtype=bool)
-        if isinstance(inputs, (pd.DataFrame, pd.Series)):
-            mask = pd.Series(mask, index=inputs.index)
+    if isinstance(mask, pd.Series): mask = mask.values
     return mask
     
 def detect_data_type(arr):
@@ -99,8 +105,7 @@ def detect_data_type(arr):
     if len(uniques) == 2 and np.allclose(uniques, np.arange(2)):
         return 'binary'
     
-    unique_ratio = len(uniques) / len(arr)
-    if unique_ratio < 0.05:
+    if len(uniques) < 5:
         return 'categorical'
     
     return 'continuous'

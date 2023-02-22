@@ -109,8 +109,13 @@ def discretize_data(df, spec):
             else:
                 raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
             discrete_columns[col] = np.digitize(df[col], bins)
-            column_descriptions[col] = (col, {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
-                                              for i in range(len(bins) + 1)})
+            if "names" in col_spec: 
+                assert len(col_spec["names"]) == len(bins) + 1, f"Length of names for col {col} must be 1 + num bins"
+                col_names = {i: col_spec["names"][i] for i in range(len(bins) + 1)}
+            else:
+                col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
+                                              for i in range(len(bins) + 1)}
+            column_descriptions[col] = (col, col_names)
         elif col_spec["method"] == "unique":
             unique_vals = sorted(df[col].unique().tolist())
             discrete_columns[col] = df[col].apply(lambda v: unique_vals.index(v))
