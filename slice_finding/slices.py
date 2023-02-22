@@ -246,7 +246,13 @@ class RankedSliceList:
         slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / len(self.eval_df)}
         if metrics:
             for metric_name, data in metrics.items():
-                data_type = detect_data_type(data)
+                if isinstance(data, dict):
+                    # User-specified options
+                    options = data
+                    data = options["data"]
+                else:
+                    options = {}
+                data_type = options.get("type", detect_data_type(data))
                 if data_type == "binary":
                     slice_metrics[metric_name] = {"type": data_type, 
                                                   "mean": data[mask].mean(), 
@@ -255,7 +261,19 @@ class RankedSliceList:
                     slice_metrics[metric_name] = {"type": data_type, 
                                                   "counts": dict(zip(*np.unique(data[mask], return_counts=True)))}
                 else:
-                    hist_bins = np.histogram_bin_edges(data, bins=min(len(np.unique(data)), 10))
+                    if "bins" in options:
+                        hist_bins = options["bins"]
+                    else:
+                        # Calculate the range of the data and choose an appropriate
+                        # scale for the bin size
+                        min_val = data.min()
+                        max_val = data.max()
+                        data_range = max_val - min_val
+                        bin_scale = np.floor(np.log10(data_range))
+                        upper_tol = 2 if (np.ceil(max_val / (10 ** bin_scale))) * (10 ** bin_scale) == max_val else 1
+                        hist_bins = np.arange(np.floor(min_val / (10 ** bin_scale)) * (10 ** bin_scale),
+                                              (np.ceil(max_val / (10 ** bin_scale)) + upper_tol) * (10 ** bin_scale),
+                                              10 ** bin_scale)
                     hist_values, _ = np.histogram(data[mask], bins=hist_bins)
                     slice_metrics[metric_name] = {"type": data_type,
                                                   "hist": dict(zip(hist_bins, hist_values)),

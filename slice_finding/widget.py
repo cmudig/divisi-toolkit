@@ -75,7 +75,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("metrics")
     def metrics_changed(self, change):
-        assert all(isinstance(d, np.ndarray) and len(d.shape) == 1 for d in change.new.values()), "All metrics must be 1D ndarrays"
+        for m_name, m in change.new.items():
+            data = m["data"] if isinstance(m, dict) else m
+            assert isinstance(data, np.ndarray) and len(data.shape) == 1, f"Metric data '{m_name}' must be 1D ndarray"
         if not self.slice_finder or not self.slice_finder.results: return
         self._slice_description_cache = {}
         self.slices = []

@@ -50,7 +50,7 @@
     padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
     x="bin"
     y="count"
-    xScale={scaleBand().paddingInner([0.05]).round(true)}
+    xScale={scaleBand().round(true)}
     xDomain={histBins}
     yScale={scaleLinear()}
     yDomain={[0, null]}
