@@ -10,6 +10,7 @@
     faEyeSlash,
     faGripLinesVertical,
   } from '@fortawesome/free-solid-svg-icons';
+  import { areSetsEqual } from './utils';
 
   export let slices: Array<Slice> = [];
 
@@ -35,7 +36,6 @@
 
     // tabulate score names and normalize
     scoreNames = Object.keys(testSlice.scoreValues);
-    scoreNames.sort();
 
     scoreWidthScalers = {};
     scoreNames.forEach((n) => {
@@ -65,10 +65,22 @@
     metricInfo = {};
   }
 
+  let oldScoreNames = new Set();
+  $: if (!areSetsEqual(oldScoreNames, new Set(scoreNames))) {
+    scoreNames.sort();
+    oldScoreNames = new Set(scoreNames);
+  }
+
+  let oldMetricNames = new Set();
+  $: if (!areSetsEqual(oldMetricNames, new Set(metricNames))) {
+    metricNames.sort();
+    oldMetricNames = new Set(metricNames);
+  }
+
   function updateMetricInfo(testMetrics) {
     metricNames = Object.keys(testMetrics);
-    metricNames.sort();
 
+    let oldMetricInfo = metricInfo;
     metricInfo = {};
     metricNames.forEach((n) => {
       if (testMetrics[n].type == 'binary' || testMetrics[n].type == 'count') {
@@ -84,7 +96,7 @@
             (curr, next) => Math.min(curr, next.metrics[n].mean),
             1e9
           ) - 0.01;
-        metricInfo[n] = { visible: true, scale: (v: number) => v / maxScore };
+        metricInfo[n] = { scale: (v: number) => v / maxScore };
       } else if (testMetrics[n].type == 'categorical') {
         let uniqueKeys: Set<string> = new Set();
         slices.forEach((s) =>
@@ -94,10 +106,11 @@
         order.sort(
           (a, b) => testMetrics[n].counts[b] - testMetrics[n].counts[a]
         );
-        metricInfo[n] = { visible: true, order };
+        metricInfo[n] = { order };
       } else {
-        metricInfo[n] = { visible: true };
+        metricInfo[n] = {};
       }
+      metricInfo[n].visible = (oldMetricInfo[n] || { visible: true }).visible;
     });
     console.log('metric info:', metricInfo, testMetrics);
   }
