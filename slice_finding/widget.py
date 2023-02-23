@@ -32,6 +32,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     sampler_run_progress = traitlets.Float(0.0).tag(sync=True)
     score_weights = traitlets.Dict({}).tag(sync=True)
     metrics = traitlets.Dict({})
+    positive_only = traitlets.Bool(False).tag(sync=True)
     
     slices = traitlets.List([]).tag(sync=True)
     overall_slice = traitlets.Dict({}).tag(sync=True)
@@ -55,6 +56,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.score_weights = {**self.score_weights,
                                   **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
         self._slice_description_cache = {}
+        self.positive_only = self.slice_finder.positive_only
         
     def get_slice_description(self, slice_obj, metrics=None):
         """

@@ -72,7 +72,7 @@ class RankedSliceList:
     slice-finding operation.
     """
     
-    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0):
+    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9):
         """
         :param results: A list of Slice objects representing the results of a
             slice-finding operation
@@ -80,13 +80,14 @@ class RankedSliceList:
             used to compute scores
         :param score_functions: A dictionary of score names to score function
             objects
+        :param similarity_threshold: Slices that have a higher Jaccard similarity
+            than this threshold to already-returned slices will be omitted.
         """
         self.results = results
         self.data = data
         self.df = data.df if hasattr(data, 'df') else data
         self.eval_indexes = eval_indexes
         if eval_indexes is not None:
-            print(type(self.df))
             if isinstance(self.df, pd.DataFrame):
                 self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
             else:
@@ -99,11 +100,12 @@ class RankedSliceList:
         else:
             self.eval_df = self.df
             self.score_functions = score_functions
-            self.eval_mask = np.arange(len(self.df))
+            self.eval_mask = np.arange(self.df.shape[0])
             
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.train_scores = pd.DataFrame([r.score_values for r in self.results])
+        self.similarity_threshold = similarity_threshold
 
     def _rank_weighted_indexes(self, score_df, weights, k=None):
         """
@@ -178,7 +180,7 @@ class RankedSliceList:
             return (*result, mask_mat)
         return result
         
-    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=0.9):
+    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None):
         """
         Ranks and returns the top slices according to a given set of weights,
         filtering results that contain a very similar set of instances.
@@ -213,7 +215,8 @@ class RankedSliceList:
         for i in top_eval_indexes:
             if i in skip_idxs: continue
             ranked_result_idxs.append(i)
-            skip_idxs |= set(np.argwhere(mask_similarities[i] >= similarity_threshold).flatten().tolist())
+            sim_thresh = similarity_threshold if similarity_threshold is not None else self.similarity_threshold
+            skip_idxs |= set(np.argwhere(mask_similarities[i] >= sim_thresh).flatten().tolist())
 
         # Return top n_slices results
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
@@ -242,8 +245,8 @@ class RankedSliceList:
             slice_desc["featureValues"] = slice_obj.feature_values
             
         slice_metrics = {}
-        mask = np.arange(len(self.df))[self.eval_mask][make_mask(self.eval_df, slice_obj)]
-        slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / len(self.eval_df)}
+        mask = np.arange(self.df.shape[0])[self.eval_mask][make_mask(self.eval_df, slice_obj)]
+        slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / self.eval_df.shape[0]}
         if metrics:
             for metric_name, data in metrics.items():
                 if isinstance(data, dict):

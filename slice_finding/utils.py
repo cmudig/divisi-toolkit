@@ -88,7 +88,7 @@ def make_mask(inputs, slice_obj, existing_mask=None):
             else:
                 mask &= inputs[col] == val
     if mask is None:
-        mask = np.ones(len(inputs), dtype=bool)
+        mask = np.ones(inputs.shape[0], dtype=bool)
     if isinstance(mask, pd.Series): mask = mask.values
     return mask
     

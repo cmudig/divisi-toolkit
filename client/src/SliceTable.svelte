@@ -18,6 +18,7 @@
   export let sliceRequestResults: { [key: string]: Slice } = {};
 
   export let showScores = false;
+  export let positiveOnly = false;
 
   let maxFeatures = 0;
   let metricNames = [];
@@ -35,7 +36,11 @@
     );
 
     // tabulate score names and normalize
-    scoreNames = Object.keys(testSlice.scoreValues);
+    let newScoreNames = Object.keys(testSlice.scoreValues);
+    if (!areSetsEqual(new Set(scoreNames), new Set(newScoreNames))) {
+      scoreNames = newScoreNames;
+      scoreNames.sort();
+    }
 
     scoreWidthScalers = {};
     scoreNames.forEach((n) => {
@@ -55,6 +60,11 @@
 
     // tabulate metric names and normalize
     if (!!testSlice.metrics) {
+      let newMetricNames = Object.keys(testSlice.metrics);
+      if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
+        metricNames = newMetricNames;
+        metricNames.sort();
+      }
       updateMetricInfo(testSlice.metrics);
     }
   } else {
@@ -65,21 +75,7 @@
     metricInfo = {};
   }
 
-  let oldScoreNames = new Set();
-  $: if (!areSetsEqual(oldScoreNames, new Set(scoreNames))) {
-    scoreNames.sort();
-    oldScoreNames = new Set(scoreNames);
-  }
-
-  let oldMetricNames = new Set();
-  $: if (!areSetsEqual(oldMetricNames, new Set(metricNames))) {
-    metricNames.sort();
-    oldMetricNames = new Set(metricNames);
-  }
-
   function updateMetricInfo(testMetrics) {
-    metricNames = Object.keys(testMetrics);
-
     let oldMetricInfo = metricInfo;
     metricInfo = {};
     metricNames.forEach((n) => {
@@ -264,6 +260,7 @@
             {slice}
             {maxFeatures}
             {scoreNames}
+            {positiveOnly}
             scoreCellWidth={100}
             {scoreWidthScalers}
             {showScores}

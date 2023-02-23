@@ -15,6 +15,7 @@
 
   let slices = traitlet(model, 'slices', []);
   let overallSlice = traitlet(model, 'overall_slice', {});
+  let positiveOnly = traitlet(model, 'positive_only', false);
 
   let scoreWeights = traitlet(model, 'score_weights', {});
 
@@ -106,6 +107,7 @@
           ]}
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
+          positiveOnly={$positiveOnly}
         />
         <div class="mt-2">
           <button

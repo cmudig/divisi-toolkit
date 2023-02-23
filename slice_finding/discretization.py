@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import scipy.sparse as sps
+import tqdm
 
 class DiscretizedData:
     def __init__(self, discrete_data, value_names):
@@ -17,7 +18,6 @@ class DiscretizedData:
         super().__init__()
         self.df = discrete_data.astype(np.uint8)
         self.value_names = value_names
-        # TODO track if positive only
         
         # Create inverse mapping from decoded values to encoded ones, to support
         # converting back user-created slices
@@ -122,3 +122,65 @@ def discretize_data(df, spec):
             column_descriptions[col] = (col, {i: v for i, v in enumerate(unique_vals)})
     return DiscretizedData(pd.DataFrame(discrete_columns, index=df.index),
                            column_descriptions)
+
+def discretize_token_sets(token_sets, token_idx_mapping=None, n_top_columns=None, max_column_mean=None, show_progress=True):
+    """
+    Performs data "discretization" to convert a given dataset of token sets (e.g.
+    sentences) into a sparse representation suitable for slice finding. Each column
+    will be 1 if the token set contains at least one token mapping to that column.
+    
+    :param token_sets: A list or iterable of lists of tokens.
+    :param token_idx_mapping: If provided, a dictionary of tokens to index
+        numbers starting from 0. This can be used to map multiple tokens to the
+        same discretized feature. The number of columns in the final discretized
+        data will be 1 + the maximum value in this dictionary.
+    :param n_top_columns: The number of columns with the highest rate of 1s to
+        keep as features.
+    :param max_column_mean: If provided, columns with a mean higher than this
+        value will be excluded. For instance, a max_column_mean of 0.5 means that
+        columns for which over half the rows have a 1 will be excluded. This
+        happens prior to selecting the n_top_columns, if applicable.
+    :param show_progress: If True, show a tqdm progress bar.
+        
+    :return: A `DiscretizedData` object representing the text data in a sparse
+        format.
+    """
+    # Construct a sparse matrix representation
+    indptr = [0]
+    indices = []
+    data = []
+    predefined_token_idx = token_idx_mapping is not None
+    if not predefined_token_idx: token_idx_mapping = {}
+    
+    for token_set in tqdm.tqdm(token_sets) if show_progress else token_sets:
+        if not predefined_token_idx:
+            for token in token_set:
+                token_idx_mapping.setdefault(token, len(token_idx_mapping))
+        grouped_indices = list(set(token_idx_mapping[token] for token in token_set if token in token_idx_mapping))
+        indices += grouped_indices
+        data += [1] * len(grouped_indices)
+        indptr.append(len(indices))
+    bow_mat = sps.csr_matrix((data, indices, indptr), dtype=np.uint8)
+
+    col_sums = np.array(bow_mat.mean(axis=0)).flatten()
+    cols_to_keep = np.flip(np.argsort(col_sums))
+    if max_column_mean is not None:
+        excluding_cols = cols_to_keep[col_sums[cols_to_keep] >= max_column_mean]
+        if show_progress:
+            print(f"Excluding {len(excluding_cols)} column(s) due to max column mean constraint (max mean {col_sums.max():.3f})")
+        cols_to_keep = cols_to_keep[col_sums[cols_to_keep] < max_column_mean]
+    if n_top_columns is not None:
+        cols_to_keep = cols_to_keep[:n_top_columns]
+
+    bow_mat = bow_mat.tocsc()[:,cols_to_keep].tocsr()
+
+    # Create column name mapping
+    unconverted_idx_token = {} # before column filtering
+    for token, idx in token_idx_mapping.items():
+        unconverted_idx_token.setdefault(idx, []).append(token)
+    value_mapping = {
+        i: (', '.join(unconverted_idx_token[cols_to_keep[i]]), {0: 0, 1: 1})
+        for i in range(len(cols_to_keep))
+    }
+    
+    return DiscretizedData(bow_mat, value_mapping)

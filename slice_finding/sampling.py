@@ -111,9 +111,11 @@ class SamplingSliceFinder:
                  max_features=3, 
                  min_items=100, 
                  num_candidates=20,
+                 positive_only=None,
                  holdout_fraction=0.0,
                  min_weight=0.0,
                  max_weight=5.0,
+                 similarity_threshold=0.9,
                  show_progress=True):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
@@ -127,11 +129,20 @@ class SamplingSliceFinder:
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.show_progress = show_progress
+        self.similarity_threshold = similarity_threshold
+        if isinstance(self.raw_inputs, sps.csr_matrix):
+            if self.raw_inputs.max() > 1:
+                raise ValueError("Sparse matrices must be binary")
+            if positive_only == False:
+                raise ValueError("positive_only must be True or None for sparse matrices")
+            self.positive_only = True
+        else:
+            self.positive_only = positive_only or False
 
         self.all_scores = []
         self.seen_slices = {}        
-        self.discovery_mask = (np.random.uniform(size=len(self.raw_inputs)) >= self.holdout_fraction)
-        self.sampled_idxs = np.zeros(len(self.raw_inputs), dtype=bool)
+        self.discovery_mask = (np.random.uniform(size=self.raw_inputs.shape[0]) >= self.holdout_fraction)
+        self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
         self.results = None
         
     def sample(self, num_samples):
@@ -181,7 +192,8 @@ class SamplingSliceFinder:
                             self.score_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
                             min_weight=self.min_weight,
-                            max_weight=self.max_weight)
+                            max_weight=self.max_weight,
+                            similarity_threshold=self.similarity_threshold)
         return self.results, sample_idxs
     
 def find_slices_by_sampling(inputs, 
@@ -241,6 +253,7 @@ def find_slices_by_sampling(inputs,
                                 min_items=min_items, 
                                 num_candidates=num_candidates,
                                 holdout_fraction=holdout_fraction,
+                                positive_only=positive_only,
                                 min_weight=min_weight,
                                 max_weight=max_weight,
                                 show_progress=show_progress)

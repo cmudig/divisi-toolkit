@@ -13,6 +13,7 @@
   export let scoreNames: Array<string> = [];
   export let showScores = false;
   export let metricNames: Array<string> = [];
+  export let positiveOnly = false;
 
   export let temporarySlice: Slice = null; // if a variable is adjusted dynamically
 
@@ -48,15 +49,24 @@
           {@const featureDisabled =
             !sliceToShow.featureValues.hasOwnProperty(col) &&
             slice.featureValues.hasOwnProperty(col)}
-          <button
-            class="bg-sky-100 hover:bg-sky-200 px-2 py-1 mr-1 rounded shadow-sm font-mono"
-            class:opacity-50={featureDisabled}
-            on:click={() => dispatch('toggle', col)}>{col}</button
-          >
-          {#if featureDisabled}
-            <span class="opacity-50">(any value)</span>
+          {#if positiveOnly}
+            <button
+              class="bg-transparent hover:opacity-70 font-mono text-left"
+              class:opacity-30={featureDisabled}
+              class:line-through={featureDisabled}
+              on:click={() => dispatch('toggle', col)}>{col}</button
+            >
           {:else}
-            {sliceToShow.featureValues[col]}
+            <button
+              class="bg-sky-100 hover:bg-sky-200 px-2 py-1 mr-1 rounded shadow-sm font-mono"
+              class:opacity-50={featureDisabled}
+              on:click={() => dispatch('toggle', col)}>{col}</button
+            >
+            {#if featureDisabled}
+              <span class="opacity-50">(any value)</span>
+            {:else}
+              {sliceToShow.featureValues[col]}
+            {/if}
           {/if}
         {/if}
       </td>
