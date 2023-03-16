@@ -216,7 +216,7 @@ class RankedSliceList:
             if i in skip_idxs: continue
             ranked_result_idxs.append(i)
             sim_thresh = similarity_threshold if similarity_threshold is not None else self.similarity_threshold
-            skip_idxs |= set(np.argwhere(mask_similarities[i] >= sim_thresh).flatten().tolist())
+            skip_idxs |= set(np.argwhere(mask_similarities[i] > sim_thresh).flatten().tolist())
 
         # Return top n_slices results
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
