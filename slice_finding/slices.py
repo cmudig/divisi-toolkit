@@ -185,7 +185,7 @@ class RankedSliceList:
         for i in top_eval_indexes:
             if i in skip_idxs: continue
             ranked_result_idxs.append(i)
-            skip_idxs |= set(np.argwhere(mask_similarities[i] >= similarity_threshold).flatten().tolist())
+            skip_idxs |= set(np.argwhere(mask_similarities[i] > similarity_threshold).flatten().tolist())
 
         # Return top n_slices results
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]

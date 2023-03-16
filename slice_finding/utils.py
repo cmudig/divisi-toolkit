@@ -75,7 +75,7 @@ def make_mask(inputs, slice_obj, existing_mask=None):
     :return: a binary array where 1 indicates that a row is part of the
         slice
     """
-    mask = existing_mask
+    mask = existing_mask.copy() if existing_mask is not None else existing_mask
     for col, val in slice_obj.feature_values.items():
         if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
             if mask is None:
