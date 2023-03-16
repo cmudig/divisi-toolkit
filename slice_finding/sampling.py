@@ -2,9 +2,126 @@ import numpy as np
 import pandas as pd
 from .utils import RankedList, make_mask
 from .slices import Slice, RankedSliceList
-from .discretization import DiscretizedData
 import tqdm
 from scipy import sparse as sps
+from numba import njit, prange
+
+@njit
+def tabulate_score_inputs_matrix(discrete_data, score_data, hist_sizes, filter_row, anchor_row):
+    """
+    Calculates the sum, histogram, and count of each column in
+    score_data that satisfy each possible slice created by
+    adding a feature to filter_row.
+    
+    :param discrete_data: A 2D numpy array containing discrete
+        feature inputs. Each column must contain integers ranging from
+        0 to some number n.
+    :param score_data: A 2D numpy array where each column is a
+        score vector, with the same number of rows as discrete_data
+    :param hist_sizes: A vector providing the maximum value for each
+        column in score_data. A value of zero means no histogram will
+        be computed for that column; histograms can only be computed
+        for discrete-valued score data (integers from 0 to hist_size)
+    :param filter_row: A vector with the same number of elements
+        as the columns of discrete_data, where positions that are
+        1 MUST match the anchor row in order for the row to be
+        considered. MUST be a boolean array
+    :param anchor_row: Vector of the same shape as filter_row,
+        containing values that the rows of discrete_data will be
+        tested for equality against
+        
+    :return: A tuple (sums, hists, counts), where each is a 3D array
+        with the first dimension equal to the number of columns in
+        score_data, the second dimension is the number of columns in
+        discrete_data, and the third is (1, max(hist_sizes), 1)
+    """
+    sums = np.zeros((score_data.shape[1], discrete_data.shape[1], 1))
+    hists = np.zeros((score_data.shape[1], discrete_data.shape[1], np.max(hist_sizes)), dtype=np.int32)
+    counts = np.zeros((score_data.shape[1], discrete_data.shape[1], 1), dtype=np.int32)
+    
+    hist_able_mask = hist_sizes > 0
+    hist_indexes = np.argwhere(hist_able_mask).flatten()
+    hist_able_scores = score_data[:,hist_able_mask].astype(np.uint16)
+    
+    for i in prange(discrete_data.shape[0]):
+        # Check if row i matches filter_row
+        test_row = discrete_data[i]
+        valid = True
+        for idx in filter_row:
+            if test_row[idx] != anchor_row[idx]:
+                valid = False
+                break
+        if not valid: continue
+        
+        for col in range(discrete_data.shape[1]):
+            if test_row[col] == anchor_row[col]:
+                for j in range(hist_able_scores.shape[1]):
+                    hists[hist_indexes[j], col, hist_able_scores[i,j]] += 1
+
+                sums[:,col,0] += score_data[i]
+                counts[:,col,0] += 1
+        
+    return sums, hists, counts
+
+@njit
+def tabulate_score_inputs_sparse(data, i_data, j_data, n_cols, score_data, hist_sizes, filter_row, anchor_row):
+    """
+    Calculates the sum, histogram, and count of each column in
+    score_data that satisfy each possible slice created by
+    adding a feature to filter_row.
+    
+    :param data: A sparse matrix containing discrete
+        feature inputs. Each column must contain integers ranging from
+        0 to some number n.
+    :param score_data: A 2D numpy array where each column is a
+        score vector, with the same number of rows as discrete_data
+    :param hist_sizes: A vector providing the maximum value for each
+        column in score_data. A value of zero means no histogram will
+        be computed for that column; histograms can only be computed
+        for discrete-valued score data (integers from 0 to hist_size)
+    :param filter_row: A vector with the same number of elements
+        as the columns of discrete_data, where positions that are
+        1 MUST match the anchor row in order for the row to be
+        considered. MUST be a sorted list of column indexes
+    :param anchor_row: Vector of the same shape as filter_row,
+        containing values that the rows of discrete_data will be
+        tested for equality against
+        
+    :return: A tuple (sums, hists, counts), where each is a 3D array
+        with the first dimension equal to the number of columns in
+        score_data, the second dimension is the number of columns in
+        discrete_data, and the third is (1, max(hist_sizes), 1)
+    """
+    
+    sums = np.zeros((score_data.shape[1], n_cols, 1))
+    hists = np.zeros((score_data.shape[1], n_cols, np.max(hist_sizes)), dtype=np.int32)
+    counts = np.zeros((score_data.shape[1], n_cols, 1), dtype=np.int32)
+    
+    hist_able_mask = hist_sizes > 0
+    hist_indexes = np.argwhere(hist_able_mask).flatten()
+    hist_able_scores = score_data[:,hist_able_mask].astype(np.uint16)
+    
+    for i in prange(len(i_data) - 1):
+        # Check if row i matches filter_row
+        filled_cols = j_data[i_data[i]:i_data[i + 1]]
+        found_pos = 0
+        for idx in filled_cols:
+            if idx == filter_row[found_pos]:
+                found_pos += 1
+                if found_pos == len(filter_row): break
+            elif idx > filter_row[found_pos]: break
+        if found_pos != len(filter_row): continue
+        
+        for col in filled_cols:
+            if not anchor_row[col]: continue
+
+            for j in range(hist_able_scores.shape[1]):
+                hists[hist_indexes[j], col, hist_able_scores[i,j]] += 1
+
+            sums[:,col,0] += score_data[i]
+            counts[:,col,0] += 1
+
+    return sums, hists, counts
 
 def explore_groups_beam_search(inputs, 
                                source_row, 
@@ -36,14 +153,21 @@ def explore_groups_beam_search(inputs,
         d.setdiag(source_row)
         mat_for_masks = (inputs @ d).tocsc()
         positive_only = True
+        implementation = "numba"
     else:
         mat_for_masks = inputs
+        implementation = "default" # "numba" if inputs.shape[1] > 100 else "default"
         
     try:
         input_columns = mat_for_masks.columns
     except AttributeError:
         input_columns = np.arange(mat_for_masks.shape[1])
-        
+    
+    if implementation == "numba":
+        score_fn_order = list(score_fns.keys())
+        score_data = np.vstack([score_fns[name].data if score_fns[name].data is not None else np.zeros(inputs.shape[0])
+                                for name in score_fn_order]).T
+
     # Iterate over the columns max_features times
     for col_size in range(max_features):
         if num_candidates is not None:
@@ -51,8 +175,35 @@ def explore_groups_beam_search(inputs,
         else:
             saved_groups = set(g for g in best_groups)
         for base_slice in saved_groups:
-            base_mask = make_mask(mat_for_masks, base_slice)
-            for col in input_columns:
+            if implementation == "numba":
+                hist_sizes = np.array([np.max(score_fns[name].data) + 1 
+                                       if score_fns[name].data is not None and np.issubdtype(score_fns[name].data.dtype, np.integer) else 0
+                                       for name in score_fn_order])
+                
+                if isinstance(inputs, sps.csr_matrix):
+                    sums, hists, counts = tabulate_score_inputs_sparse(inputs.data, 
+                                                                       inputs.indptr, 
+                                                                       inputs.indices,
+                                                                       inputs.shape[1],
+                                                                       score_data,
+                                                                       hist_sizes,
+                                                                       np.array(list(base_slice.feature_values.keys())),
+                                                                       source_row)
+                else:
+                    if isinstance(inputs, pd.DataFrame):
+                        filter_cols = np.array([inputs.columns.get_loc(k) for k in base_slice.feature_values.keys()]).astype(np.uint16)
+                    else:
+                        filter_cols = np.array(list(base_slice.feature_values.keys())).astype(np.uint16)
+                    sums, hists, counts = tabulate_score_inputs_matrix(inputs.values if isinstance(inputs, pd.DataFrame) else inputs,
+                                            score_data,
+                                            hist_sizes,
+                                            filter_cols,
+                                            source_row.values if isinstance(source_row, pd.Series) else source_row)
+                    
+            else:
+                base_mask = make_mask(mat_for_masks, base_slice)
+                
+            for i, col in enumerate(input_columns):
                 # Skip if only slicing using positive values and the row has a negative value
                 if positive_only and not source_row[col]: continue
                 # Skip if we've already looked at this column
@@ -74,13 +225,25 @@ def explore_groups_beam_search(inputs,
                     if not slice_scores: continue
                     new_slice.score_values = slice_scores
                 else:
-                    # Generate a mask for the slice and score it
-                    mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask)
-                    if mask.sum() < min_items: 
-                        seen_slices[new_slice] = None
-                        continue
-                    for key, scorer in score_fns.items():
-                        new_slice.score_values[key] = scorer.calculate_score(new_slice, mask)
+                    if implementation == "numba":
+                        if counts.shape[1] > 0 and counts[0,i,0] < min_items: 
+                            seen_slices[new_slice] = None
+                            continue
+
+                        for j, key in enumerate(score_fn_order):
+                            new_slice.score_values[key] = score_fns[key].calculate_score_fast(new_slice,
+                                                                                              sums[j,i,0],
+                                                                                              hists[j,i,:],
+                                                                                              counts[j,i,0],
+                                                                                              inputs.shape[0])
+                    else:
+                        # Generate a mask for the slice and score it
+                        mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask)
+                        if mask.sum() < min_items: 
+                            seen_slices[new_slice] = None
+                            continue
+                        for key, scorer in score_fns.items():
+                            new_slice.score_values[key] = scorer.calculate_score(new_slice, mask)
                     scored_slices.add(new_slice)
                 
                 seen_slices[new_slice] = new_slice.score_values
@@ -116,7 +279,8 @@ class SamplingSliceFinder:
                  min_weight=0.0,
                  max_weight=5.0,
                  similarity_threshold=0.9,
-                 show_progress=True):
+                 show_progress=True,
+                 explore_fn=explore_groups_beam_search):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
         self.score_fns = score_fns
@@ -130,6 +294,7 @@ class SamplingSliceFinder:
         self.max_weight = max_weight
         self.show_progress = show_progress
         self.similarity_threshold = similarity_threshold
+        self.explore_fn = explore_fn # TODO remove
         if isinstance(self.raw_inputs, sps.csr_matrix):
             if self.raw_inputs.max() > 1:
                 raise ValueError("Sparse matrices must be binary")
@@ -176,7 +341,7 @@ class SamplingSliceFinder:
         
         for sample_idx in bar:
             source_row = self.raw_inputs.iloc[sample_idx] if isinstance(self.raw_inputs, pd.DataFrame) else self.raw_inputs[sample_idx]
-            self.all_scores += explore_groups_beam_search(discovery_inputs,
+            self.all_scores += self.explore_fn(discovery_inputs,
                                                         source_row,
                                                         discovery_score_fns,
                                                         seen_slices=self.seen_slices,

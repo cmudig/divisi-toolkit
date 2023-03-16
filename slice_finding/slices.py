@@ -273,6 +273,8 @@ class RankedSliceList:
                         max_val = data.max()
                         data_range = max_val - min_val
                         bin_scale = np.floor(np.log10(data_range))
+                        if data_range / (10 ** bin_scale) < 2.5:
+                            bin_scale -= 1 # Make sure there aren't only 2-3 bins
                         upper_tol = 2 if (np.ceil(max_val / (10 ** bin_scale))) * (10 ** bin_scale) == max_val else 1
                         hist_bins = np.arange(np.floor(min_val / (10 ** bin_scale)) * (10 ** bin_scale),
                                               (np.ceil(max_val / (10 ** bin_scale)) + upper_tol) * (10 ** bin_scale),

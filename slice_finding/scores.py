@@ -63,6 +63,7 @@ class EntropyScore(ScoreFunctionBase):
         """
         super().__init__("entropy", data)
         assert priority in (None, "low", "high")
+        assert np.issubdtype(data.dtype, np.integer), "Entropy can only be calculated on integer inputs"
         self.priority = priority
         self.eps = eps
         
@@ -76,7 +77,7 @@ class EntropyScore(ScoreFunctionBase):
         return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._base_entropy)
 
     def low_entropy(self, mask):
-        return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._base_entropy)
+        return (self.eps + self._base_entropy) / (self.eps + self._calc_entropy(self.data[mask]))
 
     def calculate_score(self, slice, mask):
         if self.priority == 'high':
@@ -85,6 +86,15 @@ class EntropyScore(ScoreFunctionBase):
     
     def subslice(self, indexes):
         return EntropyScore(self.data[indexes], priority=self.priority, eps=self.eps)
+    
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        slice_hist = slice_hist[slice_hist > 0]
+        slice_entropy = -np.sum((slice_hist / slice_count) * np.log2(slice_hist / slice_count))
+        if np.isnan(slice_entropy):
+            print(slice_hist, slice_count, np.log2(slice_hist / slice_count), (slice_hist / slice_count) * np.log2(slice_hist / slice_count))
+        if self.priority == 'high':
+            return (self.eps + slice_entropy) / (self.eps + self._base_entropy)
+        return (self.eps + self._base_entropy) / (self.eps + slice_entropy)
     
 class MeanDifferenceScore(ScoreFunctionBase):
     """
@@ -100,6 +110,9 @@ class MeanDifferenceScore(ScoreFunctionBase):
     def calculate_score(self, slice, mask):
         return np.abs(self.data[mask].mean() - self._mean) / self._std
     
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        return np.abs(slice_sum / slice_count - self._mean) / self._std
+        
     def subslice(self, indexes):
         return MeanDifferenceScore(self.data[indexes])
     
@@ -126,6 +139,10 @@ class SliceSizeScore(ScoreFunctionBase):
         frac = mask.sum() / len(mask)
         return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
         
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        frac = slice_count / total_count
+        return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
+    
     def subslice(self, indexes):
         return SliceSizeScore(ideal_fraction=self.ideal_fraction, spread=self.spread)
     
@@ -140,6 +157,9 @@ class NumFeaturesScore(ScoreFunctionBase):
 
     def calculate_score(self, slice, mask):
         return 1 / (1 + np.log2(1 + len(slice.feature_values)))
+    
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        return self.calculate_score(slice, None)
     
     def subslice(self, indexes):
         return NumFeaturesScore()
@@ -168,6 +188,12 @@ class OutcomeRateScore(ScoreFunctionBase):
             return (self.eps + self._mean) / (self.eps + self.data[mask].mean())
         return (self.eps + self.data[mask].mean()) / (self.eps + self._mean)
 
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        mean = slice_sum / slice_count
+        if self.inverse: 
+            return (self.eps + self._mean) / (self.eps + mean)
+        return (self.eps + mean) / (self.eps + self._mean)
+    
     def subslice(self, indexes):
         return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps)
 
@@ -190,5 +216,8 @@ class OutcomeShareScore(ScoreFunctionBase):
     def calculate_score(self, slice, mask):
         return self.data[mask].sum() / self._sum
 
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        return slice_sum / self._sum
+    
     def subslice(self, indexes):
         return OutcomeShareScore(self.data[indexes])
