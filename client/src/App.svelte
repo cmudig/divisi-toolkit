@@ -11,6 +11,7 @@
   let shouldRerun = traitlet(model, 'should_rerun', false);
   let numSamplesDrawn = traitlet(model, 'num_samples_drawn', 0);
   let runningSampler = traitlet(model, 'running_sampler', false);
+  let shouldCancel = traitlet(model, 'should_cancel', false);
   let samplerRunProgress = traitlet(model, 'sampler_run_progress', 0.0);
 
   let slices = traitlet(model, 'slices', []);
@@ -37,16 +38,30 @@
 
 <main class="w-full">
   {#if $runningSampler}
-    <div class="pt-2 pb-4">
-      <div class="text-sm text-gray-700">
-        Running sampler ({($samplerRunProgress * 100).toFixed(1)}% complete)...
-      </div>
-      <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1 dark:bg-gray-700">
+    <div class="flex items-center">
+      <div class="pt-2 pb-4 flex-auto">
+        <div class="text-sm text-gray-700">
+          {#if $shouldCancel}
+            Canceling...
+          {:else}
+            Running sampler ({($samplerRunProgress * 100).toFixed(1)}%
+            complete)...
+          {/if}
+        </div>
         <div
-          class="bg-blue-600 h-1.5 rounded-full dark:bg-blue-500 duration-100"
-          style="width: {($samplerRunProgress * 100).toFixed(1)}%"
-        />
+          class="w-full bg-gray-200 rounded-full h-1.5 mt-1 dark:bg-gray-700"
+        >
+          <div
+            class="bg-blue-600 h-1.5 rounded-full dark:bg-blue-500 duration-100"
+            style="width: {($samplerRunProgress * 100).toFixed(1)}%"
+          />
+        </div>
       </div>
+      <button
+        class="ml-4 btn btn-blue disabled:opacity-50"
+        disabled={$shouldCancel}
+        on:click={() => ($shouldCancel = true)}>Stop</button
+      >
     </div>
   {:else}
     <h1 class="text-2xl font-bold mt-2 mb-3">Slice Sampler (temporary name)</h1>

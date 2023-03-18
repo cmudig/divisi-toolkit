@@ -27,6 +27,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     num_slices = traitlets.Int(10).tag(sync=True)
     num_samples = traitlets.Int(50).tag(sync=True)
     should_rerun = traitlets.Bool(False).tag(sync=True)
+    should_cancel = traitlets.Bool(False).tag(sync=True)
     running_sampler = traitlets.Bool(False).tag(sync=True)
     num_samples_drawn = traitlets.Int(0).tag(sync=True)
     sampler_run_progress = traitlets.Float(0.0).tag(sync=True)
@@ -119,9 +120,12 @@ class SliceFinderWidget(anywidget.AnyWidget):
                     per_instance_time = (time.time() - start_time) / sample_step
                     sample_step = min(20, max(1, int(5 / per_instance_time)))
                     start_time = None
+                if self.should_cancel:
+                    break
             self.running_sampler = False
             
             time.sleep(0.01)
+            self.should_cancel = False
             self.sampler_run_progress = 0.0
         except Exception as e:
             print(e)

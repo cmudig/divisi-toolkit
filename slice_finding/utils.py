@@ -82,6 +82,11 @@ def make_mask(inputs, slice_obj, existing_mask=None):
                 mask = (inputs[:,col] == val).toarray().flatten()
             else:
                 mask &= (inputs[:,col] == val).toarray().flatten()
+        elif isinstance(inputs, np.ndarray):
+            if mask is None:
+                mask = inputs[:,col] == val
+            else:
+                mask &= inputs[:,col] == val
         else:
             if mask is None:
                 mask = inputs[col] == val
