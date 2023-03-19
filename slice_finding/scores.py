@@ -254,3 +254,37 @@ class InteractionEffectScore(ScoreFunctionBase):
     
     def subslice(self, indexes):
         return InteractionEffectScore(self.data[indexes])
+    
+class SliceSimilarityScore(ScoreFunctionBase):
+    """
+    A score function whose value is higher when a given slice mask has high
+    Jaccard similarity, superslice overlap, or subslice overlap to a particular
+    reference slice.
+
+    Given a reference set R, a test set S will be evaluated by the following
+    equations depending on the metric parameter:
+    * jaccard: size(R & S) / size(R | S)
+    * subslice: size(R & S) / size(S)
+    * superslice: size(R & S) / size(R)
+    """
+    
+    def __init__(self, reference_mask, metric='jaccard'):
+        super().__init__("slice_similarity", reference_mask)
+        self.metric = metric
+        
+    def calculate_score(self, slice, mask, univariate_masks):
+        intersect = (mask & self.data).sum()
+        if self.metric == 'jaccard':
+            union = (mask | self.data).sum()
+            return intersect / union
+        elif self.metric == 'subslice':
+            return intersect / mask.sum()
+        elif self.metric == 'superslice':
+            return intersect / self.data.sum()
+        raise AttributeError(f"Unsupported metric {self.metric}")
+    
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        raise NotImplementedError()
+    
+    def subslice(self, indexes):
+        return SliceSimilarityScore(self.data[indexes], metric=self.metric)

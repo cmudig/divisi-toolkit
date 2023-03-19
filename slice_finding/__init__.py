@@ -6,6 +6,7 @@ from .widget import SliceFinderWidget
 from .sampling import find_slices_by_sampling
 from .recursive import find_slices_recursive
 from .scores import *
+from .filters import *
 from .discretization import DiscretizedData
 from scipy import sparse as sps
 import numpy as np

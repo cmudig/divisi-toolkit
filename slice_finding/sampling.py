@@ -128,6 +128,7 @@ def explore_groups_beam_search(inputs,
                                score_fns, 
                                seen_slices, 
                                group_filter=None, 
+                               initial_slice=None,
                                positive_only=None,
                                max_features=5, 
                                min_items=5, 
@@ -135,13 +136,14 @@ def explore_groups_beam_search(inputs,
                                max_weight=5.0, 
                                num_candidates=20):
     scored_slices = set()
+    if initial_slice is None: initial_slice = Slice({}, {})
     if num_candidates is not None:
         # Maintain a ranking for each function separately, as different slices may
         # maximize different functions
-        best_groups = {fn_name: RankedList(num_candidates, [(Slice({}, {}), -1e9)]) 
+        best_groups = {fn_name: RankedList(num_candidates, [(initial_slice, -1e9)]) 
                         for fn_name in score_fns}
     else:
-        best_groups = set([Slice({}, {})])
+        best_groups = set([initial_slice])
 
     if isinstance(inputs, sps.csr_matrix):
         if inputs.max() > 1:
@@ -283,6 +285,7 @@ class SamplingSliceFinder:
                  max_weight=5.0,
                  similarity_threshold=0.9,
                  show_progress=True,
+                 initial_slice=None,
                  explore_fn=explore_groups_beam_search):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
@@ -296,6 +299,7 @@ class SamplingSliceFinder:
         self.min_weight = min_weight
         self.max_weight = max_weight
         self.show_progress = show_progress
+        self.initial_slice = initial_slice
         self.similarity_threshold = similarity_threshold
         self.explore_fn = explore_fn # TODO remove
         if isinstance(self.raw_inputs, sps.csr_matrix):
@@ -327,13 +331,7 @@ class SamplingSliceFinder:
             source_mask = self.discovery_mask
             
         source_mask &= ~self.sampled_idxs
-        allowed_indexes = np.argwhere(source_mask).flatten()
-        sample_idxs = np.random.choice(allowed_indexes, 
-                                    size=min(len(allowed_indexes), num_samples), 
-                                    replace=False)
-        self.sampled_idxs[sample_idxs] = True
-            
-        bar = tqdm.tqdm(sample_idxs) if self.show_progress else sample_idxs
+        
         # Use only score functions within the discovery subset of the data
         discovery_score_fns = {fn_name: fn.subslice(self.discovery_mask)
                             for fn_name, fn in self.score_fns.items()}
@@ -341,6 +339,20 @@ class SamplingSliceFinder:
             discovery_inputs = self.raw_inputs[self.discovery_mask].reset_index(drop=True)
         else:
             discovery_inputs = self.raw_inputs[self.discovery_mask]
+
+        if self.initial_slice is not None:
+            initial_slice_mask = make_mask(discovery_inputs, self.initial_slice)
+            source_mask &= initial_slice_mask
+            if source_mask.sum() == 0:
+                raise ValueError("No samples can be taken from the intersection of the provided source mask and the initial slice")
+        
+        allowed_indexes = np.argwhere(source_mask).flatten()
+        sample_idxs = np.random.choice(allowed_indexes, 
+                                    size=min(len(allowed_indexes), num_samples), 
+                                    replace=False)
+        self.sampled_idxs[sample_idxs] = True
+            
+        bar = tqdm.tqdm(sample_idxs) if self.show_progress else sample_idxs
         
         for sample_idx in bar:
             source_row = self.raw_inputs.iloc[sample_idx] if isinstance(self.raw_inputs, pd.DataFrame) else self.raw_inputs[sample_idx]
@@ -349,6 +361,7 @@ class SamplingSliceFinder:
                                                         discovery_score_fns,
                                                         seen_slices=self.seen_slices,
                                                         group_filter=self.group_filter,
+                                                        initial_slice=self.initial_slice,
                                                         max_features=self.max_features,
                                                         min_items=self.min_items,
                                                         num_candidates=self.num_candidates,
@@ -368,6 +381,7 @@ def find_slices_by_sampling(inputs,
                             score_fns, 
                             source_mask=None, 
                             group_filter=None, 
+                            initial_slice=None,
                             max_features=3, 
                             min_items=100, 
                             num_samples=10, 
@@ -390,6 +404,9 @@ def find_slices_by_sampling(inputs,
     :param group_filter: if provided, a function that takes a `Slice` object and
         returns False if the slice should not be explored. Subslices of these
         slices will not be explored either.
+    :param initial_slice: if provided, a slice that will be used as the base
+        slice for all returned results. Samples will only be drawn from within
+        this slice.
     :param max_features: The maximum number of features allowed to be selected
         in a slice.
     :param min_items: The minimum number of rows that must match a slice for it
@@ -417,6 +434,7 @@ def find_slices_by_sampling(inputs,
                                 score_fns,
                                 source_mask=source_mask, 
                                 group_filter=group_filter, 
+                                initial_slice=initial_slice,
                                 max_features=max_features, 
                                 min_items=min_items, 
                                 num_candidates=num_candidates,

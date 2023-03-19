@@ -225,7 +225,7 @@ class RankedSliceList:
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
         return ranked_results[:min(len(ranked_results), n_slices)]
     
-    def generate_slice_description(self, slice_obj, metrics=None):
+    def generate_slice_description(self, slice_obj, metrics=None, metrics_mask=None):
         """
         Creates JSON-serializable slice descriptions for a slice.
         
@@ -234,6 +234,9 @@ class RankedSliceList:
             series/arrays matching the shape of the original inputs. These metrics
             will be aggregated (histogram for continuous values, mean for
             binary values, value counts for categorical values)
+        :param metrics_mask: If metrics is provided, this can be a mask over the
+            inputs that determines over which input rows the metrics will be
+            calculated
         :return: A dictionary containing metadata and user-readable
             descriptions for the slice.
         """
@@ -248,8 +251,18 @@ class RankedSliceList:
             slice_desc["featureValues"] = slice_obj.feature_values
             
         slice_metrics = {}
-        mask = np.arange(self.df.shape[0])[self.eval_mask][make_mask(self.eval_df, slice_obj)]
-        slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / self.eval_df.shape[0]}
+        slice_mask = make_mask(self.eval_df, slice_obj)
+        if metrics_mask is not None:
+            slice_mask &= metrics_mask
+        mask = np.arange(self.df.shape[0])[self.eval_mask][slice_mask]
+        base_mask = self.eval_mask
+        if metrics_mask is not None:
+            base_mask = base_mask[metrics_mask]
+            eval_count = self.eval_df[metrics_mask].shape[0]
+        else:
+            eval_count = self.eval_df.shape[0]
+        
+        slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / eval_count}
         if metrics:
             for metric_name, data in metrics.items():
                 if isinstance(data, dict):
@@ -262,7 +275,7 @@ class RankedSliceList:
                 if data_type == "binary":
                     slice_metrics[metric_name] = {"type": data_type, 
                                                   "mean": data[mask].mean(), 
-                                                  "share": data[mask].sum() / data[self.eval_mask].sum()}
+                                                  "share": data[mask].sum() / data[base_mask].sum()}
                 elif data_type == "categorical":
                     slice_metrics[metric_name] = {"type": data_type, 
                                                   "counts": dict(zip(*np.unique(data[mask], return_counts=True)))}
