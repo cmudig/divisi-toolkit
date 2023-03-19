@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy import sparse as sps
+from itertools import chain, combinations
 
 class RankedList:
     """
@@ -62,7 +63,7 @@ def pairwise_jaccard_similarities(mat):
     np.true_divide(intersection.todense(), union, out=result)
     return result
 
-def make_mask(inputs, slice_obj, existing_mask=None):
+def make_mask(inputs, slice_obj, existing_mask=None, univariate_masks=None):
     """
     Creates a binary mask representing membership in the given slice.
     
@@ -71,27 +72,37 @@ def make_mask(inputs, slice_obj, existing_mask=None):
     :param slice_obj: a `Slice` object
     :param existing_mask: if provided, a binary mask that will be intersected
         with the mask for the given slice
+    :param univariate_masks: if provided, a dictionary mapping tuples of
+        (col, val) to binary masks of the same length as inputs. This cache will
+        be mutated if the function needs to compute a new univariate mask
         
     :return: a binary array where 1 indicates that a row is part of the
         slice
     """
     mask = existing_mask.copy() if existing_mask is not None else existing_mask
     for col, val in slice_obj.feature_values.items():
-        if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
-            if mask is None:
-                mask = (inputs[:,col] == val).toarray().flatten()
+        univ_mask = None
+        # Check if univariate mask available in cache
+        if univariate_masks is not None:
+            univ_mask = univariate_masks.get((col, val), None)
+            
+        if univ_mask is None:
+            if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
+                univ_mask = (inputs[:,col] == val).toarray().flatten()
+            elif isinstance(inputs, np.ndarray):
+                univ_mask = inputs[:,col] == val
             else:
-                mask &= (inputs[:,col] == val).toarray().flatten()
-        elif isinstance(inputs, np.ndarray):
-            if mask is None:
-                mask = inputs[:,col] == val
-            else:
-                mask &= inputs[:,col] == val
+                univ_mask = inputs[col] == val
+              
+        # Update cache  
+        if univariate_masks is not None and (col, val) not in univariate_masks:
+            univariate_masks[(col, val)] = univ_mask
+
+        if mask is None:
+            mask = univ_mask.copy()
         else:
-            if mask is None:
-                mask = inputs[col] == val
-            else:
-                mask &= inputs[col] == val
+            mask &= univ_mask
+
     if mask is None:
         mask = np.ones(inputs.shape[0], dtype=bool)
     if isinstance(mask, pd.Series): mask = mask.values
@@ -123,3 +134,8 @@ def convert_to_native_types(o):
     elif isinstance(o, np.generic):
         return o.item()
     return o
+
+def powerset(iterable):
+    "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
+    s = list(iterable)
+    return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))

@@ -106,6 +106,8 @@ class RankedSliceList:
         self.max_weight = max_weight
         self.train_scores = pd.DataFrame([r.score_values for r in self.results])
         self.similarity_threshold = similarity_threshold
+        
+        self.univariate_masks = {}
 
     def _rank_weighted_indexes(self, score_df, weights, k=None):
         """
@@ -131,8 +133,9 @@ class RankedSliceList:
             return Slice(feature_values)
         
     def score_slice(self, slice_obj, return_mask=False):
-        mask = make_mask(self.eval_df, slice_obj)
-        group_scores = {key: item.calculate_score(slice_obj, mask)
+        mask = make_mask(self.eval_df, slice_obj, univariate_masks=self.univariate_masks)
+        itemized_masks = [self.univariate_masks[(c, v)] for (c, v) in slice_obj.feature_values.items()]
+        group_scores = {key: item.calculate_score(slice_obj, mask, itemized_masks)
                         for key, item in self.score_functions.items()}
         if return_mask:
             return group_scores, mask

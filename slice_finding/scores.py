@@ -1,5 +1,5 @@
 import numpy as np
-
+from .utils import powerset
 
 class ScoreFunctionBase:
     """
@@ -20,7 +20,7 @@ class ScoreFunctionBase:
             assert len(data.shape) == 1, "Score function data must be 1D"
         self.data = data
 
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         """
         Calculates the score for a single slice.
         
@@ -79,7 +79,7 @@ class EntropyScore(ScoreFunctionBase):
     def low_entropy(self, mask):
         return (self.eps + self._base_entropy) / (self.eps + self._calc_entropy(self.data[mask]))
 
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         if self.priority == 'high':
             return self.high_entropy(mask)
         return self.low_entropy(mask)
@@ -107,7 +107,7 @@ class MeanDifferenceScore(ScoreFunctionBase):
         self._std = self.data.std()
         self._mean = self.data.mean()
         
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         return np.abs(self.data[mask].mean() - self._mean) / self._std
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
@@ -135,7 +135,7 @@ class SliceSizeScore(ScoreFunctionBase):
         self.ideal_fraction = ideal_fraction
         self.spread = spread
 
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         frac = mask.sum() / len(mask)
         return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
         
@@ -155,7 +155,7 @@ class NumFeaturesScore(ScoreFunctionBase):
     def __init__(self):
         super().__init__("num_features")
 
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         return 1 / (1 + np.log2(1 + len(slice.feature_values)))
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
@@ -183,7 +183,7 @@ class OutcomeRateScore(ScoreFunctionBase):
         self.eps = eps
         self._mean = self.data.mean()
         
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         if self.inverse: 
             return (self.eps + self._mean) / (self.eps + self.data[mask].mean())
         return (self.eps + self.data[mask].mean()) / (self.eps + self._mean)
@@ -213,7 +213,7 @@ class OutcomeShareScore(ScoreFunctionBase):
         super().__init__("outcome_share", data)
         self._sum = self.data.sum()
         
-    def calculate_score(self, slice, mask):
+    def calculate_score(self, slice, mask, univariate_masks):
         return self.data[mask].sum() / self._sum
 
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
@@ -221,3 +221,36 @@ class OutcomeShareScore(ScoreFunctionBase):
     
     def subslice(self, indexes):
         return OutcomeShareScore(self.data[indexes])
+    
+class InteractionEffectScore(ScoreFunctionBase):
+    """
+    A score function that calculates the ratio between the outcome rate score
+    of the given slice and the best outcome rate score of all superslices of the
+    slice. This measures how beneficial it is to have all the features in the
+    slice compared to removing some.
+    """
+    
+    def __init__(self, data, eps=1e-6):
+        super().__init__("interaction_effect", data)
+        self._mean = self.data.mean()
+        self.eps = eps
+        
+    def _superslice_score(self, masks):
+        overall_mask = None
+        for m in masks:
+            if overall_mask is None: overall_mask = m.copy()
+            else: overall_mask &= m
+        return (self.eps + self.data[overall_mask].mean()) / (self.eps + self._mean)
+
+    def calculate_score(self, slice, mask, univariate_masks):
+        if len(univariate_masks) <= 1: return 1.0
+        overall_effect = max(0, ((self.eps + self.data[mask].mean()) / (self.eps + self._mean)))
+        itemized_effect = max(self._superslice_score(ms)
+                    for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks))
+        return max(0, overall_effect / itemized_effect)
+    
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+        raise NotImplementedError()
+    
+    def subslice(self, indexes):
+        return InteractionEffectScore(self.data[indexes])

@@ -168,6 +168,8 @@ def explore_groups_beam_search(inputs,
         score_data = np.vstack([score_fns[name].data if score_fns[name].data is not None else np.zeros(inputs.shape[0])
                                 for name in score_fn_order]).T
 
+    univariate_masks = {}
+    
     # Iterate over the columns max_features times
     for col_size in range(max_features):
         if num_candidates is not None:
@@ -201,7 +203,7 @@ def explore_groups_beam_search(inputs,
                                             source_row.values if isinstance(source_row, pd.Series) else source_row)
                     
             else:
-                base_mask = make_mask(mat_for_masks, base_slice)
+                base_mask = make_mask(mat_for_masks, base_slice, univariate_masks=univariate_masks)
                 
             for i, col in enumerate(input_columns):
                 # Skip if only slicing using positive values and the row has a negative value
@@ -238,12 +240,13 @@ def explore_groups_beam_search(inputs,
                                                                                               inputs.shape[0])
                     else:
                         # Generate a mask for the slice and score it
-                        mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask)
+                        mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask, univariate_masks=univariate_masks)
                         if mask.sum() < min_items: 
                             seen_slices[new_slice] = None
                             continue
+                        itemized_masks = [univariate_masks[(c, v)] for (c, v) in new_slice.feature_values.items()]
                         for key, scorer in score_fns.items():
-                            new_slice.score_values[key] = scorer.calculate_score(new_slice, mask)
+                            new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
                     scored_slices.add(new_slice)
                 
                 seen_slices[new_slice] = new_slice.score_values
