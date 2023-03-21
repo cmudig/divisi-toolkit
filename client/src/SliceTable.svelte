@@ -20,20 +20,36 @@
   export let showScores = false;
   export let positiveOnly = false;
 
-  let maxFeatures = 0;
+  export let valueNames: any = {};
+
+  export let focusedSlice: any = {};
+  export let focusedSliceDescription: Slice = null;
+
+  let maxFeatures = 1;
   let metricNames = [];
   let metricInfo = {};
   let scoreNames = [];
   let scoreWidthScalers = {};
+  let focusedSliceFeatureCount = 1;
 
-  $: if (slices.length > 0) {
-    console.log('slices', slices);
-    let testSlice = slices[0];
+  let allSlices: Array<Slice> = [];
+  $: allSlices = [
+    ...(focusedSliceDescription != null &&
+    !!focusedSliceDescription.featureValues
+      ? [focusedSliceDescription]
+      : []),
+    ...slices,
+  ];
 
-    maxFeatures = slices.reduce(
+  $: if (allSlices.length > 0) {
+    console.log('slices', allSlices);
+    let testSlice = allSlices[0];
+
+    maxFeatures = allSlices.reduce(
       (curr, next) => Math.max(curr, Object.keys(next.featureValues).length),
-      0
+      1
     );
+    maxFeatures = Math.max(focusedSliceFeatureCount, maxFeatures);
 
     // tabulate score names and normalize
     let newScoreNames = Object.keys(testSlice.scoreValues);
@@ -45,12 +61,12 @@
     scoreWidthScalers = {};
     scoreNames.forEach((n) => {
       let maxScore =
-        slices.reduce(
+        allSlices.reduce(
           (curr, next) => Math.max(curr, next.scoreValues[n]),
           -1e9
         ) + 0.01;
       let minScore =
-        slices.reduce(
+        allSlices.reduce(
           (curr, next) => Math.min(curr, next.scoreValues[n]),
           1e9
         ) - 0.01;
@@ -82,20 +98,20 @@
       if (testMetrics[n].type == 'binary' || testMetrics[n].type == 'count') {
         let maxScore =
           testMetrics[n].type == 'count'
-            ? slices.reduce(
+            ? allSlices.reduce(
                 (curr, next) => Math.max(curr, next.metrics[n].mean),
                 -1e9
               ) + 0.01
             : 1;
         let minScore =
-          slices.reduce(
+          allSlices.reduce(
             (curr, next) => Math.min(curr, next.metrics[n].mean),
             1e9
           ) - 0.01;
         metricInfo[n] = { scale: (v: number) => v / maxScore };
       } else if (testMetrics[n].type == 'categorical') {
         let uniqueKeys: Set<string> = new Set();
-        slices.forEach((s) =>
+        allSlices.forEach((s) =>
           Object.keys(s.metrics[n].counts).forEach((v) => uniqueKeys.add(v))
         );
         let order = Array.from(uniqueKeys);
@@ -161,129 +177,156 @@
     droppingColumn = null;
     return false;
   }
+
+  function toggleSliceFeature(slice: Slice, feature: string) {
+    let allRequests = Object.assign({}, sliceRequests);
+    let r;
+    if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
+    else r = Object.assign({}, slice.featureValues);
+    if (r.hasOwnProperty(feature)) delete r[feature];
+    else r[feature] = slice.featureValues[feature];
+    allRequests[slice.stringRep] = r;
+    sliceRequests = allRequests;
+  }
+
+  function editSliceFeature(slice: Slice, feature: string, value: any) {
+    let allRequests = Object.assign({}, sliceRequests);
+    let r;
+    if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
+    else r = Object.assign({}, slice.featureValues);
+    r[feature] = value;
+    allRequests[slice.stringRep] = r;
+    sliceRequests = allRequests;
+  }
 </script>
 
 <div>
-  {#if slices.length > 0}
-    <table class="relative" cellspacing="0" cellpadding="0">
-      <thead class="text-left">
-        <tr>
-          {#each Array(maxFeatures) as _, i}
-            <th class="bg-slate-100 feature" class:rounded-tl={i == 0}>
-              <div class="p-2 border-b border-slate-600">
-                Feature {i + 1}
-              </div></th
+  <table class="relative" cellspacing="0" cellpadding="0">
+    <thead class="text-left">
+      <tr>
+        {#each Array(maxFeatures) as _, i}
+          <th class="bg-slate-100 feature" class:rounded-tl={i == 0}>
+            <div class="p-2 border-b border-slate-600">
+              Feature {i + 1}
+            </div></th
+          >
+        {/each}
+        {#each metricNames as name}
+          <th
+            class="bg-slate-100 hover:bg-slate-200"
+            class:metric={metricInfo[name].visible}
+            class:opacity-30={draggingColumn == name}
+            draggable={clickingColumn == name}
+            on:dragstart={(e) => metricDragStart(e, name)}
+            on:dragend={(e) => metricDragEnd(e, name)}
+            on:dragover|preventDefault={() => false}
+            on:dragenter={(e) => metricDragEnter(e, name)}
+            on:dragleave={(e) => metricDragLeave(e, name)}
+            on:drop|preventDefault|stopPropagation={(e) => metricDrop(e, name)}
+          >
+            <Hoverable
+              class="potential-drop-zone p-2 border-b border-slate-600"
+              let:hovering
             >
-          {/each}
-          {#each metricNames as name}
-            <th
-              class="bg-slate-100 hover:bg-slate-200"
-              class:metric={metricInfo[name].visible}
-              class:opacity-30={draggingColumn == name}
-              draggable={clickingColumn == name}
-              on:dragstart={(e) => metricDragStart(e, name)}
-              on:dragend={(e) => metricDragEnd(e, name)}
-              on:dragover|preventDefault={() => false}
-              on:dragenter={(e) => metricDragEnter(e, name)}
-              on:dragleave={(e) => metricDragLeave(e, name)}
-              on:drop|preventDefault|stopPropagation={(e) =>
-                metricDrop(e, name)}
-            >
-              <Hoverable
-                class="potential-drop-zone p-2 border-b border-slate-600"
-                let:hovering
-              >
-                {#if metricInfo[name].visible}
-                  <div class="flex items-center">
-                    <div>{name}</div>
-                    <div class="flex-1" />
-                    <button
-                      class="bg-transparent hover:opacity-60"
-                      class:opacity-0={!hovering}
-                      class:disabled={!hovering}
-                      on:click={(e) => {
-                        let mi = Object.assign({}, metricInfo);
-                        mi[name].visible = !mi[name].visible;
-                        metricInfo = mi;
-                      }}><Fa icon={faEye} /></button
-                    >
-                    <button
-                      class="ml-2 bg-transparent text-slate-400 cursor-move"
-                      on:mousedown={() => (clickingColumn = name)}
-                      on:mouseup={() => (clickingColumn = null)}
-                      class:opacity-0={!hovering}
-                      class:disabled={!hovering}
-                      ><Fa icon={faGripLinesVertical} /></button
-                    >
-                  </div>
-                {:else}
+              {#if metricInfo[name].visible}
+                <div class="flex items-center">
+                  <div>{name}</div>
+                  <div class="flex-1" />
                   <button
-                    class="bg-transparent opacity-30 hover:opacity-60"
+                    class="bg-transparent hover:opacity-60"
+                    class:opacity-0={!hovering}
+                    class:disabled={!hovering}
                     on:click={(e) => {
                       let mi = Object.assign({}, metricInfo);
                       mi[name].visible = !mi[name].visible;
                       metricInfo = mi;
-                    }}><Fa icon={faEyeSlash} /></button
+                    }}><Fa icon={faEye} /></button
                   >
-                {/if}
-              </Hoverable>
-            </th>
-          {/each}
-          {#if showScores}
-            {#each scoreNames as score, i}
-              <th class="bg-slate-100 score">
-                <div class="p-2 border-b border-slate-600">
-                  {score}
-                </div></th
-              >
-            {/each}
-          {/if}
-          <th
-            class="bg-slate-100 hover:bg-slate-200 rounded-tr"
-            on:click={() => (showScores = !showScores)}
-          >
-            <div
-              class="w-full h-full px-4 flex justify-center items-center border-b border-slate-600"
-            >
-              {#if showScores}
-                <Fa icon={faAngleLeft} />
+                  <button
+                    class="ml-2 bg-transparent text-slate-400 cursor-move"
+                    on:mousedown={() => (clickingColumn = name)}
+                    on:mouseup={() => (clickingColumn = null)}
+                    class:opacity-0={!hovering}
+                    class:disabled={!hovering}
+                    ><Fa icon={faGripLinesVertical} /></button
+                  >
+                </div>
               {:else}
-                <Fa icon={faAngleRight} />
+                <button
+                  class="bg-transparent opacity-30 hover:opacity-60"
+                  on:click={(e) => {
+                    let mi = Object.assign({}, metricInfo);
+                    mi[name].visible = !mi[name].visible;
+                    metricInfo = mi;
+                  }}><Fa icon={faEyeSlash} /></button
+                >
               {/if}
-            </div>
+            </Hoverable>
           </th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each slices as slice, i (slice.stringRep || i)}
-          <SliceRow
-            {slice}
-            {maxFeatures}
-            {scoreNames}
-            {positiveOnly}
-            scoreCellWidth={100}
-            {scoreWidthScalers}
-            {showScores}
-            {metricNames}
-            {metricInfo}
-            temporarySlice={sliceRequestResults[slice.stringRep]}
-            on:toggle={(e) => {
-              let allRequests = Object.assign({}, sliceRequests);
-              let r;
-              if (!!allRequests[slice.stringRep])
-                r = allRequests[slice.stringRep];
-              else r = Object.assign({}, slice.featureValues);
-              if (r.hasOwnProperty(e.detail)) delete r[e.detail];
-              else r[e.detail] = slice.featureValues[e.detail];
-              allRequests[slice.stringRep] = r;
-              sliceRequests = allRequests;
-              console.log(sliceRequests);
-            }}
-          />
         {/each}
-      </tbody>
-    </table>
-  {/if}
+        {#if showScores}
+          {#each scoreNames as score, i}
+            <th class="bg-slate-100 score">
+              <div class="p-2 border-b border-slate-600">
+                {score}
+              </div></th
+            >
+          {/each}
+        {/if}
+        <th
+          class="bg-slate-100 hover:bg-slate-200 rounded-tr"
+          on:click={() => (showScores = !showScores)}
+        >
+          <div
+            class="w-full h-full px-4 flex justify-center items-center border-b border-slate-600"
+          >
+            {#if showScores}
+              <Fa icon={faAngleLeft} />
+            {:else}
+              <Fa icon={faAngleRight} />
+            {/if}
+          </div>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <SliceRow
+        slice={focusedSliceDescription}
+        isFocusedSlice
+        {maxFeatures}
+        {scoreNames}
+        {positiveOnly}
+        scoreCellWidth={100}
+        {scoreWidthScalers}
+        {showScores}
+        {metricNames}
+        {metricInfo}
+        {valueNames}
+        temporarySlice={sliceRequestResults[focusedSliceDescription.stringRep]}
+        bind:focusedSliceFeatureCount
+        on:edit={(e) => (focusedSlice = e.detail)}
+        on:toggle={(e) => toggleSliceFeature(focusedSliceDescription, e.detail)}
+      />
+      {#each slices as slice, i (slice.stringRep || i)}
+        <SliceRow
+          {slice}
+          {maxFeatures}
+          {scoreNames}
+          {positiveOnly}
+          scoreCellWidth={100}
+          {scoreWidthScalers}
+          {showScores}
+          {metricNames}
+          {metricInfo}
+          {valueNames}
+          temporarySlice={sliceRequestResults[slice.stringRep]}
+          on:edit={(e) =>
+            editSliceFeature(slice, e.detail.feature, e.detail.value)}
+          on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+        />
+      {/each}
+    </tbody>
+  </table>
 </div>
 
 <style>

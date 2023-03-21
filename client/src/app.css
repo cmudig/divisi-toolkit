@@ -116,3 +116,11 @@ button[disabled] {
 .drop-zone * {
   pointer-events: none;
 }
+
+select.flat-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  -ms-appearance: none;
+  -o-appearance: none;
+  appearance: none;
+}

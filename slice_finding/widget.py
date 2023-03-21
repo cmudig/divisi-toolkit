@@ -3,8 +3,10 @@ import anywidget
 import traitlets
 import threading
 import numpy as np
+import pandas as pd
 import time
 from .slices import Slice
+from .discretization import DiscretizedData
 
 def default_thread_starter(fn, args=[], kwargs={}):
     thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
@@ -36,7 +38,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
     positive_only = traitlets.Bool(False).tag(sync=True)
     
     slices = traitlets.List([]).tag(sync=True)
-    overall_slice = traitlets.Dict({}).tag(sync=True)
+    focused_slice = traitlets.Dict({}).tag(sync=True)
+    focused_slice_description = traitlets.Dict({}, allow_none=True).tag(sync=True)
+    
+    value_names = traitlets.Dict({}).tag(sync=True)
     
     slice_score_requests = traitlets.Dict({}).tag(sync=True)
     slice_score_results = traitlets.Dict({}).tag(sync=True)
@@ -58,6 +63,18 @@ class SliceFinderWidget(anywidget.AnyWidget):
                                   **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
         self._slice_description_cache = {}
         self.positive_only = self.slice_finder.positive_only
+        if isinstance(self.slice_finder.inputs, DiscretizedData):
+            if isinstance(self.slice_finder.inputs.value_names, dict):
+                self.value_names = self.slice_finder.inputs.value_names
+            else:
+                self.value_names = {i: v for i, v in enumerate(self.slice_finder.inputs.value_names)}
+        elif isinstance(self.slice_finder.inputs, pd.DataFrame):
+            self.value_names = {col: sorted(self.slice_finder.inputs[col].unique())
+                                for col in self.slice_finder.inputs.columns}
+        else:
+            self.value_names = {col: sorted(self.slice_finder.inputs[:,col].unique())
+                                for col in range(self.slice_finder.inputs.shape[1])}
+        self.focus_slice({})
         
     def get_slice_description(self, slice_obj, metrics=None):
         """
@@ -140,12 +157,27 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results, metrics=None):
-        if not self.overall_slice:
-            self.overall_slice = self.get_slice_description(Slice({}), metrics=metrics or self.metrics)
+        if not self.focused_slice_description:
+            self.update_focused_slice()
         self.slices = [
             self.get_slice_description(slice_obj, metrics=metrics or self.metrics)
             for slice_obj in ranked_results
         ]
+        
+    def focus_slice(self, slice_obj):
+        """
+        Sets the focused slice to the given dictionary or slice object.
+        """
+        if isinstance(slice_obj, Slice):
+            self.focused_slice = self.slice_finder.results.generate_slice_description(slice_obj)
+        else:
+            self.focused_slice = slice_obj
+            
+    @traitlets.observe("focused_slice")
+    def update_focused_slice(self, change=None):
+        encoded_slice = self.slice_finder.results.encode_slice(change.new if change is not None else self.focused_slice)
+        self.focused_slice_description = self.get_slice_description(encoded_slice,
+                                                                    metrics=self.metrics)
 
     @traitlets.observe("slice_score_requests")
     def slice_score_request(self, change):

@@ -15,8 +15,15 @@
   let samplerRunProgress = traitlet(model, 'sampler_run_progress', 0.0);
 
   let slices = traitlet(model, 'slices', []);
-  let overallSlice = traitlet(model, 'overall_slice', {});
+  let focusedSlice = traitlet(model, 'focused_slice', {});
+  let focusedSliceDescription = traitlet(
+    model,
+    'focused_slice_description',
+    {}
+  );
   let positiveOnly = traitlet(model, 'positive_only', false);
+
+  let valueNames = traitlet(model, 'value_names', {});
 
   let scoreWeights = traitlet(model, 'score_weights', {});
 
@@ -37,9 +44,9 @@
 </script>
 
 <main class="w-full">
-  {#if $runningSampler}
-    <div class="flex items-center">
-      <div class="pt-2 pb-4 flex-auto">
+  <div class="px-4 py-3 bg-slate-200 rounded w-full flex items-center mb-2">
+    {#if $runningSampler}
+      <div class="flex-auto">
         <div class="text-sm text-gray-700">
           {#if $shouldCancel}
             Canceling...
@@ -62,35 +69,33 @@
         disabled={$shouldCancel}
         on:click={() => ($shouldCancel = true)}>Stop</button
       >
-    </div>
-  {:else}
-    <h1 class="text-2xl font-bold mt-2 mb-3">Slice Sampler (temporary name)</h1>
-  {/if}
-  <div class="flex h-96" class:disable-div={$runningSampler}>
+    {:else}
+      <div class="flex-auto">
+        Searching <strong>all slices</strong> by drawing
+        <input
+          class="mx-2 p-1 rounded bg-slate-50 w-16"
+          type="number"
+          min="0"
+          max="500"
+          step="5"
+          bind:value={$numSamples}
+        />
+        samples from <strong>entire dataset</strong>
+      </div>
+      <button
+        class="btn btn-blue disabled:opacity-50"
+        disabled={$runningSampler}
+        on:click={() => ($shouldRerun = true)}>Find Slices</button
+      >
+    {/if}
+  </div>
+  <div
+    class="flex"
+    style="height: 640px; max-height: 90vh;"
+    class:disable-div={$runningSampler}
+  >
     <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">
       <div class="p-4 bg-slate-200 rounded w-full min-h-full">
-        <div class="text-sm font-bold">Number of samples</div>
-        <div class="mt-1 flex items-center w-full">
-          <div style="width: 24px;">{$numSamples}</div>
-          <input
-            class="flex-auto ml-3"
-            type="range"
-            bind:value={$numSamples}
-            min="1"
-            max="100"
-            step="1"
-          />
-        </div>
-        <div class="mt-1 text-sm text-slate-500">
-          {$numSamplesDrawn} samples drawn so far
-        </div>
-        <div class="mt-2 mb-4">
-          <button
-            class="btn btn-blue disabled:opacity-50"
-            disabled={$runningSampler}
-            on:click={() => ($shouldRerun = true)}>Find Slices</button
-          >
-        </div>
         <div>
           <div class="text-sm font-bold">Score weights</div>
           {#each scoreNames as score}
@@ -114,25 +119,21 @@
       </div>
     </div>
     <div class="flex-auto overflow-scroll h-full">
+      <SliceTable
+        slices={$slices}
+        bind:focusedSlice={$focusedSlice}
+        bind:focusedSliceDescription={$focusedSliceDescription}
+        bind:sliceRequests={$sliceScoreRequests}
+        bind:sliceRequestResults={$sliceScoreResults}
+        positiveOnly={$positiveOnly}
+        {valueNames}
+      />
       {#if $slices.length > 0}
-        <SliceTable
-          slices={[
-            ...(Object.keys($overallSlice).length > 0 ? [$overallSlice] : []),
-            ...$slices,
-          ]}
-          bind:sliceRequests={$sliceScoreRequests}
-          bind:sliceRequestResults={$sliceScoreResults}
-          positiveOnly={$positiveOnly}
-        />
         <div class="mt-2">
           <button
             class="btn btn-blue disabled:opacity-50"
             on:click={() => ($numSlices += 10)}>Load More</button
           >
-        </div>
-      {:else}
-        <div class="w-full h-full flex items-center justify-center p-6">
-          <div class="text-slate-500">No slices yet!</div>
         </div>
       {/if}
     </div>
