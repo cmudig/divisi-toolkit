@@ -225,7 +225,9 @@
     {#each metricNames as name}
       {@const metric = sliceToShow.metrics[name]}
       <td class="p-2">
-        {#if !!metricInfo[name] && metricInfo[name].visible}
+        {#if sliceToShow.isEmpty}
+          <span class="text-slate-600">Empty</span>
+        {:else if !!metricInfo[name] && metricInfo[name].visible}
           {#if metric.type == 'binary'}
             <SliceMetricBar
               value={metric.mean}

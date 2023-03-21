@@ -55,13 +55,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
         except FileNotFoundError:
             raise ValueError("No built widget source found, and dev is set to False. To resolve, run npx vite build from the client directory.")
         self.slice_finder = slice_finder
+        self._slice_description_cache = {}
         super().__init__(*args, **kwargs)
         if len(self.score_weights) == 0:
             self.score_weights = {s: 1.0 for s in self.slice_finder.score_fns}
         else:
             self.score_weights = {**self.score_weights,
                                   **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
-        self._slice_description_cache = {}
         self.positive_only = self.slice_finder.positive_only
         if isinstance(self.slice_finder.inputs, DiscretizedData):
             if isinstance(self.slice_finder.inputs.value_names, dict):

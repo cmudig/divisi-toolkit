@@ -15,5 +15,6 @@ export interface Slice {
   stringRep?: string;
   featureValues: any;
   scoreValues: any;
+  isEmpty: boolean;
   metrics?: { [key: string]: SliceMetric };
 }

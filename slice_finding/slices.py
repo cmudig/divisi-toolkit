@@ -263,7 +263,8 @@ class RankedSliceList:
             eval_count = self.eval_df.shape[0]
         
         slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / eval_count}
-        if metrics:
+        slice_desc["isEmpty"] = len(mask) == 0
+        if metrics and len(mask) > 0:
             for metric_name, data in metrics.items():
                 if isinstance(data, dict):
                     # User-specified options
