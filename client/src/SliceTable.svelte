@@ -22,24 +22,18 @@
 
   export let valueNames: any = {};
 
-  export let focusedSlice: any = {};
-  export let focusedSliceDescription: Slice = null;
+  export let customSlices: any[] = [];
+  export let customSliceResults: Slice[] = [];
 
   let maxFeatures = 1;
   let metricNames = [];
   let metricInfo = {};
   let scoreNames = [];
   let scoreWidthScalers = {};
-  let focusedSliceFeatureCount = 1;
+  let addingFeatureSize = 0;
 
   let allSlices: Array<Slice> = [];
-  $: allSlices = [
-    ...(focusedSliceDescription != null &&
-    !!focusedSliceDescription.featureValues
-      ? [focusedSliceDescription]
-      : []),
-    ...slices,
-  ];
+  $: allSlices = [...customSliceResults, ...slices];
 
   $: if (allSlices.length > 0) {
     console.log('slices', allSlices);
@@ -49,7 +43,7 @@
       (curr, next) => Math.max(curr, Object.keys(next.featureValues).length),
       1
     );
-    maxFeatures = Math.max(focusedSliceFeatureCount, maxFeatures);
+    maxFeatures = Math.max(maxFeatures, addingFeatureSize);
 
     // tabulate score names and normalize
     let newScoreNames = Object.keys(testSlice.scoreValues);
@@ -187,16 +181,54 @@
     else r[feature] = slice.featureValues[feature];
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
+    console.log('slice requests:', sliceRequests);
   }
 
-  function editSliceFeature(slice: Slice, feature: string, value: any) {
+  function editSliceFeature(slice: Slice, newFeatureValues: any) {
     let allRequests = Object.assign({}, sliceRequests);
     let r;
     if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
     else r = Object.assign({}, slice.featureValues);
-    r[feature] = value;
+    Object.assign(r, newFeatureValues);
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
+  }
+
+  function editCustomSlice(i: number, featureValues: any) {
+    let newRequests = [...customSlices];
+    // if there was a toggled feature on this custom slice, remove it
+    if (
+      customSliceResults.length > i &&
+      sliceRequests.hasOwnProperty(customSliceResults[i].stringRep)
+    ) {
+      let allRequests = Object.assign({}, sliceRequests);
+      delete allRequests[customSliceResults[i].stringRep];
+      sliceRequests = allRequests;
+    }
+    if (Object.keys(featureValues).length == 0 && newRequests.length > 1)
+      newRequests.splice(i, 1);
+    else newRequests[i] = featureValues;
+    customSlices = newRequests;
+  }
+
+  function deleteCustomSlice(i: number) {
+    let newRequests = [...customSlices];
+    // if there was a toggled feature on this custom slice, remove it
+    if (
+      customSliceResults.length > i &&
+      sliceRequests.hasOwnProperty(customSliceResults[i].stringRep)
+    ) {
+      let allRequests = Object.assign({}, sliceRequests);
+      delete allRequests[customSliceResults[i].stringRep];
+      sliceRequests = allRequests;
+    }
+    newRequests.splice(i, 1);
+    if (newRequests.length == 0) newRequests = [{}];
+    customSlices = newRequests;
+  }
+
+  function createCustomSlice(featureValues = {}) {
+    customSlices = [...customSlices, Object.assign({}, featureValues)];
   }
 </script>
 
@@ -204,8 +236,11 @@
   <table class="relative" cellspacing="0" cellpadding="0">
     <thead class="text-left">
       <tr>
+        <th class="bg-slate-100 button-menu rounded-tl">
+          <div class="p-2 border-b border-slate-600 w-full h-full" />
+        </th>
         {#each Array(maxFeatures) as _, i}
-          <th class="bg-slate-100 feature" class:rounded-tl={i == 0}>
+          <th class="bg-slate-100 feature">
             <div class="p-2 border-b border-slate-600">
               Feature {i + 1}
             </div></th
@@ -290,23 +325,33 @@
       </tr>
     </thead>
     <tbody>
-      <SliceRow
-        slice={focusedSliceDescription}
-        isFocusedSlice
-        {maxFeatures}
-        {scoreNames}
-        {positiveOnly}
-        scoreCellWidth={100}
-        {scoreWidthScalers}
-        {showScores}
-        {metricNames}
-        {metricInfo}
-        {valueNames}
-        temporarySlice={sliceRequestResults[focusedSliceDescription.stringRep]}
-        bind:focusedSliceFeatureCount
-        on:edit={(e) => (focusedSlice = e.detail)}
-        on:toggle={(e) => toggleSliceFeature(focusedSliceDescription, e.detail)}
-      />
+      {#each customSliceResults as slice, i (i)}
+        <SliceRow
+          customSlice={slice}
+          {maxFeatures}
+          {scoreNames}
+          {positiveOnly}
+          scoreCellWidth={100}
+          {scoreWidthScalers}
+          {showScores}
+          {metricNames}
+          {metricInfo}
+          {valueNames}
+          rowClass="bg-slate-100 {i == customSliceResults.length - 1
+            ? 'border-b-2 border-dotted'
+            : ''}"
+          temporarySlice={sliceRequestResults[slice.stringRep]}
+          showCreateSliceButton={i == customSliceResults.length - 1}
+          focusOnMount={i > 0 && i == customSliceResults.length - 1}
+          on:edit={(e) => editCustomSlice(i, e.detail)}
+          on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+          on:beginedit={(e) => (addingFeatureSize = e.detail + 1)}
+          on:endedit={() => (addingFeatureSize = 0)}
+          on:create={() => createCustomSlice()}
+          on:delete={() => deleteCustomSlice(i)}
+          on:duplicate={() => createCustomSlice(slice.featureValues)}
+        />
+      {/each}
       {#each slices as slice, i (slice.stringRep || i)}
         <SliceRow
           {slice}
@@ -319,10 +364,11 @@
           {metricNames}
           {metricInfo}
           {valueNames}
+          rowClass="hover:bg-slate-100"
           temporarySlice={sliceRequestResults[slice.stringRep]}
-          on:edit={(e) =>
-            editSliceFeature(slice, e.detail.feature, e.detail.value)}
+          on:edit={(e) => editSliceFeature(slice, e.detail)}
           on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+          on:customize={() => createCustomSlice(slice.featureValues)}
         />
       {/each}
     </tbody>
@@ -352,5 +398,9 @@
 
   tr {
     height: 1px;
+  }
+
+  th.button-menu {
+    min-width: 36px;
   }
 </style>

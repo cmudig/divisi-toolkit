@@ -15,12 +15,8 @@
   let samplerRunProgress = traitlet(model, 'sampler_run_progress', 0.0);
 
   let slices = traitlet(model, 'slices', []);
-  let focusedSlice = traitlet(model, 'focused_slice', {});
-  let focusedSliceDescription = traitlet(
-    model,
-    'focused_slice_description',
-    {}
-  );
+  let customSlices = traitlet(model, 'custom_slices', []);
+  let customSliceResults = traitlet(model, 'custom_slice_results', []);
   let positiveOnly = traitlet(model, 'positive_only', false);
 
   let valueNames = traitlet(model, 'value_names', {});
@@ -46,6 +42,11 @@
 <main class="w-full">
   <div class="px-4 py-3 bg-slate-200 rounded w-full flex items-center mb-2">
     {#if $runningSampler}
+      <button
+        class="mr-4 btn btn-blue disabled:opacity-50"
+        disabled={$shouldCancel}
+        on:click={() => ($shouldCancel = true)}>Stop</button
+      >
       <div class="flex-auto">
         <div class="text-sm text-gray-700">
           {#if $shouldCancel}
@@ -56,7 +57,7 @@
           {/if}
         </div>
         <div
-          class="w-full bg-gray-200 rounded-full h-1.5 mt-1 dark:bg-gray-700"
+          class="w-full bg-slate-300 rounded-full h-1.5 mt-1 dark:bg-gray-700"
         >
           <div
             class="bg-blue-600 h-1.5 rounded-full dark:bg-blue-500 duration-100"
@@ -64,16 +65,16 @@
           />
         </div>
       </div>
-      <button
-        class="ml-4 btn btn-blue disabled:opacity-50"
-        disabled={$shouldCancel}
-        on:click={() => ($shouldCancel = true)}>Stop</button
-      >
     {:else}
-      <div class="flex-auto">
-        Searching <strong>all slices</strong> by drawing
+      <button
+        class="btn btn-blue disabled:opacity-50"
+        disabled={$runningSampler}
+        on:click={() => ($shouldRerun = true)}>Find Slices</button
+      >
+      <div class="flex-auto ml-2">
+        in <strong>all slices</strong> by drawing
         <input
-          class="mx-2 p-1 rounded bg-slate-50 w-16"
+          class="mx-2 p-1 rounded bg-slate-50 w-16 focus:ring-1 focus:ring-blue-600"
           type="number"
           min="0"
           max="500"
@@ -82,11 +83,6 @@
         />
         samples from <strong>entire dataset</strong>
       </div>
-      <button
-        class="btn btn-blue disabled:opacity-50"
-        disabled={$runningSampler}
-        on:click={() => ($shouldRerun = true)}>Find Slices</button
-      >
     {/if}
   </div>
   <div
@@ -121,8 +117,8 @@
     <div class="flex-auto overflow-scroll h-full">
       <SliceTable
         slices={$slices}
-        bind:focusedSlice={$focusedSlice}
-        bind:focusedSliceDescription={$focusedSliceDescription}
+        bind:customSlices={$customSlices}
+        bind:customSliceResults={$customSliceResults}
         bind:sliceRequests={$sliceScoreRequests}
         bind:sliceRequestResults={$sliceScoreResults}
         positiveOnly={$positiveOnly}

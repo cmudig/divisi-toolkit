@@ -38,8 +38,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
     positive_only = traitlets.Bool(False).tag(sync=True)
     
     slices = traitlets.List([]).tag(sync=True)
-    focused_slice = traitlets.Dict({}).tag(sync=True)
-    focused_slice_description = traitlets.Dict({}, allow_none=True).tag(sync=True)
+    custom_slices = traitlets.List([]).tag(sync=True)
+    custom_slice_results = traitlets.List([]).tag(sync=True)
     
     value_names = traitlets.Dict({}).tag(sync=True)
     
@@ -74,7 +74,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             self.value_names = {col: sorted(self.slice_finder.inputs[:,col].unique())
                                 for col in range(self.slice_finder.inputs.shape[1])}
-        self.focus_slice({})
+        self.custom_slices = [{}]
         
     def get_slice_description(self, slice_obj, metrics=None):
         """
@@ -157,27 +157,18 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results, metrics=None):
-        if not self.focused_slice_description:
-            self.update_focused_slice()
+        self.update_custom_slices()
         self.slices = [
             self.get_slice_description(slice_obj, metrics=metrics or self.metrics)
             for slice_obj in ranked_results
         ]
         
-    def focus_slice(self, slice_obj):
-        """
-        Sets the focused slice to the given dictionary or slice object.
-        """
-        if isinstance(slice_obj, Slice):
-            self.focused_slice = self.slice_finder.results.generate_slice_description(slice_obj)
-        else:
-            self.focused_slice = slice_obj
-            
-    @traitlets.observe("focused_slice")
-    def update_focused_slice(self, change=None):
-        encoded_slice = self.slice_finder.results.encode_slice(change.new if change is not None else self.focused_slice)
-        self.focused_slice_description = self.get_slice_description(encoded_slice,
-                                                                    metrics=self.metrics)
+    @traitlets.observe("custom_slices")
+    def update_custom_slices(self, change=None):
+        encoded_slices = [self.slice_finder.results.encode_slice(s) 
+                          for s in (change.new if change is not None else self.custom_slices)]
+        self.custom_slice_results = [self.get_slice_description(s, metrics=self.metrics)
+                                     for s in encoded_slices]
 
     @traitlets.observe("slice_score_requests")
     def slice_score_request(self, change):

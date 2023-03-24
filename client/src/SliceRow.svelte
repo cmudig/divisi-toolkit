@@ -4,7 +4,7 @@
   import { format } from 'd3-format';
   import SliceMetricHistogram from './metric_charts/SliceMetricHistogram.svelte';
   import SliceMetricCategoryBar from './metric_charts/SliceMetricCategoryBar.svelte';
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import Select from 'svelte-select';
   import Fa from 'svelte-fa/src/fa.svelte';
   import {
@@ -13,11 +13,14 @@
     faPlus,
     faChevronDown,
     faRotateLeft,
+    faCirclePlus,
+    faEllipsisVertical,
   } from '@fortawesome/free-solid-svg-icons';
+  import ActionMenuButton from './ActionMenuButton.svelte';
 
   const dispatch = createEventDispatcher();
 
-  export let slice: Slice;
+  export let slice: Slice = null;
   export let maxFeatures: number = 0;
   export let scoreNames: Array<string> = [];
   export let showScores = false;
@@ -25,107 +28,138 @@
   export let positiveOnly = false;
   export let valueNames: any = {}; // svelte store
 
+  export let customSlice: Slice = null; // if the slice is custom-created
   export let temporarySlice: Slice = null; // if a variable is adjusted dynamically
 
   export let scoreCellWidth = 100;
   export let scoreWidthScalers = {};
   export let metricInfo = {};
 
-  export let focusedSliceFeatureCount = 1;
+  export let rowClass = '';
+
+  export let showCreateSliceButton = false;
+  export let focusOnMount = false;
+
+  onMount(() => {
+    if (
+      !slice &&
+      Object.keys(sliceToShow.featureValues).length == 0 &&
+      focusOnMount
+    )
+      editingColumn = 0;
+  });
 
   let featureOrder = [];
-  $: if (slice) {
-    featureOrder = Object.keys(slice.featureValues);
-    if (!isFocusedSlice) featureOrder.sort();
+  $: {
+    let sliceForFeatures = slice || customSlice || temporarySlice;
+    featureOrder = Object.keys(sliceForFeatures.featureValues);
+    if (!!slice) featureOrder.sort();
     while (featureOrder.length < maxFeatures) featureOrder.push('');
   }
 
-  export let isFocusedSlice = false;
-
+  let baseSlice: Slice;
+  $: baseSlice = customSlice || slice;
   let sliceToShow: Slice;
-  $: sliceToShow = temporarySlice || slice;
+  $: sliceToShow = temporarySlice || customSlice || slice;
 
   let columnOptions = [];
   $: if (editingColumn != null) {
     // valueNames format: {raw_col_name: [col_name, {index: col_value, ...}]}
     columnOptions = Object.values($valueNames)
       .map((v) => v[0])
-      .filter((v) => !editingFeatureValuesList.find((item) => item[0] == v));
+      .filter(
+        (v) =>
+          featureOrder[editingColumn] == v ||
+          !Object.keys(baseSlice.featureValues).includes(v)
+      );
     columnOptions.sort();
   } else columnOptions = [];
 
   let editingColumn = null;
 
-  let editingFeatureValuesList: [string, any][] = [];
-  $: if (!!slice && isFocusedSlice) {
-    updateEditingFeatureList(slice);
-  } else editingFeatureValuesList = [];
-
-  function updateEditingFeatureList(slice) {
-    editingFeatureValuesList = Object.entries(slice.featureValues);
-    while (editingFeatureValuesList.length < maxFeatures)
-      editingFeatureValuesList.push([null, null]);
+  function deleteFeatureValue(col) {
+    let newFeatureValues = Object.assign({}, baseSlice.featureValues);
+    delete newFeatureValues[col];
+    dispatch('edit', newFeatureValues);
   }
 
-  $: if (isFocusedSlice) {
-    focusedSliceFeatureCount = editingFeatureValuesList.length;
-  }
-
-  function deleteFeatureValue(i) {
-    let newList = [
-      ...editingFeatureValuesList.slice(0, i),
-      ...editingFeatureValuesList.slice(i + 1),
-    ];
-    while (editingFeatureValuesList.length < maxFeatures)
-      newList.push([null, null]);
-    editingFeatureValuesList = newList;
-    submitEditedSlice();
-  }
-
-  function submitEditedSlice() {
-    dispatch(
-      'edit',
-      Object.fromEntries(editingFeatureValuesList.filter((v) => v[0] != null))
-    );
+  function editFeatureValue(col: string, newValue: any) {
+    let newFeatureValues = Object.assign({}, baseSlice.featureValues);
+    newFeatureValues[col] = newValue;
+    dispatch('edit', newFeatureValues);
   }
 </script>
 
 {#if !!sliceToShow}
-  <tr
-    class:hover:bg-slate-100={!isFocusedSlice}
-    class:border-b-2={isFocusedSlice}
-    class:border-dotted={isFocusedSlice}
-  >
+  <tr class={rowClass}>
+    <td class="py-2 px-2">
+      <div class="flex items-center h-full">
+        <ActionMenuButton>
+          {#if !!customSlice}
+            <a
+              href="#"
+              tabindex="0"
+              role="menuitem"
+              on:click={() => dispatch('duplicate')}>Duplicate</a
+            >
+            <a
+              href="#"
+              tabindex="0"
+              role="menuitem"
+              on:click={() => dispatch('delete')}>Delete</a
+            >
+          {:else}
+            <a
+              href="#"
+              tabindex="0"
+              role="menuitem"
+              on:click={() => dispatch('customize')}>Customize</a
+            >
+          {/if}
+        </ActionMenuButton>
+        {#if showCreateSliceButton}
+          <button
+            class="bg-transparent hover:opacity-60 mx-1 text-slate-600 py-2"
+            on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
+          >
+        {/if}
+      </div>
+    </td>
     {#each featureOrder as col, i}
       <td class="py-2 px-2 text-xs">
         {#if editingColumn != null && editingColumn == i}
           <Select
-            class="p-2"
+            class="p-2 focus:ring-1 focus:ring-blue-600"
             --font-size="13px"
             placeholder="Select variable"
-            value={editingFeatureValuesList[i][0]}
+            value={sliceToShow[col]}
             items={columnOptions}
             focused
             on:change={(e) => {
-              editingFeatureValuesList[i] = [
-                e.detail.value,
-                $valueNames[e.detail.value][1][0],
-              ];
-              console.log('new editing list', editingFeatureValuesList);
-              submitEditedSlice();
+              if (e.detail.value != col) {
+                editFeatureValue(
+                  e.detail.value,
+                  $valueNames[e.detail.value][1][0]
+                );
+              }
               editingColumn = null;
+              dispatch('endedit', i);
             }}
-            on:blur={() => (editingColumn = null)}
+            on:blur={() => {
+              editingColumn = null;
+              console.log('blur');
+              dispatch('endedit', i);
+            }}
           />
-        {:else if isFocusedSlice && i == 0 && editingFeatureValuesList[i][0] == null}
+        {:else if !slice && i == 0 && Object.keys(baseSlice.featureValues).length == 0}
           <button
             class="bg-slate-200 hover:bg-slate-300 px-2 py-2 mr-1 rounded text-sm font-bold w-full"
-            on:click={() => (editingColumn = i)}>Create Slice</button
+            on:click={() => (editingColumn = 0)}>Define Slice</button
           >
         {:else if col.length > 0}
           {@const featureDisabled =
             !sliceToShow.featureValues.hasOwnProperty(col) &&
-            slice.featureValues.hasOwnProperty(col)}
+            baseSlice.featureValues.hasOwnProperty(col)}
           {#if positiveOnly}
             <button
               class="bg-transparent hover:opacity-70 font-mono text-sm text-left"
@@ -139,7 +173,7 @@
               class:opacity-50={featureDisabled}
               on:click={() => dispatch('toggle', col)}>{col}</button
             >
-            {#if isFocusedSlice}
+            {#if !slice}
               <button
                 class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
                 on:click={() => (editingColumn = i)}
@@ -147,48 +181,39 @@
               >
               <button
                 class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                on:click={() => deleteFeatureValue(i)}
+                on:click={() => deleteFeatureValue(col)}
                 ><Fa icon={faTrash} /></button
               >
-              {#if editingFeatureValuesList
-                .slice(i + 1)
-                .every((v) => v[0] == null)}
+              {#if i == Object.keys(baseSlice.featureValues).length - 1}
                 <button
                   class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
                   on:click={() => {
-                    if (editingFeatureValuesList.length <= i + 1)
-                      editingFeatureValuesList = [
-                        ...editingFeatureValuesList,
-                        [null, null],
-                      ];
-                    console.log(editingFeatureValuesList);
                     editingColumn = i + 1;
+                    dispatch('beginedit', i + 1);
                   }}><Fa icon={faPlus} /></button
                 >
               {/if}
             {/if}
-            <div class="flex items-center">
+            <div class="flex items-center mt-1">
               {#if featureDisabled}
-                <span class="mt-1 ml-1 opacity-50">(any value)</span>
+                <span class="mt-1 mb-1 ml-1 opacity-50">(any value)</span>
               {:else}
                 <div
-                  class="hover:bg-slate-200 hover:transition-colors hover:duration-200 p-1 mt-1 rounded relative"
+                  class="hover:bg-slate-200 hover:transition-colors hover:duration-200 p-1 rounded relative"
                   style="width: fit-content;"
                 >
                   <select
                     value={sliceToShow.featureValues[col]}
-                    class="flat-select bg-transparent text-slate-900 text-xs focus:ring-blue-500 focus:border-blue-500 block px-1 pr-6"
+                    class="flat-select bg-transparent {!!slice &&
+                    sliceToShow.featureValues[col] != slice.featureValues[col]
+                      ? 'text-orange-700'
+                      : 'text-slate-900'} text-xs focus:ring-blue-500 focus:border-blue-500 block px-1 pr-6"
                     on:change={(e) => {
-                      if (isFocusedSlice) {
-                        editingFeatureValuesList[i] = [
-                          editingFeatureValuesList[i][0],
-                          e.currentTarget.value,
-                        ];
-                        submitEditedSlice();
+                      if (!slice) {
+                        editFeatureValue(col, e.currentTarget.value);
                       } else {
                         dispatch('edit', {
-                          feature: col,
-                          value: e.currentTarget.value,
+                          [col]: e.currentTarget.value,
                         });
                       }
                     }}
@@ -200,19 +225,21 @@
                     {/each}
                   </select>
                   <div
-                    class="absolute right-0 pr-2 top-0 bottom-0 my-auto pointer-events-none"
+                    class="absolute right-0 pr-2 top-0 bottom-0 my-auto pointer-events-none {!!slice &&
+                    sliceToShow.featureValues[col] != slice.featureValues[col]
+                      ? 'text-orange-700'
+                      : 'text-slate-900'}"
                     style="height: 12px;"
                   >
                     <Fa icon={faChevronDown} />
                   </div>
                 </div>
-                {#if !isFocusedSlice && sliceToShow.featureValues[col] != slice.featureValues[col]}
+                {#if !!slice && sliceToShow.featureValues[col] != slice.featureValues[col]}
                   <button
                     class="bg-transparent hover:opacity-60 ml-2 text-slate-600"
                     on:click={() =>
                       dispatch('edit', {
-                        feature: col,
-                        value: slice.featureValues[col],
+                        [col]: slice.featureValues[col],
                       })}><Fa icon={faRotateLeft} /></button
                   >
                 {/if}
@@ -275,6 +302,8 @@
           />
         </td>
       {/each}
+    {:else}
+      <td />
     {/if}
   </tr>
 {/if}
