@@ -1,6 +1,8 @@
 from .sampling import find_slices_by_sampling
 from .recursive import find_slices_recursive
 from .scores import *
+from scipy import sparse as sps
+import numpy as np
 
 def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=5.0, algorithm='recursive', **kwargs):
     """
@@ -32,9 +34,18 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
     import numpy as np
     
     # Check inputs
-    for col in df.columns:
-        if np.issubdtype(df[col].dtype, np.floating):
-            raise ValueError(f"Dataframe column '{col}' has floating point dtype which is unsupported")
+    if isinstance(df, pd.DataFrame):
+        for col in df.columns:
+            if np.issubdtype(df[col].dtype, np.floating):
+                raise ValueError(f"Dataframe column '{col}' has floating point dtype which is unsupported")
+    elif isinstance(df, np.ndarray):
+        if np.issubdtype(df.dtype, np.floating):
+            raise ValueError(f"Input array has floating point dtype which is unsupported")
+    elif isinstance(df, sps.csr_matrix):
+        if df.max() > 1:
+            raise ValueError("Sparse matrices must be binary")
+    else:
+        raise ValueError("Unsupported type for df, must be dataframe or csr_matrix")
     
     if algorithm.lower() == 'recursive':
         assert 'n_slices' in kwargs, "n_slices parameter must be passed to find_slices for recursive algorithm"

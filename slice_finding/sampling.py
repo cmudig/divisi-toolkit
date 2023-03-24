@@ -3,12 +3,14 @@ import pandas as pd
 from .utils import RankedList, make_mask
 from .slices import Slice, RankedSliceList
 import tqdm
+from scipy import sparse as sps
 
 def explore_groups_beam_search(inputs, 
                                source_row, 
                                score_fns, 
                                seen_slices, 
                                group_filter=None, 
+                               positive_only=None,
                                max_features=5, 
                                min_items=5, 
                                min_weight=0.0, 
@@ -23,6 +25,24 @@ def explore_groups_beam_search(inputs,
     else:
         best_groups = set([Slice({}, {})])
 
+    if isinstance(inputs, sps.csr_matrix):
+        if inputs.max() > 1:
+            raise ValueError("Sparse matrices must be binary")
+        if positive_only == False:
+            raise ValueError("positive_only must be True or None for sparse matrices")
+        d = sps.lil_matrix((inputs.shape[1], inputs.shape[1]))
+        source_row = source_row.toarray().flatten()
+        d.setdiag(source_row)
+        mat_for_masks = (inputs @ d).tocsc()
+        positive_only = True
+    else:
+        mat_for_masks = inputs
+        
+    try:
+        input_columns = mat_for_masks.columns
+    except AttributeError:
+        input_columns = np.arange(mat_for_masks.shape[1])
+        
     # Iterate over the columns max_features times
     for col_size in range(max_features):
         if num_candidates is not None:
@@ -30,7 +50,10 @@ def explore_groups_beam_search(inputs,
         else:
             saved_groups = set(g for g in best_groups)
         for base_slice in saved_groups:
-            for col in inputs.columns:
+            base_mask = make_mask(mat_for_masks, base_slice)
+            for col in input_columns:
+                # Skip if only slicing using positive values and the row has a negative value
+                if positive_only and not source_row[col]: continue
                 # Skip if we've already looked at this column
                 if col in base_slice and base_slice[col] == source_row[col]: continue
                 
@@ -51,7 +74,7 @@ def explore_groups_beam_search(inputs,
                     new_slice.score_values = slice_scores
                 else:
                     # Generate a mask for the slice and score it
-                    mask = make_mask(inputs, new_slice)
+                    mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask)
                     if mask.sum() < min_items: 
                         seen_slices[new_slice] = None
                         continue
@@ -82,6 +105,7 @@ def find_slices_by_sampling(inputs,
                             num_samples=10, 
                             num_candidates=20,
                             holdout_fraction=0.0,
+                            positive_only=None,
                             min_weight=0.0,
                             max_weight=5.0,
                             show_progress=True):
@@ -109,6 +133,9 @@ def find_slices_by_sampling(inputs,
         set to None, all candidates will be kept.
     :param holdout_fraction: Proportion of the dataset that will be kept for
         final slice scoring.
+    :param positive_only: If True, constrain valid slice values to be only
+        positive values (columns with a value of zero for an instance will be
+        skipped).
     :param min_weight: The minimum weight that will be used to calculate a score
         value from an individual score function.
     :param max_weight: The maximum weight that will be used to calculate a score
@@ -120,7 +147,7 @@ def find_slices_by_sampling(inputs,
     all_scores = []
     seen_slices = {}
     
-    discovery_mask = (np.random.uniform(size=len(inputs)) >= holdout_fraction)
+    discovery_mask = (np.random.uniform(size=inputs.shape[0]) >= holdout_fraction)
     if source_mask is not None:
         if isinstance(source_mask, pd.Series):
             source_mask = source_mask.values
@@ -129,7 +156,7 @@ def find_slices_by_sampling(inputs,
                                        size=num_samples, 
                                        replace=False)
     else:
-        sample_idxs = np.random.choice(np.arange(len(inputs))[discovery_mask], 
+        sample_idxs = np.random.choice(np.arange(inputs.shape[0])[discovery_mask], 
                                        size=num_samples, 
                                        replace=False)
         
@@ -138,9 +165,13 @@ def find_slices_by_sampling(inputs,
     discovery_score_fns = {fn_name: fn.subslice(discovery_mask)
                            for fn_name, fn in score_fns.items()}
     
+    if isinstance(inputs, pd.DataFrame):
+        discovery_inputs = inputs[discovery_mask].reset_index(drop=True)
+    else:
+        discovery_inputs = inputs[discovery_mask]
     for sample_idx in bar:
-        source_row = inputs.iloc[sample_idx]
-        all_scores += explore_groups_beam_search(inputs[discovery_mask].reset_index(drop=True),
+        source_row = inputs.iloc[sample_idx] if isinstance(inputs, pd.DataFrame) else inputs[sample_idx]
+        all_scores += explore_groups_beam_search(discovery_inputs,
                                                  source_row,
                                                  discovery_score_fns,
                                                  seen_slices=seen_slices,
