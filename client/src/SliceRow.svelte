@@ -101,12 +101,14 @@
               href="#"
               tabindex="0"
               role="menuitem"
+              title="Create a new custom slice based on this slice"
               on:click={() => dispatch('duplicate')}>Duplicate</a
             >
             <a
               href="#"
               tabindex="0"
               role="menuitem"
+              title="Delete this custom slice"
               on:click={() => dispatch('delete')}>Delete</a
             >
           {:else}
@@ -114,6 +116,7 @@
               href="#"
               tabindex="0"
               role="menuitem"
+              title="Create a new custom slice based on this slice"
               on:click={() => dispatch('customize')}>Customize</a
             >
           {/if}
@@ -121,6 +124,7 @@
         {#if showCreateSliceButton}
           <button
             class="bg-transparent hover:opacity-60 mx-1 text-slate-600 py-2"
+            title="Add a new custom slice"
             on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
           >
         {/if}
@@ -156,6 +160,7 @@
         {:else if !slice && i == 0 && Object.keys(baseSlice.featureValues).length == 0}
           <button
             class="bg-slate-200 hover:bg-slate-300 px-2 py-2 mr-1 rounded text-sm font-bold w-full"
+            title="Create a custom slice"
             on:click={() => (editingColumn = 0)}>Define Slice</button
           >
         {:else if col.length > 0}
@@ -167,18 +172,25 @@
               class="bg-transparent hover:opacity-70 font-mono text-sm text-left"
               class:opacity-30={featureDisabled}
               class:line-through={featureDisabled}
+              title={featureDisabled
+                ? 'Reset slice'
+                : 'Test effect of removing this feature from the slice'}
               on:click={() => dispatch('toggle', col)}>{col}</button
             >
           {:else}
             <button
               class="bg-sky-100 hover:bg-sky-200 px-2 py-1 mr-1 rounded text-sm shadow-sm font-mono"
               class:opacity-50={featureDisabled}
+              title={featureDisabled
+                ? 'Reset slice'
+                : 'Test effect of removing this feature from the slice'}
               on:click={() => dispatch('toggle', col)}>{col}</button
             >
             {#if !slice}
               <button
                 class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
                 on:click={() => (editingColumn = i)}
+                title="Choose a different feature to slice by"
                 ><Fa icon={faPencil} /></button
               >
               <button
@@ -189,6 +201,7 @@
               {#if i == Object.keys(baseSlice.featureValues).length - 1}
                 <button
                   class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                  title="Slice by an additional feature"
                   on:click={() => {
                     editingColumn = i + 1;
                     dispatch('beginedit', i + 1);
@@ -199,6 +212,10 @@
             <div class="flex items-center mt-1">
               {#if featureDisabled}
                 <span class="mt-1 mb-1 ml-1 opacity-50">(any value)</span>
+              {:else if !customSlice}
+                <span class="mt-1 mb-1 ml-1"
+                  >{sliceToShow.featureValues[col]}</span
+                >
               {:else}
                 <div
                   class="hover:bg-slate-200 hover:transition-colors hover:duration-200 p-1 rounded relative"
@@ -239,6 +256,7 @@
                 {#if !!slice && sliceToShow.featureValues[col] != slice.featureValues[col]}
                   <button
                     class="bg-transparent hover:opacity-60 ml-2 text-slate-600"
+                    title="Reset this feature to its original value"
                     on:click={() =>
                       dispatch('edit', {
                         [col]: slice.featureValues[col],
