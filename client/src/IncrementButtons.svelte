@@ -18,14 +18,14 @@
 
 <div class="flex items-center">
   <button
-    class="disabled:opacity-50 btn-slate font-bold py-2 px-3 rounded-l rounded-r-none"
+    class="disabled:opacity-50 btn-slate font-bold py-1 px-2 rounded-l rounded-r-none"
     disabled={value <= min + 1e-6}
     on:click={() => update(-step)}
   >
     <Fa icon={faAngleDown} />
   </button>
   <button
-    class="disabled:opacity-50 btn-slate font-bold py-2 px-3 rounded-r rounded-l-none"
+    class="disabled:opacity-50 btn-slate font-bold py-1 px-2 rounded-r rounded-l-none"
     disabled={value >= max - 1e-6}
     on:click={() => update(step)}
   >

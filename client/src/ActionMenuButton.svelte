@@ -36,6 +36,7 @@
   <button
     class="bg-transparent hover:opacity-60 text-slate-600 py-2 px-1 mr-2"
     id="menu-button"
+    title="Show more actions"
     on:click|stopPropagation={showOptionsMenu}
     aria-expanded={visible}
     aria-label="Options menu"

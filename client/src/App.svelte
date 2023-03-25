@@ -3,6 +3,8 @@
   import { traitlet } from './stores';
   import { format } from 'd3-format';
   import IncrementButtons from './IncrementButtons.svelte';
+  import ScoreWeightSlider from './ScoreWeightSlider.svelte';
+  import ScoreWeightMenu from './ScoreWeightMenu.svelte';
 
   export let model;
 
@@ -30,12 +32,6 @@
   $: {
     scoreNames = Object.keys($scoreWeights);
     scoreNames.sort();
-  }
-
-  function updateScoreWeight(scoreName: string, value: number) {
-    let newScoreWeights = Object.assign({}, $scoreWeights);
-    newScoreWeights[scoreName] = value;
-    $scoreWeights = newScoreWeights;
   }
 </script>
 
@@ -92,26 +88,7 @@
   >
     <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">
       <div class="p-4 bg-slate-200 rounded w-full min-h-full">
-        <div>
-          <div class="text-sm font-bold">Score weights</div>
-          {#each scoreNames as score}
-            <div class="mb-1 flex flex-wrap items-center text-sm">
-              <div class="flex-auto">
-                {score}
-              </div>
-              <div class="font-bold mr-2">
-                {format('.1f')($scoreWeights[score])}
-              </div>
-              <IncrementButtons
-                value={$scoreWeights[score]}
-                on:change={(e) => updateScoreWeight(score, e.detail)}
-                min={0}
-                max={5}
-                step={0.1}
-              />
-            </div>
-          {/each}
-        </div>
+        <ScoreWeightMenu bind:weights={$scoreWeights} {scoreNames} />
       </div>
     </div>
     <div class="flex-auto overflow-scroll h-full">
