@@ -53,7 +53,7 @@
   $: {
     let sliceForFeatures = slice || customSlice || temporarySlice;
     featureOrder = Object.keys(sliceForFeatures.featureValues);
-    if (!!slice) featureOrder.sort();
+    featureOrder.sort();
     while (featureOrder.length < maxFeatures) featureOrder.push('');
   }
 
@@ -83,8 +83,9 @@
     dispatch('edit', newFeatureValues);
   }
 
-  function editFeatureValue(col: string, newValue: any) {
+  function editFeatureValue(oldCol: string, col: string, newValue: any) {
     let newFeatureValues = Object.assign({}, baseSlice.featureValues);
+    if (oldCol != col) delete newFeatureValues[oldCol];
     newFeatureValues[col] = newValue;
     dispatch('edit', newFeatureValues);
   }
@@ -138,6 +139,7 @@
             on:change={(e) => {
               if (e.detail.value != col) {
                 editFeatureValue(
+                  col,
                   e.detail.value,
                   $valueNames[e.detail.value][1][0]
                 );
@@ -210,7 +212,7 @@
                       : 'text-slate-900'} text-xs focus:ring-blue-500 focus:border-blue-500 block px-1 pr-6"
                     on:change={(e) => {
                       if (!slice) {
-                        editFeatureValue(col, e.currentTarget.value);
+                        editFeatureValue(col, col, e.currentTarget.value);
                       } else {
                         dispatch('edit', {
                           [col]: e.currentTarget.value,
