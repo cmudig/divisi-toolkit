@@ -61,8 +61,14 @@
     let newScoreWeights = Object.assign({}, weights);
     let averageWeight =
       totalWeight / Object.values(weights).filter((w) => w > 0.0).length;
+    let newTotalWeight = totalWeight + averageWeight;
 
-    newScoreWeights[name] = averageWeight;
+    Object.keys(newScoreWeights).forEach(
+      (n) =>
+        (newScoreWeights[n] =
+          (newScoreWeights[n] * totalWeight) / newTotalWeight)
+    );
+    newScoreWeights[name] = (averageWeight * totalWeight) / newTotalWeight;
     weights = newScoreWeights;
   }
 
