@@ -5,6 +5,8 @@ from .slices import Slice, RankedSliceList
 import tqdm
 from scipy import sparse as sps
 from numba import njit, prange
+from multiprocessing import Process, Pipe
+import time
 
 @njit
 def tabulate_score_inputs_matrix(discrete_data, score_data, hist_sizes, filter_row, anchor_row):
@@ -123,6 +125,203 @@ def tabulate_score_inputs_sparse(data, i_data, j_data, n_cols, score_data, hist_
 
     return sums, hists, counts
 
+def slice_scoring_worker(inputs, score_data, hist_sizes, query_conn):
+    """
+    Handles scoring a set of slices on a given subset of data, in either numpy
+    array or scipy csc format.
+    
+    :param inputs: A numpy array or scipy csc sparse array containing discrete
+        inputs
+    :param score_data: A numpy array of score data to use to calculate sums,
+        counts, histograms, etc.
+    :param hist_sizes: A vector providing the maximum value for each
+        column in score_data. A value of zero means no histogram will
+        be computed for that column; histograms can only be computed
+        for discrete-valued score data (integers from 0 to hist_size)
+    :param query_conn: A multiprocessing Connection (e.g. from a Pipe) that
+        can be used to receive task inputs and send results. The inputs should
+        be of the form (base_slice, source_row, cols_to_score) where base_slice
+        is a dict of col-index/value pairs, source_row is an indexable object
+        representing values that should be filtered for in considered slices,
+        and cols_to_score is a list of integers representing which columns to
+        consider adding to the slice. The output will be a tuple (sums, hists,
+        counts) where each is a 3D array where the first dimension = score data
+        columns, second dimension = input columns (zeros where an index was not
+        included in cols_to_score), and the third dimension is max of hist_sizes
+        for hists and 1 for others.
+    """
+            
+    univariate_masks = {}
+    
+    while True:
+        task = query_conn.recv()
+        if task == "STOP": return
+        base_slice, source_row, cols_to_score = task
+        base_slice = Slice(base_slice)
+        base_mask = make_mask(inputs, base_slice, univariate_masks=univariate_masks)
+        
+        sums = np.zeros((score_data.shape[1], inputs.shape[1], 1))
+        hists = np.zeros((score_data.shape[1], inputs.shape[1], np.max(hist_sizes)), dtype=np.int32)
+        counts = np.zeros((score_data.shape[1], inputs.shape[1], 1), dtype=np.int32)
+        
+        hist_able_mask = hist_sizes > 0
+        hist_indexes = np.argwhere(hist_able_mask).flatten()
+        hist_able_scores = score_data[:,hist_able_mask].astype(np.uint16)
+    
+        # Enumerate columns to score
+        for i in cols_to_score:
+            mask = make_mask(inputs, base_slice.subslice(i, source_row[i]), existing_mask=base_mask, univariate_masks=univariate_masks)
+            sums[:,i,0] = score_data[mask].sum(axis=0)
+            counts[:,i,0] = mask.sum()
+            for j, hist_idx in enumerate(hist_indexes):
+                # print(j, i, hist_able_scores[mask, j].shape, hists.shape)
+                hists[np.ix_([hist_idx], [i], hist_able_scores[mask, j])] += 1
+            
+        query_conn.send((sums, hists, counts))
+    
+
+def explore_groups_beam_search_multi(inputs, 
+                                     source_row, 
+                                     score_fns, 
+                                     score_fn_order,
+                                     score_data,
+                                     hist_sizes,
+                                     seen_slices, 
+                                     pipes,
+                                     group_filter=None, 
+                                     positive_only=None,
+                                     max_features=5, 
+                                     min_items=5, 
+                                     min_weight=0.0, 
+                                     max_weight=5.0, 
+                                     num_candidates=20):
+    """
+    Version of explore_groups_beam_search that uses a set of multiprocessing
+    Processes to distribute slice scoring.
+    """
+    scored_slices = set()
+    if num_candidates is not None:
+        # Maintain a ranking for each function separately, as different slices may
+        # maximize different functions
+        best_groups = {fn_name: RankedList(num_candidates, [(Slice({}, {}), -1e9)]) 
+                        for fn_name in score_fns}
+    else:
+        best_groups = set([Slice({}, {})])
+
+    if isinstance(inputs, sps.csr_matrix):
+        if inputs.max() > 1:
+            raise ValueError("Sparse matrices must be binary")
+        if positive_only == False:
+            raise ValueError("positive_only must be True or None for sparse matrices")
+        d = sps.lil_matrix((inputs.shape[1], inputs.shape[1]))
+        source_row = source_row.toarray().flatten()
+        d.setdiag(source_row)
+        mat_for_masks = (inputs @ d).tocsc()
+        positive_only = True
+    else:
+        mat_for_masks = inputs
+        
+    try:
+        input_columns = mat_for_masks.columns
+    except AttributeError:
+        input_columns = np.arange(mat_for_masks.shape[1])
+    
+    univariate_masks = {}
+
+    time_scoring_slices = 0.0
+    num_base_slices = 0
+    # Iterate over the columns max_features times
+    for col_size in range(max_features):
+        if num_candidates is not None:
+            saved_groups = set([g for _, gset in best_groups.items() for g in gset.items])
+        else:
+            saved_groups = set(g for g in best_groups)
+        
+        # TODO send tasks from multiple base slices asynchronously then retrieve them
+        for base_slice in saved_groups:
+            cols_to_score = []
+            slice_expansions = {}
+            for i, col in enumerate(input_columns):
+                # Skip if only slicing using positive values and the row has a negative value
+                if positive_only and not source_row[col]: continue
+                # Skip if we've already looked at this column
+                if col in base_slice and base_slice[col] == source_row[col]: continue
+                
+                new_slice = base_slice.subslice(col, source_row[col])
+                
+                # Skip if the user wants to filter this slice out
+                if new_slice in seen_slices and len(new_slice.feature_values) == max_features:
+                    continue
+                if new_slice in scored_slices: 
+                    continue
+                if group_filter is not None and not group_filter(new_slice): 
+                    continue
+
+                if new_slice in seen_slices:
+                    # Retrieve existing scores
+                    slice_scores = seen_slices[new_slice]
+                    if not slice_scores: continue
+                    new_slice.score_values = slice_scores
+                    slice_expansions[new_slice] = slice_scores
+                else:
+                    cols_to_score.append(i)
+                            
+            if isinstance(inputs, pd.DataFrame):
+                index_slice = {inputs.columns.get_loc(k): v for k, v in base_slice.feature_values.items()}
+            else:
+                index_slice = base_slice.feature_values
+            
+            a = time.time()
+            for p in pipes:
+                p[0].send((index_slice, source_row, cols_to_score))
+            sums = np.zeros((score_data.shape[1], inputs.shape[1], 1))
+            hists = np.zeros((score_data.shape[1], inputs.shape[1], np.max(hist_sizes)), dtype=np.int32)
+            counts = np.zeros((score_data.shape[1], inputs.shape[1], 1), dtype=np.int32)
+            for p in pipes:
+                sums_batch, hists_batch, counts_batch = p[0].recv()
+                sums += sums_batch
+                hists += hists_batch
+                counts += counts_batch
+            time_scoring_slices += (time.time() - a)
+            num_base_slices += 1
+                
+            for i in cols_to_score:
+                col = input_columns[i]
+                new_slice = base_slice.subslice(col, source_row[col])
+                
+                # Generate a mask for the slice and score it
+                if counts.shape[1] > 0 and counts[0,i,0] < min_items: 
+                    seen_slices[new_slice] = None
+                    continue
+
+                itemized_masks = [make_mask(mat_for_masks, Slice({c: v}), univariate_masks=univariate_masks)
+                                  for (c, v) in new_slice.feature_values.items()]
+                for j, key in enumerate(score_fn_order):
+                    new_slice.score_values[key] = score_fns[key].calculate_score_fast(new_slice,
+                                                                                        sums[j,i,0],
+                                                                                        hists[j,i,:],
+                                                                                        counts[j,i,0],
+                                                                                        inputs.shape[0],
+                                                                                        itemized_masks)
+
+                scored_slices.add(new_slice)
+                slice_expansions[new_slice] = new_slice.score_values
+                seen_slices[new_slice] = new_slice.score_values
+                if len(seen_slices) % 10000 == 0: print("Seen {} groups".format(len(seen_slices)))
+                
+            for new_slice in slice_expansions:
+                if num_candidates is not None:
+                    for fn_name in score_fns:
+                        # Add to each ranking the score where only the current score
+                        # function's value is maximized
+                        score = sum((max_weight if f == fn_name else min_weight) * new_slice.score_values[f] for f in score_fns)
+                        best_groups[fn_name].add(new_slice, score)
+                else:
+                    best_groups.add(new_slice)
+
+    print(time_scoring_slices / num_base_slices)
+    return list(scored_slices)
+            
 def explore_groups_beam_search(inputs, 
                                source_row, 
                                score_fns, 
@@ -153,23 +352,19 @@ def explore_groups_beam_search(inputs,
         d.setdiag(source_row)
         mat_for_masks = (inputs @ d).tocsc()
         positive_only = True
-        implementation = "numba"
     else:
         mat_for_masks = inputs
-        implementation = "default" # "numba" if inputs.shape[1] > 100 else "default"
         
     try:
         input_columns = mat_for_masks.columns
     except AttributeError:
         input_columns = np.arange(mat_for_masks.shape[1])
     
-    if implementation == "numba":
-        score_fn_order = list(score_fns.keys())
-        score_data = np.vstack([score_fns[name].data if score_fns[name].data is not None else np.zeros(inputs.shape[0])
-                                for name in score_fn_order]).T
-
     univariate_masks = {}
     
+    time_scoring_slices = 0.0
+    num_base_slices = 0
+
     # Iterate over the columns max_features times
     for col_size in range(max_features):
         if num_candidates is not None:
@@ -177,33 +372,8 @@ def explore_groups_beam_search(inputs,
         else:
             saved_groups = set(g for g in best_groups)
         for base_slice in saved_groups:
-            if implementation == "numba":
-                hist_sizes = np.array([np.max(score_fns[name].data) + 1 
-                                       if score_fns[name].data is not None and np.issubdtype(score_fns[name].data.dtype, np.integer) else 0
-                                       for name in score_fn_order])
-                
-                if isinstance(inputs, sps.csr_matrix):
-                    sums, hists, counts = tabulate_score_inputs_sparse(inputs.data, 
-                                                                       inputs.indptr, 
-                                                                       inputs.indices,
-                                                                       inputs.shape[1],
-                                                                       score_data,
-                                                                       hist_sizes,
-                                                                       np.array(list(base_slice.feature_values.keys())),
-                                                                       source_row)
-                else:
-                    if isinstance(inputs, pd.DataFrame):
-                        filter_cols = np.array([inputs.columns.get_loc(k) for k in base_slice.feature_values.keys()]).astype(np.uint16)
-                    else:
-                        filter_cols = np.array(list(base_slice.feature_values.keys())).astype(np.uint16)
-                    sums, hists, counts = tabulate_score_inputs_matrix(inputs.values if isinstance(inputs, pd.DataFrame) else inputs,
-                                            score_data,
-                                            hist_sizes,
-                                            filter_cols,
-                                            source_row.values if isinstance(source_row, pd.Series) else source_row)
-                    
-            else:
-                base_mask = make_mask(mat_for_masks, base_slice, univariate_masks=univariate_masks)
+            a = time.time()
+            base_mask = make_mask(mat_for_masks, base_slice, univariate_masks=univariate_masks)
                 
             for i, col in enumerate(input_columns):
                 # Skip if only slicing using positive values and the row has a negative value
@@ -227,26 +397,14 @@ def explore_groups_beam_search(inputs,
                     if not slice_scores: continue
                     new_slice.score_values = slice_scores
                 else:
-                    if implementation == "numba":
-                        if counts.shape[1] > 0 and counts[0,i,0] < min_items: 
-                            seen_slices[new_slice] = None
-                            continue
-
-                        for j, key in enumerate(score_fn_order):
-                            new_slice.score_values[key] = score_fns[key].calculate_score_fast(new_slice,
-                                                                                              sums[j,i,0],
-                                                                                              hists[j,i,:],
-                                                                                              counts[j,i,0],
-                                                                                              inputs.shape[0])
-                    else:
-                        # Generate a mask for the slice and score it
-                        mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask, univariate_masks=univariate_masks)
-                        if mask.sum() < min_items: 
-                            seen_slices[new_slice] = None
-                            continue
-                        itemized_masks = [univariate_masks[(c, v)] for (c, v) in new_slice.feature_values.items()]
-                        for key, scorer in score_fns.items():
-                            new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
+                    # Generate a mask for the slice and score it
+                    mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask, univariate_masks=univariate_masks)
+                    if mask.sum() < min_items: 
+                        seen_slices[new_slice] = None
+                        continue
+                    itemized_masks = [univariate_masks[(c, v)] for (c, v) in new_slice.feature_values.items()]
+                    for key, scorer in score_fns.items():
+                        new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
                     scored_slices.add(new_slice)
                 
                 seen_slices[new_slice] = new_slice.score_values
@@ -260,6 +418,10 @@ def explore_groups_beam_search(inputs,
                         best_groups[fn_name].add(new_slice, score)
                 else:
                     best_groups.add(new_slice)
+            time_scoring_slices += (time.time() - a)
+            num_base_slices += 1
+
+    print(time_scoring_slices / num_base_slices)
 
     return list(scored_slices)
 
@@ -283,7 +445,7 @@ class SamplingSliceFinder:
                  max_weight=5.0,
                  similarity_threshold=0.9,
                  show_progress=True,
-                 explore_fn=explore_groups_beam_search):
+                 n_workers=1):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
         self.score_fns = score_fns
@@ -297,7 +459,8 @@ class SamplingSliceFinder:
         self.max_weight = max_weight
         self.show_progress = show_progress
         self.similarity_threshold = similarity_threshold
-        self.explore_fn = explore_fn # TODO remove
+        self.n_workers = n_workers
+        self.explore_fn = explore_groups_beam_search_multi if self.n_workers > 1 else explore_groups_beam_search
         if isinstance(self.raw_inputs, sps.csr_matrix):
             if self.raw_inputs.max() > 1:
                 raise ValueError("Sparse matrices must be binary")
@@ -342,18 +505,67 @@ class SamplingSliceFinder:
         else:
             discovery_inputs = self.raw_inputs[self.discovery_mask]
         
+        if self.n_workers > 1:
+            if isinstance(discovery_inputs, sps.csr_matrix):
+                mat_for_workers = discovery_inputs.tocsc()
+            else:
+                if isinstance(discovery_inputs, pd.DataFrame):
+                    mat_for_workers = discovery_inputs.values
+                else:
+                    mat_for_workers = discovery_inputs
+                
+            score_fn_order = list(discovery_score_fns.keys())
+            score_data = np.vstack([discovery_score_fns[name].data if discovery_score_fns[name].data is not None else np.zeros(discovery_inputs.shape[0])
+                                    for name in score_fn_order]).T
+            hist_sizes = np.array([np.max(discovery_score_fns[name].data) + 1 
+                                if discovery_score_fns[name].data is not None and np.issubdtype(discovery_score_fns[name].data.dtype, np.integer) else 0
+                                for name in score_fn_order])
+
+            # Create a set of processes
+            n_processes = 4
+            batch_size = discovery_inputs.shape[0] // n_processes
+            pipes = [Pipe() for _ in range(n_processes)]
+            processes = [Process(target=slice_scoring_worker, args=(
+                mat_for_workers[i * batch_size: (i + 1) * batch_size],
+                score_data[i * batch_size: (i + 1) * batch_size],
+                hist_sizes,
+                pipes[i][1]
+                )) for i in range(n_processes)]
+            for p in processes: p.start()
+            
+
         for sample_idx in bar:
             source_row = self.raw_inputs.iloc[sample_idx] if isinstance(self.raw_inputs, pd.DataFrame) else self.raw_inputs[sample_idx]
-            self.all_scores += self.explore_fn(discovery_inputs,
-                                                        source_row,
-                                                        discovery_score_fns,
-                                                        seen_slices=self.seen_slices,
-                                                        group_filter=self.group_filter,
-                                                        max_features=self.max_features,
-                                                        min_items=self.min_items,
-                                                        num_candidates=self.num_candidates,
-                                                        min_weight=self.min_weight,
-                                                        max_weight=self.max_weight)
+            if self.n_workers > 1:
+                self.all_scores += self.explore_fn(discovery_inputs,
+                                                            source_row,
+                                                            discovery_score_fns,
+                                                            score_fn_order,
+                                                            score_data,
+                                                            hist_sizes,
+                                                            self.seen_slices,
+                                                            pipes,
+                                                            group_filter=self.group_filter,
+                                                            max_features=self.max_features,
+                                                            min_items=self.min_items,
+                                                            num_candidates=self.num_candidates,
+                                                            min_weight=self.min_weight,
+                                                            max_weight=self.max_weight)
+            else:
+                self.all_scores += self.explore_fn(discovery_inputs,
+                                                            source_row,
+                                                            discovery_score_fns,
+                                                            seen_slices=self.seen_slices,
+                                                            group_filter=self.group_filter,
+                                                            max_features=self.max_features,
+                                                            min_items=self.min_items,
+                                                            num_candidates=self.num_candidates,
+                                                            min_weight=self.min_weight,
+                                                            max_weight=self.max_weight)
+            
+        if self.n_workers > 1:
+            for p in pipes: p[0].send("STOP")
+            for p in processes: p.join()
             
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
