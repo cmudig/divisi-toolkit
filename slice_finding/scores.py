@@ -45,6 +45,17 @@ class ScoreFunctionBase:
         """
         return ScoreFunctionBase(self.score_type, self.data[indexes])
     
+    def meta_dict(self):
+        """A metadata dictionary for the score function, excluding the data."""
+        base = {"type": type(self).__name__}
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        """A metadata dictionary for the score function, excluding the data."""
+        score_type = meta_dict["type"]
+        return globals()[score_type].from_dict(meta_dict, data)
+    
 class EntropyScore(ScoreFunctionBase):
     """
     A score function that compares the entropy of an outcome within the slice to
@@ -96,6 +107,15 @@ class EntropyScore(ScoreFunctionBase):
             return (self.eps + slice_entropy) / (self.eps + self._base_entropy)
         return (self.eps + self._base_entropy) / (self.eps + slice_entropy)
     
+    def meta_dict(self):
+        base = super().meta_dict()
+        base.update({"priority": self.priority, "eps": self.eps})
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return EntropyScore(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
+    
 class MeanDifferenceScore(ScoreFunctionBase):
     """
     A score function that returns higher values when the absolute difference in
@@ -115,6 +135,14 @@ class MeanDifferenceScore(ScoreFunctionBase):
         
     def subslice(self, indexes):
         return MeanDifferenceScore(self.data[indexes])
+    
+    def meta_dict(self):
+        base = super().meta_dict()
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return MeanDifferenceScore(data)
     
 class SliceSizeScore(ScoreFunctionBase):
     """
@@ -145,7 +173,17 @@ class SliceSizeScore(ScoreFunctionBase):
     
     def subslice(self, indexes):
         return SliceSizeScore(ideal_fraction=self.ideal_fraction, spread=self.spread)
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        base.update({"ideal_fraction": self.ideal_fraction, "spread": self.spread})
+        return base
     
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return SliceSizeScore(ideal_fraction=meta_dict["ideal_fraction"], spread=meta_dict["spread"])
+    
+
 class NumFeaturesScore(ScoreFunctionBase):
     """
     A score function that penalizes slices with too many feature values
@@ -162,6 +200,14 @@ class NumFeaturesScore(ScoreFunctionBase):
         return self.calculate_score(slice, None, univariate_masks)
     
     def subslice(self, indexes):
+        return NumFeaturesScore()
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
         return NumFeaturesScore()
     
 class OutcomeRateScore(ScoreFunctionBase):
@@ -197,6 +243,15 @@ class OutcomeRateScore(ScoreFunctionBase):
     def subslice(self, indexes):
         return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps)
 
+    def meta_dict(self):
+        base = super().meta_dict()
+        base.update({"inverse": self.inverse, "eps": self.eps})
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return OutcomeRateScore(data, inverse=meta_dict["inverse"], eps=meta_dict["eps"])
+    
 
 class OutcomeShareScore(ScoreFunctionBase):
     """
@@ -221,6 +276,14 @@ class OutcomeShareScore(ScoreFunctionBase):
     
     def subslice(self, indexes):
         return OutcomeShareScore(self.data[indexes])
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return OutcomeShareScore(data)
     
 class InteractionEffectScore(ScoreFunctionBase):
     """
@@ -256,7 +319,16 @@ class InteractionEffectScore(ScoreFunctionBase):
         itemized_effect = max(self._superslice_score(ms)
                     for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks))
         return max(0, overall_effect / itemized_effect)
-
     
     def subslice(self, indexes):
         return InteractionEffectScore(self.data[indexes])
+    
+    def meta_dict(self):
+        base = super().meta_dict()
+        base["eps"] = self.eps
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return InteractionEffectScore(data, eps=meta_dict["eps"])
+    
