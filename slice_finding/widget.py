@@ -122,21 +122,20 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.num_slices = 10
         
         try:
-            sample_step = 5
-            start_time = time.time()
+            sample_step = max(self.num_samples // 5, 50)
             i = 0
+            base_progress = 0
             while i < self.num_samples:
+                def update_sampler_progress(progress, total):
+                    self.sampler_run_progress = base_progress + progress / self.num_samples
+                self.slice_finder.progress_fn = update_sampler_progress
+                
                 results, sampled_idxs = self.slice_finder.sample(min(sample_step, self.num_samples - i))
                 self.num_samples_drawn += len(sampled_idxs)
                 ranked_results = results.rank(self.score_weights, n_slices=self.num_slices)
                 self.update_slices(ranked_results)
-                self.sampler_run_progress += len(sampled_idxs) / self.num_samples
+                base_progress += len(sampled_idxs) / self.num_samples
                 i += sample_step
-                if start_time is not None:
-                    # After the first sampling, check the time and adjust progress intervals accordingly
-                    per_instance_time = (time.time() - start_time) / sample_step
-                    sample_step = min(20, max(1, int(5 / per_instance_time)))
-                    start_time = None
                 if self.should_cancel:
                     break
             self.running_sampler = False

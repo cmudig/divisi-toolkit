@@ -45,6 +45,17 @@ class ScoreFunctionBase:
         """
         return ScoreFunctionBase(self.score_type, self.data[indexes])
     
+    def meta_dict(self):
+        """A metadata dictionary for the score function, excluding the data."""
+        base = {"type": type(self).__name__}
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        """A metadata dictionary for the score function, excluding the data."""
+        score_type = meta_dict["type"]
+        return globals()[score_type].from_dict(meta_dict, data)
+    
 class EntropyScore(ScoreFunctionBase):
     """
     A score function that compares the entropy of an outcome within the slice to
@@ -87,7 +98,7 @@ class EntropyScore(ScoreFunctionBase):
     def subslice(self, indexes):
         return EntropyScore(self.data[indexes], priority=self.priority, eps=self.eps)
     
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         slice_hist = slice_hist[slice_hist > 0]
         slice_entropy = -np.sum((slice_hist / slice_count) * np.log2(slice_hist / slice_count))
         if np.isnan(slice_entropy):
@@ -95,6 +106,15 @@ class EntropyScore(ScoreFunctionBase):
         if self.priority == 'high':
             return (self.eps + slice_entropy) / (self.eps + self._base_entropy)
         return (self.eps + self._base_entropy) / (self.eps + slice_entropy)
+    
+    def meta_dict(self):
+        base = super().meta_dict()
+        base.update({"priority": self.priority, "eps": self.eps})
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return EntropyScore(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
     
 class MeanDifferenceScore(ScoreFunctionBase):
     """
@@ -110,11 +130,19 @@ class MeanDifferenceScore(ScoreFunctionBase):
     def calculate_score(self, slice, mask, univariate_masks):
         return np.abs(self.data[mask].mean() - self._mean) / self._std
     
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         return np.abs(slice_sum / slice_count - self._mean) / self._std
         
     def subslice(self, indexes):
         return MeanDifferenceScore(self.data[indexes])
+    
+    def meta_dict(self):
+        base = super().meta_dict()
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return MeanDifferenceScore(data)
     
 class SliceSizeScore(ScoreFunctionBase):
     """
@@ -139,13 +167,23 @@ class SliceSizeScore(ScoreFunctionBase):
         frac = mask.sum() / len(mask)
         return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
         
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         frac = slice_count / total_count
         return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
     
     def subslice(self, indexes):
         return SliceSizeScore(ideal_fraction=self.ideal_fraction, spread=self.spread)
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        base.update({"ideal_fraction": self.ideal_fraction, "spread": self.spread})
+        return base
     
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return SliceSizeScore(ideal_fraction=meta_dict["ideal_fraction"], spread=meta_dict["spread"])
+    
+
 class NumFeaturesScore(ScoreFunctionBase):
     """
     A score function that penalizes slices with too many feature values
@@ -158,10 +196,18 @@ class NumFeaturesScore(ScoreFunctionBase):
     def calculate_score(self, slice, mask, univariate_masks):
         return 1 / (1 + np.log2(1 + len(slice.feature_values)))
     
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
-        return self.calculate_score(slice, None)
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
+        return self.calculate_score(slice, None, univariate_masks)
     
     def subslice(self, indexes):
+        return NumFeaturesScore()
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
         return NumFeaturesScore()
     
 class OutcomeRateScore(ScoreFunctionBase):
@@ -188,7 +234,7 @@ class OutcomeRateScore(ScoreFunctionBase):
             return (self.eps + self._mean) / (self.eps + self.data[mask].mean())
         return (self.eps + self.data[mask].mean()) / (self.eps + self._mean)
 
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         mean = slice_sum / slice_count
         if self.inverse: 
             return (self.eps + self._mean) / (self.eps + mean)
@@ -197,6 +243,15 @@ class OutcomeRateScore(ScoreFunctionBase):
     def subslice(self, indexes):
         return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps)
 
+    def meta_dict(self):
+        base = super().meta_dict()
+        base.update({"inverse": self.inverse, "eps": self.eps})
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return OutcomeRateScore(data, inverse=meta_dict["inverse"], eps=meta_dict["eps"])
+    
 
 class OutcomeShareScore(ScoreFunctionBase):
     """
@@ -216,11 +271,19 @@ class OutcomeShareScore(ScoreFunctionBase):
     def calculate_score(self, slice, mask, univariate_masks):
         return self.data[mask].sum() / self._sum
 
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         return slice_sum / self._sum
     
     def subslice(self, indexes):
         return OutcomeShareScore(self.data[indexes])
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return OutcomeShareScore(data)
     
 class InteractionEffectScore(ScoreFunctionBase):
     """
@@ -249,12 +312,27 @@ class InteractionEffectScore(ScoreFunctionBase):
                     for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks))
         return max(0, overall_effect / itemized_effect)
     
-    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):
-        raise NotImplementedError()
+    def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
+        if len(univariate_masks) <= 1: return 1.0
+        overall_effect = max(0, ((self.eps + slice_sum / slice_count) / (self.eps + self._mean)))
+        # TODO figure out if there's a way to speed up or cache superslice results
+        itemized_effect = max(self._superslice_score(ms)
+                    for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks))
+        return max(0, overall_effect / itemized_effect)
     
     def subslice(self, indexes):
         return InteractionEffectScore(self.data[indexes])
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        base["eps"] = self.eps
+        return base
     
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return InteractionEffectScore(data, eps=meta_dict["eps"])
+    
+
 class SliceSimilarityScore(ScoreFunctionBase):
     """
     A score function whose value is higher when a given slice mask has high
@@ -288,3 +366,13 @@ class SliceSimilarityScore(ScoreFunctionBase):
     
     def subslice(self, indexes):
         return SliceSimilarityScore(self.data[indexes], metric=self.metric)
+
+    def meta_dict(self):
+        base = super().meta_dict()
+        base["metric"] = self.metric
+        return base
+    
+    @classmethod
+    def from_dict(cls, meta_dict, data):
+        return SliceSimilarityScore(data, metric=meta_dict["metric"])
+    
