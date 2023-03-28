@@ -89,6 +89,38 @@
     newFeatureValues[col] = newValue;
     dispatch('edit', newFeatureValues);
   }
+
+  function searchSubslices() {
+    if (!customSlice) dispatch('customize');
+    dispatch('newsearch', {
+      type: 'subslice',
+      base_slice: sliceToShow.featureValues,
+    });
+  }
+
+  function searchSimilarSlices() {
+    if (!customSlice) dispatch('customize');
+    dispatch('newsearch', {
+      type: 'related',
+      base_slice: sliceToShow.featureValues,
+    });
+  }
+
+  function searchExcludingSlice() {
+    if (!customSlice) dispatch('customize');
+    dispatch('newsearch', {
+      type: 'exclude',
+      base_slice: sliceToShow.featureValues,
+    });
+  }
+
+  function searchCounterfactualSlices() {
+    if (!customSlice) dispatch('customize');
+    dispatch('newsearch', {
+      type: 'counterfactual',
+      base_slice: sliceToShow.featureValues,
+    });
+  }
 </script>
 
 {#if !!sliceToShow}
@@ -120,6 +152,35 @@
               on:click={() => dispatch('customize')}>Customize</a
             >
           {/if}
+          <a
+            href="#"
+            tabindex="0"
+            role="menuitem"
+            title="Search among slices that are contained within this slice (i.e. more specific)"
+            on:click={searchSubslices}>Search Subslices</a
+          >
+          <a
+            href="#"
+            tabindex="0"
+            role="menuitem"
+            title="Search among slices that have high overlap with this slice"
+            on:click={searchSimilarSlices}>Search Similar Slices</a
+          >
+          <a
+            href="#"
+            tabindex="0"
+            role="menuitem"
+            title="Search among slices that do not share any feature values with this slice"
+            on:click={searchExcludingSlice}>Search Excluding Slice</a
+          >
+          <a
+            href="#"
+            tabindex="0"
+            role="menuitem"
+            title="Search among slices that overlap with this slice without using this slice's features"
+            on:click={searchCounterfactualSlices}
+            >Search Counterfactual Slices</a
+          >
         </ActionMenuButton>
         {#if showCreateSliceButton}
           <button

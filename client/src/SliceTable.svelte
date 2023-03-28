@@ -350,6 +350,7 @@
           on:create={() => createCustomSlice()}
           on:delete={() => deleteCustomSlice(i)}
           on:duplicate={() => createCustomSlice(slice.featureValues)}
+          on:newsearch
         />
       {/each}
       {#each slices as slice, i (slice.stringRep || i)}
@@ -369,6 +370,7 @@
           on:edit={(e) => editSliceFeature(slice, e.detail)}
           on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
           on:customize={() => createCustomSlice(slice.featureValues)}
+          on:newsearch
         />
       {/each}
     </tbody>

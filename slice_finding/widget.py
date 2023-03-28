@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 import time
 from .slices import Slice
+from .filters import *
+from .scores import *
 from .discretization import DiscretizedData
+from .utils import make_mask
 
 def default_thread_starter(fn, args=[], kwargs={}):
     thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
@@ -46,6 +49,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
     slice_score_requests = traitlets.Dict({}).tag(sync=True)
     slice_score_results = traitlets.Dict({}).tag(sync=True)
     
+    # Adding more slice finding tasks
+    search_spec_stack = traitlets.List().tag(sync=True)
+    
     thread_starter = traitlets.Any(default_thread_starter)
     
     def __init__(self, slice_finder, *args, **kwargs):
@@ -75,6 +81,12 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.value_names = {col: sorted(self.slice_finder.inputs[:,col].unique())
                                 for col in range(self.slice_finder.inputs.shape[1])}
         self.custom_slices = [{}]
+        
+        self.finder_stack = [self.slice_finder]
+        self.search_spec_stack = [{
+            "type": "default",
+            "score_weights": self.score_weights
+        }]
         
     def get_slice_description(self, slice_obj, metrics=None):
         """
@@ -111,7 +123,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             
     def rerun_sampler(self):
         self.thread_starter(self._rerun_sampler_background)
-        
+
     def _rerun_sampler_background(self):
         """Function that runs in the background to recompute suggested selections."""
         self.should_rerun = False
@@ -174,3 +186,86 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if not self.slice_finder or not self.slice_finder.results: return
         self.slice_score_results = {k: self.get_slice_description(self.slice_finder.results.encode_slice(f)) 
                                     for k, f in change.new.items()}
+        
+    def _base_score_weights_for_spec(self, search_specs, spec, slice_finder):
+        if not all(n in slice_finder.score_fns for n in spec["score_weights"]):
+            return search_specs[0]["score_weights"]
+        else:
+            return spec["score_weights"]
+        
+    @traitlets.observe("search_spec_stack")
+    def search_spec_stack_changed(self, change=None):
+        search_specs = change.new if change is not None else self.search_spec_stack
+        if len(search_specs) < len(self.finder_stack):
+            self.finder_stack = self.finder_stack[:len(search_specs)]
+            self.slice_finder = self.finder_stack[-1]
+            self.score_weights = self._base_score_weights_for_spec(search_specs, search_specs[-1], self.slice_finder)
+            self._slice_description_cache = {}
+            self.rerank_results()
+            return
+        elif len(search_specs) == len(self.finder_stack): return
+        
+        assert len(search_specs) <= len(self.finder_stack) + 1
+        base_finder = self.finder_stack[0]
+        new_spec = search_specs[-1]
+        assert "type" in new_spec
+        assert "score_weights" in new_spec
+        
+        new_score_weights = self._base_score_weights_for_spec(search_specs, new_spec, base_finder)
+        
+        if new_spec["type"] == "default":
+            new_finder = base_finder.copy_spec()
+        elif new_spec["type"] == "subslice":
+            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+            new_finder = base_finder.copy_spec(
+                initial_slice=initial_slice
+            )
+        elif new_spec["type"] == "related":
+            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+            ref_mask = make_mask(raw_inputs, initial_slice)
+            new_finder = base_finder.copy_spec(
+                score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask)},
+                source_mask=base_finder.source_mask & ref_mask,
+                similarity_threshold=1.0
+            )
+            new_score_weights = {"Similarity": 1.0}
+        elif new_spec["type"] == "exclude":
+            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+            new_filter = ExcludeIfAny([
+                ExcludeFeatureValue(f, v)
+                for f, v in initial_slice.feature_values.items()
+            ])
+            if base_finder.group_filter is not None:
+                new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
+            new_finder = base_finder.copy_spec(
+                group_filter=new_filter,
+            )       
+        elif new_spec["type"] == "counterfactual":
+            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+            ref_mask = make_mask(raw_inputs, initial_slice)
+            
+            new_filter = ExcludeIfAny([
+                ExcludeFeatureValue(f, v)
+                for f, v in initial_slice.feature_values.items()
+            ])
+            if base_finder.group_filter is not None:
+                new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
+
+            new_finder = base_finder.copy_spec(
+                score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask, metric='superslice')},
+                group_filter=new_filter,
+                similarity_threshold=1.0
+            )     
+            new_score_weights = {"Similarity": 1.0}
+        else:
+            assert False
+            
+        self.finder_stack.append(new_finder)
+        self.slice_finder = new_finder
+        self.score_weights = {**new_score_weights,
+                              **{n: 0.0 for n in self.slice_finder.score_fns if n not in new_score_weights}}
+        self._slice_description_cache = {}
+        self.rerank_results()
+        # self.should_rerun = True

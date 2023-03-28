@@ -299,6 +299,26 @@ class SamplingSliceFinder:
                             max_weight=self.max_weight,
                             similarity_threshold=self.similarity_threshold)
         
+    def copy_spec(self, inputs=None, score_fns=None, **kwargs):
+        return SamplingSliceFinder(
+            self.inputs if inputs is None else inputs, 
+            self.score_fns if score_fns is None else score_fns, 
+            source_mask=kwargs.get("source_mask", self.source_mask), 
+            group_filter=kwargs.get("group_filter", self.group_filter), 
+            max_features=kwargs.get("max_features", self.max_features), 
+            min_items=kwargs.get("min_items", self.min_items), 
+            num_candidates=kwargs.get("num_candidates", self.num_candidates),
+            positive_only=kwargs.get("positive_only", self.positive_only),
+            holdout_fraction=kwargs.get("holdout_fraction", self.holdout_fraction),
+            min_weight=kwargs.get("min_weight", self.min_weight),
+            max_weight=kwargs.get("max_weight", self.max_weight),
+            similarity_threshold=kwargs.get("similarity_threshold", self.similarity_threshold),
+            show_progress=kwargs.get("show_progress", self.show_progress),
+            progress_fn=kwargs.get("progress_fn", self.progress_fn),
+            n_workers=kwargs.get("n_workers", self.n_workers),
+            initial_slice=kwargs.get("initial_slice", self.initial_slice)
+        )
+        
     def _create_worker_initializer(self, discovery_inputs, discovery_score_fns):
         """
         Creates shared-memory arrays to store the input data and score function
@@ -424,7 +444,7 @@ class SamplingSliceFinder:
             discovery_inputs = self.raw_inputs[self.discovery_mask]
         
         if self.initial_slice is not None:
-            initial_slice_mask = make_mask(discovery_inputs, self.initial_slice)
+            initial_slice_mask = make_mask(self.raw_inputs, self.initial_slice)
             source_mask &= initial_slice_mask
             if source_mask.sum() == 0:
                 raise ValueError("No samples can be taken from the intersection of the provided source mask and the initial slice")
@@ -445,6 +465,7 @@ class SamplingSliceFinder:
             worker = partial(explore_groups_worker, group_filter=self.group_filter,
                                                     max_features=self.max_features,
                                                     min_items=self.min_items,
+                                                    initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
                                                     max_weight=self.max_weight)
@@ -470,6 +491,7 @@ class SamplingSliceFinder:
                                                     group_filter=self.group_filter,
                                                     max_features=self.max_features,
                                                     min_items=self.min_items,
+                                                    initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
                                                     max_weight=self.max_weight)

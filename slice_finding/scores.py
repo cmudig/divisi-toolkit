@@ -351,9 +351,9 @@ class SliceSimilarityScore(ScoreFunctionBase):
         self.metric = metric
         
     def calculate_score(self, slice, mask, univariate_masks):
-        intersect = (mask & self.data).sum()
+        intersect = (mask * self.data > 0).sum()
         if self.metric == 'jaccard':
-            union = (mask | self.data).sum()
+            union = (mask + self.data > 0).sum()
             return intersect / union
         elif self.metric == 'subslice':
             return intersect / mask.sum()

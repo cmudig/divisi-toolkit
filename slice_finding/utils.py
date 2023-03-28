@@ -87,7 +87,7 @@ def make_mask(inputs, slice_obj, existing_mask=None, univariate_masks=None):
             univ_mask = univariate_masks.get((col, val), None)
             
         if univ_mask is None:
-            if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
+            if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
                 univ_mask = (inputs[:,col] == val).toarray().flatten()
             elif isinstance(inputs, np.ndarray):
                 univ_mask = inputs[:,col] == val

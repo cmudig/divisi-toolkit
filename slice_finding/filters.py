@@ -43,3 +43,44 @@ class ExcludeFeatureValue(SliceFilterBase):
     def __call__(self, slice_obj):
         return not (self.feature in slice_obj.feature_values and 
                     slice_obj.feature_values[self.feature] == self.value)
+
+class ExcludeFeatureValueSet(SliceFilterBase):
+    """
+    Excludes a slice if one of its feature value pairs has a feature contained in the
+    given feature set, and its value is contained in the given value set.
+    """
+    def __init__(self, features, values):
+        super().__init__()
+        self.features = features
+        self.values = values
+        
+    def __call__(self, slice_obj):
+        for f, v in slice_obj.feature_values.items():
+            if f in self.features and v in self.values:
+                return False
+        return True
+        
+class IncludeOnlyFeatureValue(SliceFilterBase):
+    """
+    Excludes a slice if it does not contain the given feature value.
+    """
+    def __init__(self, feature, value):
+        super().__init__()
+        self.feature = feature
+        self.value = value
+        
+    def __call__(self, slice_obj):
+        return (self.feature in slice_obj.feature_values and 
+                slice_obj.feature_values[self.feature] == self.value)
+        
+class IncludeOnlyFeatureValueSet(SliceFilterBase):
+    """
+    Excludes a slice if it does not contain the given feature value.
+    """
+    def __init__(self, features, values):
+        super().__init__()
+        self.features = features
+        self.values = values
+        
+    def __call__(self, slice_obj):
+        return any(f in self.features and v in self.values for f, v in slice_obj.feature_values.items())
