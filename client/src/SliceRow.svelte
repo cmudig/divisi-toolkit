@@ -28,6 +28,8 @@
   export let positiveOnly = false;
   export let valueNames: any = {}; // svelte store
 
+  export let fixedFeatureOrder: Array<any> = [];
+
   export let customSlice: Slice = null; // if the slice is custom-created
   export let temporarySlice: Slice = null; // if a variable is adjusted dynamically
 
@@ -53,7 +55,14 @@
   $: {
     let sliceForFeatures = slice || customSlice || temporarySlice;
     featureOrder = Object.keys(sliceForFeatures.featureValues);
-    featureOrder.sort();
+    featureOrder.sort((a, b) => {
+      let aIndex = fixedFeatureOrder.indexOf(a);
+      let bIndex = fixedFeatureOrder.indexOf(b);
+      if (aIndex < 0) aIndex = featureOrder.length;
+      if (bIndex < 0) bIndex = featureOrder.length;
+      if (aIndex == bIndex) return a.localeCompare(b);
+      return b - a;
+    });
     while (featureOrder.length < maxFeatures) featureOrder.push('');
   }
 
@@ -95,6 +104,7 @@
     dispatch('newsearch', {
       type: 'subslice',
       base_slice: sliceToShow.featureValues,
+      feature_order: featureOrder,
     });
   }
 
@@ -240,41 +250,20 @@
             >
           {:else}
             <button
-              class="bg-sky-100 hover:bg-sky-200 px-2 py-1 mr-1 rounded text-sm shadow-sm font-mono"
+              class="bg-transparent mr-1 text-sm font-mono hover:opacity-70"
               class:opacity-50={featureDisabled}
               title={featureDisabled
                 ? 'Reset slice'
                 : 'Test effect of removing this feature from the slice'}
               on:click={() => dispatch('toggle', col)}>{col}</button
             >
-            {#if !slice}
-              <button
-                class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                on:click={() => (editingColumn = i)}
-                title="Choose a different feature to slice by"
-                ><Fa icon={faPencil} /></button
-              >
-              <button
-                class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                on:click={() => deleteFeatureValue(col)}
-                ><Fa icon={faTrash} /></button
-              >
-              {#if i == Object.keys(baseSlice.featureValues).length - 1}
-                <button
-                  class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                  title="Slice by an additional feature"
-                  on:click={() => {
-                    editingColumn = i + 1;
-                    dispatch('beginedit', i + 1);
-                  }}><Fa icon={faPlus} /></button
-                >
-              {/if}
-            {/if}
-            <div class="flex items-center mt-1">
+          {/if}
+          <div class="flex items-center">
+            {#if !positiveOnly}
               {#if featureDisabled}
-                <span class="mt-1 mb-1 ml-1 opacity-50">(any value)</span>
+                <span class="mt-1 mb-1 opacity-50">(any value)</span>
               {:else if !customSlice}
-                <span class="mt-1 mb-1 ml-1"
+                <span class="mt-1 text-gray-600 mb-1"
                   >{sliceToShow.featureValues[col]}</span
                 >
               {:else}
@@ -325,8 +314,31 @@
                   >
                 {/if}
               {/if}
-            </div>
-          {/if}
+            {/if}
+            {#if !slice}
+              <button
+                class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                on:click={() => (editingColumn = i)}
+                title="Choose a different feature to slice by"
+                ><Fa icon={faPencil} /></button
+              >
+              <button
+                class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                on:click={() => deleteFeatureValue(col)}
+                ><Fa icon={faTrash} /></button
+              >
+              {#if i == Object.keys(baseSlice.featureValues).length - 1}
+                <button
+                  class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                  title="Slice by an additional feature"
+                  on:click={() => {
+                    editingColumn = i + 1;
+                    dispatch('beginedit', i + 1);
+                  }}><Fa icon={faPlus} /></button
+                >
+              {/if}
+            {/if}
+          </div>
         {/if}
       </td>
     {/each}

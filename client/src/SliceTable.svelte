@@ -10,12 +10,15 @@
     faEyeSlash,
     faGripLinesVertical,
   } from '@fortawesome/free-solid-svg-icons';
-  import { areSetsEqual } from './utils';
+  import { areObjectsEqual, areSetsEqual } from './utils';
 
   export let slices: Array<Slice> = [];
 
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
+
+  export let fixedFeatureOrder: Array<any> = [];
+  export let searchBaseSlice: any = null;
 
   export let showScores = false;
   export let positiveOnly = false;
@@ -36,8 +39,8 @@
   $: allSlices = [...customSliceResults, ...slices];
 
   $: if (allSlices.length > 0) {
-    console.log('slices', allSlices);
-    let testSlice = allSlices[0];
+    let testSlice = allSlices.find((s) => !s.isEmpty);
+    if (!testSlice) testSlice = allSlices[0];
 
     maxFeatures = allSlices.reduce(
       (curr, next) => Math.max(curr, Object.keys(next.featureValues).length),
@@ -337,12 +340,16 @@
           {metricNames}
           {metricInfo}
           {valueNames}
-          rowClass="bg-slate-100 {i == customSliceResults.length - 1
+          rowClass="{!!searchBaseSlice &&
+          areObjectsEqual(searchBaseSlice, slice.featureValues)
+            ? 'bg-indigo-100'
+            : 'bg-slate-100'} {i == customSliceResults.length - 1
             ? 'border-b-2 border-dotted'
             : ''}"
           temporarySlice={sliceRequestResults[slice.stringRep]}
           showCreateSliceButton={i == customSliceResults.length - 1}
           focusOnMount={i > 0 && i == customSliceResults.length - 1}
+          {fixedFeatureOrder}
           on:edit={(e) => editCustomSlice(i, e.detail)}
           on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
           on:beginedit={(e) => (addingFeatureSize = e.detail + 1)}
@@ -365,7 +372,11 @@
           {metricNames}
           {metricInfo}
           {valueNames}
-          rowClass="hover:bg-slate-100"
+          {fixedFeatureOrder}
+          rowClass={!!searchBaseSlice &&
+          areObjectsEqual(searchBaseSlice, slice.featureValues)
+            ? 'bg-indigo-100 hover:bg-indigo-200'
+            : 'hover:bg-slate-100'}
           temporarySlice={sliceRequestResults[slice.stringRep]}
           on:edit={(e) => editSliceFeature(slice, e.detail)}
           on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
@@ -387,7 +398,7 @@
   }
 
   th.feature {
-    min-width: 240px;
+    min-width: 180px;
   }
 
   th.metric {

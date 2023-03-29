@@ -224,9 +224,16 @@ class SliceFinderWidget(anywidget.AnyWidget):
             initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
             ref_mask = make_mask(raw_inputs, initial_slice)
+            new_filter = ExcludeIfAll([
+                ExcludeFeatureValue(f, v)
+                for f, v in initial_slice.feature_values.items()
+            ])
+            if base_finder.group_filter is not None:
+                new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
             new_finder = base_finder.copy_spec(
                 score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask)},
                 source_mask=base_finder.source_mask & ref_mask,
+                group_filter=new_filter,
                 similarity_threshold=1.0
             )
             new_score_weights = {"Similarity": 1.0}

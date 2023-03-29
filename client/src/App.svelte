@@ -255,6 +255,10 @@
         bind:sliceRequests={$sliceScoreRequests}
         bind:sliceRequestResults={$sliceScoreResults}
         positiveOnly={$positiveOnly}
+        fixedFeatureOrder={$searchSpecStack[$searchSpecStack.length - 1]
+          .feature_order || []}
+        searchBaseSlice={$searchSpecStack[$searchSpecStack.length - 1]
+          .base_slice || null}
         {valueNames}
         on:newsearch={(e) => {
           if (!e.detail.score_weights) e.detail.score_weights = $scoreWeights;

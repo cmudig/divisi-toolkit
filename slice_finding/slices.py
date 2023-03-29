@@ -264,7 +264,7 @@ class RankedSliceList:
         
         slice_metrics["Count"] = {"type": "count", "count": len(mask), "share": len(mask) / eval_count}
         slice_desc["isEmpty"] = len(mask) == 0
-        if metrics and len(mask) > 0:
+        if metrics:
             for metric_name, data in metrics.items():
                 if isinstance(data, dict):
                     # User-specified options
