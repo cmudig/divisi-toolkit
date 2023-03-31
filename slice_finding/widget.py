@@ -9,7 +9,7 @@ from .slices import Slice
 from .filters import *
 from .scores import *
 from .discretization import DiscretizedData
-from .utils import make_mask
+from .utils import make_mask, powerset, detect_data_type
 
 def default_thread_starter(fn, args=[], kwargs={}):
     thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
@@ -51,6 +51,11 @@ class SliceFinderWidget(anywidget.AnyWidget):
     
     # Adding more slice finding tasks
     search_spec_stack = traitlets.List().tag(sync=True)
+    
+    selected_slices = traitlets.List([]).tag(sync=True)
+    slice_intersection_labels = traitlets.List([]).tag(sync=True)
+    slice_intersection_counts = traitlets.List([]).tag(sync=True)
+    selected_intersection_index = traitlets.Int(-1).tag(sync=True)
     
     thread_starter = traitlets.Any(default_thread_starter)
     
@@ -276,3 +281,69 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self._slice_description_cache = {}
         self.rerank_results()
         # self.should_rerun = True
+        
+    @traitlets.observe("selected_slices")
+    def update_selected_slices(self, change=None):
+        selected = change.new if change is not None else self.selected_slices
+        
+        slice_masks = {}
+        
+        # Calculate the sizes of all intersections of the given sets
+        manager = self.slice_finder.results
+        for features in selected:
+            slice_obj = manager.encode_slice(features)
+            slice_masks[slice_obj] = manager.slice_mask(slice_obj)
+            # for feature in slice_obj.feature_values.keys():
+            #     univ_slice = Slice({feature: slice_obj.feature_values[feature]})
+            #     slice_masks[univ_slice] = manager.slice_mask(univ_slice)
+            
+        print({s: m.sum() for s, m in slice_masks.items()})
+        
+        slice_order = list(slice_masks.keys())
+        self.slice_intersection_labels = [self.get_slice_description(s) for s in slice_order]
+        
+        intersect_counts = []
+        base_mask = np.arange(manager.df.shape[0])[manager.eval_mask]
+        
+        def calculate_intersection_counts(prefix, current_mask=None):
+            count = current_mask.sum() if current_mask is not None else manager.eval_df.shape[0]
+            if count == 0: return
+            if len(prefix) == len(slice_order):
+                info = {"slices": prefix, 
+                                         "count": count}
+                for metric_name, data in self.metrics.items():
+                    if isinstance(data, dict):
+                        # User-specified options
+                        options = data
+                        data = options["data"]
+                    else:
+                        options = {}
+                    data_type = options.get("type", detect_data_type(data))
+                    if data_type == "binary":
+                        info[metric_name] = data[base_mask[current_mask]].sum()
+
+                intersect_counts.append(info)
+                return
+            univ_mask = slice_masks[slice_order[len(prefix)]]
+            calculate_intersection_counts(prefix + [1], current_mask & univ_mask)
+            calculate_intersection_counts(prefix + [0], current_mask & ~univ_mask)
+           
+        calculate_intersection_counts([], np.ones(manager.eval_df.shape[0], dtype=bool))
+        self.slice_intersection_counts = intersect_counts 
+        # for slice_combo in powerset(slice_masks.keys()):
+        #     if len(slice_combo) == 0: continue
+        #     combined_slice = slice_combo[0]
+        #     for s in slice_combo[1:]:
+        #         combined_slice = combined_slice.intersect(s)
+        #     if combined_slice in intersect_counts: continue
+        #     combined_mask = slice_masks[slice_combo[0]].copy()
+        #     for s in slice_combo[1:]:
+        #         combined_mask &= slice_masks[s]
+        #     # print(slice_combo, combined_mask.sum())
+        #     intersect_counts[combined_slice] = combined_mask.sum()
+        # print(intersect_counts)
+        # self.slice_intersection_counts = [
+        #     {"slice": self.get_slice_description(s), "count": count}
+        #      for s, count in intersect_counts.items()
+        #      if count > 0
+        # ]

@@ -12,6 +12,7 @@
     faExpand,
   } from '@fortawesome/free-solid-svg-icons';
   import { onMount } from 'svelte';
+  import SliceOverlapPlot from './SliceOverlapPlot.svelte';
 
   export let model;
 
@@ -36,6 +37,22 @@
   let sliceScoreResults = traitlet(model, 'slice_score_results', {});
 
   let searchSpecStack = traitlet(model, 'search_spec_stack', []);
+
+  let sliceIntersectionCounts = traitlet(
+    model,
+    'slice_intersection_counts',
+    []
+  );
+  let sliceIntersectionLabels = traitlet(
+    model,
+    'slice_intersection_labels',
+    []
+  );
+  let selectedIntersectionIndex = traitlet(
+    model,
+    'selected_intersection_index',
+    -1
+  );
 
   let scoreNames: Array<string>;
   $: {
@@ -242,38 +259,48 @@
     {/if}
   </div>
   <div class="flex flex-1 w-full h-0" class:disable-div={$runningSampler}>
-    <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">
-      <div class="p-4 bg-slate-200 rounded w-full min-h-full">
-        <ScoreWeightMenu bind:weights={$scoreWeights} {scoreNames} />
-      </div>
-    </div>
-    <div class="flex-auto overflow-scroll h-full">
-      <SliceTable
-        slices={$slices}
-        bind:customSlices={$customSlices}
-        bind:customSliceResults={$customSliceResults}
-        bind:sliceRequests={$sliceScoreRequests}
-        bind:sliceRequestResults={$sliceScoreResults}
-        positiveOnly={$positiveOnly}
-        fixedFeatureOrder={$searchSpecStack[$searchSpecStack.length - 1]
-          .feature_order || []}
-        searchBaseSlice={$searchSpecStack[$searchSpecStack.length - 1]
-          .base_slice || null}
-        {valueNames}
-        on:newsearch={(e) => {
-          if (!e.detail.score_weights) e.detail.score_weights = $scoreWeights;
-          $searchSpecStack = [...$searchSpecStack, e.detail];
-        }}
+    {#if $sliceIntersectionCounts.length > 0}
+      <SliceOverlapPlot
+        intersectionCounts={$sliceIntersectionCounts}
+        labels={$sliceIntersectionLabels}
+        selectedIndex={$selectedIntersectionIndex >= 0
+          ? $selectedIntersectionIndex
+          : null}
       />
-      {#if $slices.length > 0}
-        <div class="mt-2">
-          <button
-            class="btn btn-blue disabled:opacity-50"
-            on:click={() => ($numSlices += 10)}>Load More</button
-          >
+    {:else}
+      <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">
+        <div class="p-4 bg-slate-200 rounded w-full min-h-full">
+          <ScoreWeightMenu bind:weights={$scoreWeights} {scoreNames} />
         </div>
-      {/if}
-    </div>
+      </div>
+      <div class="flex-auto overflow-scroll h-full">
+        <SliceTable
+          slices={$slices}
+          bind:customSlices={$customSlices}
+          bind:customSliceResults={$customSliceResults}
+          bind:sliceRequests={$sliceScoreRequests}
+          bind:sliceRequestResults={$sliceScoreResults}
+          positiveOnly={$positiveOnly}
+          fixedFeatureOrder={$searchSpecStack[$searchSpecStack.length - 1]
+            .feature_order || []}
+          searchBaseSlice={$searchSpecStack[$searchSpecStack.length - 1]
+            .base_slice || null}
+          {valueNames}
+          on:newsearch={(e) => {
+            if (!e.detail.score_weights) e.detail.score_weights = $scoreWeights;
+            $searchSpecStack = [...$searchSpecStack, e.detail];
+          }}
+        />
+        {#if $slices.length > 0}
+          <div class="mt-2">
+            <button
+              class="btn btn-blue disabled:opacity-50"
+              on:click={() => ($numSlices += 10)}>Load More</button
+            >
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 </main>
 

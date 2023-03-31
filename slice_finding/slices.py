@@ -1,7 +1,7 @@
 from scipy.sparse import csr_matrix
 import numpy as np
 import pandas as pd
-from .utils import pairwise_jaccard_similarities, make_mask, detect_data_type, convert_to_native_types
+from .utils import pairwise_jaccard_similarities, make_mask, detect_data_type, convert_to_native_types, powerset
 from .discretization import DiscretizedData
 
 class Slice:
@@ -32,6 +32,9 @@ class Slice:
         Creates a new Slice object with the given feature and value added.
         """
         return Slice({**self.feature_values, other_feature: other_value})
+    
+    def intersect(self, other_slice):
+        return Slice({**self.feature_values, **other_slice.feature_values})
     
     def __contains__(self, feature):
         return feature in self.feature_values
@@ -225,6 +228,21 @@ class RankedSliceList:
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
         return ranked_results[:min(len(ranked_results), n_slices)]
     
+    def slice_mask(self, slice_obj, powerset=False):
+        """
+        Calculates slice masks for every combination of features in the given
+        slice, if powerset is True, otherwise just returns the mask for the given
+        slice.
+        """
+        if powerset:
+            masks = {}
+            for features in powerset(slice_obj.feature_values.keys()):
+                if len(features) == 0: continue
+                test_slice = Slice({f: slice_obj.feature_values[f] for f in features})
+                masks[test_slice] = make_mask(self.eval_df, test_slice, univariate_masks=self.univariate_masks)
+            return masks
+        return make_mask(self.eval_df, slice_obj, univariate_masks=self.univariate_masks)
+        
     def generate_slice_description(self, slice_obj, metrics=None, metrics_mask=None):
         """
         Creates JSON-serializable slice descriptions for a slice.
@@ -251,7 +269,7 @@ class RankedSliceList:
             slice_desc["featureValues"] = slice_obj.feature_values
             
         slice_metrics = {}
-        slice_mask = make_mask(self.eval_df, slice_obj)
+        slice_mask = make_mask(self.eval_df, slice_obj, univariate_masks=self.univariate_masks)
         if metrics_mask is not None:
             slice_mask &= metrics_mask
         mask = np.arange(self.df.shape[0])[self.eval_mask][slice_mask]
