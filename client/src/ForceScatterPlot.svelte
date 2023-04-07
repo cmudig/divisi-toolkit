@@ -6,12 +6,14 @@
 
   const { data, width, height } = getContext('LayerCake');
 
-  export let pointRadius = 4;
+  export let pointRadius = 6; // 4;
   export let colorFn = null;
   export let hoveredSlices = null;
 
   export let hoveredMousePosition = null;
   export let hoveredPointIndex = null;
+
+  export let colorByError = false;
 
   const { ctx } = getContext('canvas');
 
@@ -21,25 +23,35 @@
 
   export let simulationProgress = 0;
 
+  let maxNumSlices;
+
   let simulation;
 
-  onDestroy(() => {
-    if (!!simulation) simulation.stop();
-  });
+  onDestroy(cleanUp);
 
   $: if ($data.length > 0) {
+    cleanUp();
     console.log('force data', $data);
-    initializeData($data, $width, $height);
+    initSimulation($data, $width, $height);
   } else {
+    cleanUp();
+  }
+
+  function cleanUp() {
+    if (!!simulation) simulation.stop();
     nodeData = [];
     nodePositions = [];
     simulation = null;
   }
 
-  function initializeData(ds, w, h) {
+  function resetNodePositions(ds, w, h) {
     nodeData = ds.map((d) => ({
       numSlices: d.slices.reduce((prev, curr) => prev + curr, 0),
     }));
+    maxNumSlices = nodeData.reduce(
+      (prev, curr) => Math.max(prev, curr.numSlices),
+      1
+    );
     nodePositions = nodeData.map((n, i) =>
       n.numSlices > 0
         ? {
@@ -51,6 +63,10 @@
             y: Math.random() * 800 - 400 + h / 2,
           }
     );
+  }
+
+  function initSimulation(ds, w, h) {
+    resetNodePositions(ds, w, h);
 
     let counts = Array.apply(null, Array(ds[0].slices.length)).map(() => 0);
     ds.forEach((d) => {
@@ -90,47 +106,11 @@
       });
     });
 
-    // let linkForce = forceMagnetic()
-    //   .links(links)
-    //   // .charge((n) => (nodeData[n.index].numSlices > 0 ? 100 : -1))
-    //   // .distance((l) => 30 / l.strength)
-    //   .strength((l) => l.strength)
-    //   .polarity((l) => !l.repel);
     let linkForce = d3
       .forceLink(links)
       .distance(10)
       .strength((l) => l.strength);
-    // simulation = d3
-    //   .forceSimulation(nodePositions)
-    //   .force('center', d3.forceCenter(w / 2, h / 2))
-    //   .force('link', linkForce)
-    //   // .force(
-    //   //   'collide',
-    //   //   d3
-    //   //     .forceCollide()
-    //   //     .radius(pointRadius * 1.5)
-    //   //     .strength(0.5)
-    //   // )
-    //   // .force(
-    //   //   'attract',
-    //   //   d3
-    //   //     .forceManyBody()
-    //   //     .strength(10)
-    //   //     .distanceMin(pointRadius)
-    //   //     .distanceMax(100)
-    //   // )
-    //   .force('x', d3.forceX(w / 2).strength(0.1))
-    //   .force('y', d3.forceY(w / 2).strength(0.1))
-    //   .alpha(1)
-    //   .alphaDecay(0.01)
-    //   .on('tick', updatePositions);
 
-    // setTimeout(() => {
-    let alphaResetInterval = 200;
-    let initialAlpha = 0.1;
-    let finalAlpha = 0.001;
-    let numTicks = 0;
-    let totalTicks = 0;
     simulation = d3
       .forceSimulation(nodePositions)
       .force('center', d3.forceCenter(w / 2, h / 2))
@@ -143,16 +123,25 @@
           .strength(0.1)
       )
       .force('x', d3.forceX(w / 2).strength(0.1))
-      .force('y', d3.forceY(w / 2).strength(0.1))
+      .force('y', d3.forceY(w / 2).strength(0.1));
+
+    let alphaResetInterval = 200;
+    let initialAlpha = 0.1;
+    let finalAlpha = 0.001;
+    let numTicks = 0;
+    let totalTicks = 0;
+    let numTicksBeforeAnimation = alphaResetInterval * 7;
+
+    simulation
       .alpha(0.1)
       .alphaDecay(0.005)
       .alphaMin(1e-6)
       .on('tick', () => {
-        if (totalTicks > alphaResetInterval * 4) {
+        if (totalTicks > numTicksBeforeAnimation) {
           updatePositions();
           simulationProgress = 0.0;
         } else if (totalTicks % 20 == 0)
-          simulationProgress = totalTicks / (alphaResetInterval * 4);
+          simulationProgress = totalTicks / numTicksBeforeAnimation;
         let f = simulation.force('collide');
         f.strength(Math.min(1.0, f.strength() * 1.005));
         if (numTicks >= alphaResetInterval && initialAlpha > finalAlpha) {
@@ -164,7 +153,6 @@
         numTicks += 1;
         totalTicks += 1;
       });
-    // }, 5000);
   }
 
   function updatePositions(colorF, hovered) {
@@ -180,30 +168,71 @@
       let radius = pointRadius;
       if (hovered != null && i == hoveredPointIndex) radius *= 1.5;
 
-      $ctx.beginPath();
       let numSlices = nodeData[i].numSlices;
-      $ctx.arc(
-        d.x,
-        d.y,
-        (numSlices > 0 ? radius : radius * 0.5) + ($data[i].error ? 1 : 0),
-        0,
-        2 * Math.PI,
-        false
-      );
-      if ($data[i].error) {
-        if (numSlices == 0) $ctx.fillStyle = '#bbb';
-        else $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
-        $ctx.fill();
-      } else {
-        if (numSlices == 0) $ctx.strokeStyle = '#bbb';
-        else
-          $ctx.strokeStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+
+      $ctx.globalAlpha = 1.0;
+
+      if (colorByError) {
+        $ctx.beginPath();
+        let itemSlices = $data[i].slices;
+        $ctx.arc(
+          d.x,
+          d.y,
+          numSlices > 0 ? radius : radius * 0.5,
+          0,
+          2 * Math.PI,
+          false
+        );
+        $ctx.strokeStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+        if (numSlices == 0) $ctx.globalAlpha = 0.7;
         $ctx.stroke();
+        if (numSlices > 0) {
+          $ctx.beginPath();
+          $ctx.moveTo(d.x, d.y);
+          itemSlices.forEach((s, j) => {
+            if (!s) return;
+            $ctx.arc(
+              d.x,
+              d.y,
+              radius, // (numSlices > 0 ? radius : radius * 0.5) + ($data[i].error ? 1 : 0),
+              -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
+              -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
+              false
+            );
+            $ctx.lineTo(d.x, d.y);
+          });
+          $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.fill();
+        }
+      } else {
+        $ctx.beginPath();
+        $ctx.arc(
+          d.x,
+          d.y,
+          radius + ($data[i].error ? 1 : 0),
+          0,
+          2 * Math.PI,
+          false
+        );
+        if ($data[i].error) {
+          if (numSlices == 0) $ctx.fillStyle = '#bbb';
+          else
+            $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.fill();
+        } else {
+          if (numSlices == 0) $ctx.strokeStyle = '#bbb';
+          else
+            $ctx.strokeStyle =
+              colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.stroke();
+        }
       }
     });
   }
 
-  $: if (!!$ctx) updatePositions(colorFn, hoveredPointIndex);
+  $: if (!!$ctx && !!simulation) {
+    updatePositions(colorFn, hoveredPointIndex);
+  }
 
   $: if (!!hoveredMousePosition && !!simulation) {
     let closest = simulation.find(
@@ -214,6 +243,9 @@
     if (!!closest) {
       hoveredSlices = $data[closest.index].slices;
       hoveredPointIndex = closest.index;
+    } else {
+      hoveredSlices = null;
+      hoveredPointIndex = null;
     }
   } else {
     hoveredSlices = null;

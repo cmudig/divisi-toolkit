@@ -96,6 +96,7 @@
     let newFeatureValues = Object.assign({}, baseSlice.featureValues);
     if (oldCol != col) delete newFeatureValues[oldCol];
     newFeatureValues[col] = newValue;
+    console.log(newFeatureValues);
     dispatch('edit', newFeatureValues);
   }
 
@@ -216,7 +217,7 @@
                 editFeatureValue(
                   col,
                   e.detail.value,
-                  $valueNames[e.detail.value][1][0]
+                  positiveOnly ? 1 : $valueNames[e.detail.value][1][0]
                 );
               }
               editingColumn = null;

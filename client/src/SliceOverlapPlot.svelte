@@ -8,9 +8,13 @@
   export let numPoints = 500;
   export let selectedIndex = null;
 
+  export let colorByError = false;
+
   const errorKey = 'Error Rate';
   let hoveredSlices = null;
   let hoveredMousePosition = null;
+
+  let sliceCount = 0;
 
   let simulationProgress = 0.0;
 
@@ -21,6 +25,8 @@
   let numPerPoint;
 
   $: if (intersectionCounts.length > 0) {
+    sliceCount = intersectionCounts[0].slices.length;
+
     let totalPoints = intersectionCounts.reduce(
       (prev, curr) => prev + curr.count,
       0
@@ -57,7 +63,6 @@
       // .scaleOrdinal(d3.schemeCategory10)
       // .domain(d3.range(1, intersectionCounts[0].slices.length + 1));
       .domain([1, maxNumSlices]);
-    console.log(colorScale(0), colorScale(1), colorScale(2), colorScale(3));
   } else {
     pointData = [];
   }
@@ -74,28 +79,52 @@
     let rect = e.target.getBoundingClientRect();
     hoveredMousePosition = [e.clientX - rect.left, e.clientY - rect.top];
   }
+
+  function color(item, selectedSlices, selectedIndex) {
+    if (colorByError) {
+      if (selectedSlices != null) {
+        let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
+        if (allEqual) return item.error ? '#e11d48' : '#5eead4';
+        return '#e2e8f0';
+      } else if (selectedIndex != null) {
+        if (item.slices[selectedIndex])
+          return item.error ? '#e11d48' : '#5eead4';
+        return '#e2e8f0';
+      }
+      return item.error ? '#e11d48' : '#5eead4';
+    }
+    if (selectedSlices != null) {
+      let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
+      if (allEqual)
+        return colorScale(item.slices.reduce((prev, curr) => prev + curr, 0));
+      return '#e2e8f0';
+    } else if (selectedIndex != null) {
+      if (item.slices[selectedIndex])
+        colorScale(item.slices.reduce((prev, curr) => prev + curr, 0));
+      return '#e2e8f0';
+    }
+    return colorScale(item.slices.reduce((prev, curr) => prev + curr, 0));
+  }
 </script>
 
 {#if intersectionCounts.length > 0}
   <div class="w-full h-full relative">
     <LayerCake
-      padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+      padding={{ top: 0, right: 0, bottom: 100, left: 0 }}
       data={pointData}
     >
       <Canvas>
         <ForceScatterPlot
           bind:simulationProgress
           bind:hoveredSlices
+          {colorByError}
           {hoveredMousePosition}
-          colorFn={selectedIndex != null
-            ? (item) =>
-                item.slices[selectedIndex]
-                  ? colorScale(
-                      item.slices.reduce((prev, curr) => prev + curr, 0)
-                    )
-                  : '#bbb'
-            : (item) =>
-                colorScale(item.slices.reduce((prev, curr) => prev + curr, 0))}
+          colorFn={(item) =>
+            color(
+              item,
+              hoveredSlices != null ? hoveredSlices : null,
+              selectedIndex
+            )}
         />
       </Canvas>
     </LayerCake>
