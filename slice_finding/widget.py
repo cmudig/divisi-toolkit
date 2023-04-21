@@ -43,6 +43,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     slices = traitlets.List([]).tag(sync=True)
     custom_slices = traitlets.List([]).tag(sync=True)
     custom_slice_results = traitlets.List([]).tag(sync=True)
+    overall_slice = traitlets.Dict({}).tag(sync=True)
     
     value_names = traitlets.Dict({}).tag(sync=True)
     
@@ -178,6 +179,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.get_slice_description(slice_obj, metrics=metrics or self.metrics)
             for slice_obj in ranked_results
         ]
+        self.overall_slice = self.get_slice_description(Slice({}), metrics=metrics or self.metrics)
         
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):

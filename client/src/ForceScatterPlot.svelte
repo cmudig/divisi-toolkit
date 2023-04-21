@@ -215,15 +215,10 @@
           false
         );
         if ($data[i].error) {
-          if (numSlices == 0) $ctx.fillStyle = '#bbb';
-          else
-            $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
           $ctx.fill();
         } else {
-          if (numSlices == 0) $ctx.strokeStyle = '#bbb';
-          else
-            $ctx.strokeStyle =
-              colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.strokeStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
           $ctx.stroke();
         }
       }

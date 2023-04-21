@@ -1,9 +1,6 @@
 <script lang="ts">
   import SliceTable from './SliceTable.svelte';
   import { traitlet } from './stores';
-  import { format } from 'd3-format';
-  import IncrementButtons from './IncrementButtons.svelte';
-  import ScoreWeightSlider from './ScoreWeightSlider.svelte';
   import ScoreWeightMenu from './ScoreWeightMenu.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
   import {
@@ -11,10 +8,9 @@
     faCompress,
     faExpand,
   } from '@fortawesome/free-solid-svg-icons';
-  import { onMount } from 'svelte';
+  import SliceCurationView from './SliceCurationView.svelte';
   import SliceOverlapPlot from './SliceOverlapPlot.svelte';
   import SliceUpsetPlot from './SliceUpsetPlot.svelte';
-  import SliceChordDiagram from './SliceChordDiagram.svelte';
 
   export let model;
 
@@ -29,6 +25,7 @@
   let slices = traitlet(model, 'slices', []);
   let customSlices = traitlet(model, 'custom_slices', []);
   let customSliceResults = traitlet(model, 'custom_slice_results', []);
+  let overallSlice = traitlet(model, 'overall_slice', {});
   let positiveOnly = traitlet(model, 'positive_only', false);
 
   let valueNames = traitlet(model, 'value_names', {});
@@ -181,6 +178,8 @@
     if (isFullScreen && !document.fullscreenElement) isFullScreen = false;
     console.log('is full screen', isFullScreen, document.fullscreenElement);
   }
+
+  let showUpsetPlot = false;
 </script>
 
 <main
@@ -262,30 +261,34 @@
   </div>
   <div class="flex flex-1 w-full h-0" class:disable-div={$runningSampler}>
     {#if $sliceIntersectionCounts.length > 0}
-      <div class="flex h-full w-full">
-        <div class="flex-1 h-full">
+      {#if showUpsetPlot}
+        <div class="flex h-full w-full">
+          <!--<div class="flex-1 h-full">
           <SliceOverlapPlot
+            errorKey="Error Rate"
             intersectionCounts={$sliceIntersectionCounts}
             labels={$sliceIntersectionLabels}
             colorByError
-            selectedIndex={$selectedIntersectionIndex >= 0
-              ? $selectedIntersectionIndex
-              : null}
           />
-        </div>
-        <!--<div class="flex-1 h-full">
+        </div>-->
+          <!--<div class="flex-1 h-full">
           <SliceChordDiagram
             intersectionCounts={$sliceIntersectionCounts}
             labels={$sliceIntersectionLabels}
           />
         </div>-->
-        <div class="flex-1 h-full">
           <SliceUpsetPlot
             intersectionCounts={$sliceIntersectionCounts}
             labels={$sliceIntersectionLabels}
           />
         </div>
-      </div>
+      {:else}
+        <SliceCurationView
+          sliceIntersectionCounts={$sliceIntersectionCounts}
+          sliceIntersectionLabels={$sliceIntersectionLabels}
+          overallSlice={$overallSlice}
+        />
+      {/if}
     {:else}
       <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">
         <div class="p-4 bg-slate-200 rounded w-full min-h-full">

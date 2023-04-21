@@ -15,3 +15,12 @@ export function areObjectsEqual(obj1: any, obj2: any): boolean {
     Object.entries(obj2).every((e) => obj1[e[0]] == e[1])
   );
 }
+
+export function cumulativeSum(arr: Array<number>): Array<number> {
+  return arr.map(
+    (
+      (sum) => (value) =>
+        (sum += value)
+    )(0)
+  );
+}

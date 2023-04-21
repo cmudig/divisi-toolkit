@@ -293,6 +293,7 @@ class RankedSliceList:
                 data_type = options.get("type", detect_data_type(data))
                 if data_type == "binary":
                     slice_metrics[metric_name] = {"type": data_type, 
+                                                  "count": data[mask].sum(),
                                                   "mean": data[mask].mean(), 
                                                   "share": data[mask].sum() / data[base_mask].sum()}
                 elif data_type == "categorical":

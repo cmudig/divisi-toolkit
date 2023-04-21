@@ -4,6 +4,7 @@
   import { format } from 'd3-format';
   import Fa from 'svelte-fa/src/fa.svelte';
   import { faCheck } from '@fortawesome/free-solid-svg-icons';
+  import Checkbox from './Checkbox.svelte';
 
   export let weights: { [key: string]: number } = {};
   export let scoreNames: string[] = [];
@@ -111,24 +112,17 @@
   />
   {#each scoreNames as score, i}
     <div class="mb-2 flex flex-wrap items-center text-sm">
-      <button
-        class="mr-1 checkbox rounded flex items-center justify-center text-white {weights[
-          score
-        ] > 0.0
-          ? 'bg-' + scoreColors[i]
-          : 'bg-slate-300 hover:bg-slate-400'}"
-        on:click={(e) => {
-          if (weights[score] > 0.0) {
+      <Checkbox
+        colorClass={weights[score] > 0.0 ? 'bg-' + scoreColors[i] : null}
+        checked={weights[score] > 0.0}
+        on:change={(e) => {
+          if (!e.detail) {
             removeWeight(score);
           } else {
             initializeWeight(score);
           }
         }}
-      >
-        {#if weights[score] > 0.0}
-          <Fa icon={faCheck} />
-        {/if}
-      </button>
+      />
       <div class="flex-auto">
         {score}
       </div>
@@ -145,10 +139,3 @@
     </div>
   {/each}
 </div>
-
-<style>
-  .checkbox {
-    width: 18px;
-    height: 18px;
-  }
-</style>

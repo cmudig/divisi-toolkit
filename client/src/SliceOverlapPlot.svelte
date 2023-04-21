@@ -6,13 +6,15 @@
   export let intersectionCounts = [];
   export let labels = [];
   export let numPoints = 500;
-  export let selectedIndex = null;
+  export let selectedIndexes = null;
 
   export let colorByError = false;
 
-  const errorKey = 'Error Rate';
-  let hoveredSlices = null;
+  export let errorKey;
+
+  export let hoveredSlices = null;
   let hoveredMousePosition = null;
+  let hoveredSliceInfo = null;
 
   let sliceCount = 0;
 
@@ -59,7 +61,7 @@
       })
       .flat();
     colorScale = d3
-      .scaleSequential(d3.interpolateTurbo)
+      .scaleSequential(d3.interpolateSpectral)
       // .scaleOrdinal(d3.schemeCategory10)
       // .domain(d3.range(1, intersectionCounts[0].slices.length + 1));
       .domain([1, maxNumSlices]);
@@ -67,50 +69,58 @@
     pointData = [];
   }
 
-  function describeSlice(slice: { [key: string]: any }): string {
-    let descriptions = Object.entries(slice).map(
-      (e) => `<span class='font-mono'>${e[0]}</span> = ${e[1]}`
+  $: if (hoveredSlices != null)
+    hoveredSliceInfo = intersectionCounts.find((item) =>
+      item.slices.every((s, i) => hoveredSlices[i] == s)
     );
-    if (descriptions.length == 0) return '<empty slice>';
-    return descriptions.join(', ');
-  }
+  else if (selectedIndexes != null)
+    hoveredSliceInfo = intersectionCounts
+      .filter((item) => selectedIndexes.some((s, i) => item.slices[i] && s))
+      .reduce(
+        (prev, curr) => ({
+          count: prev.count + curr.count,
+          [errorKey]: prev[errorKey] + curr[errorKey],
+        }),
+        { count: 0, [errorKey]: 0 }
+      );
+  else hoveredSliceInfo = null;
 
   function handleMousePosition(e) {
     let rect = e.target.getBoundingClientRect();
     hoveredMousePosition = [e.clientX - rect.left, e.clientY - rect.top];
   }
 
-  function color(item, selectedSlices, selectedIndex) {
+  function color(item, selectedSlices, selIndexes) {
+    let numSlices = item.slices.reduce((prev, curr) => prev + curr, 0);
     if (colorByError) {
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-        if (allEqual) return item.error ? '#e11d48' : '#5eead4';
+        if (allEqual) return item.error ? '#c2410c' : '#6ee7b7';
         return '#e2e8f0';
-      } else if (selectedIndex != null) {
-        if (item.slices[selectedIndex])
-          return item.error ? '#e11d48' : '#5eead4';
+      } else if (selIndexes != null) {
+        if (selIndexes.some((s, i) => item.slices[i] && s))
+          return item.error ? '#c2410c' : '#6ee7b7';
         return '#e2e8f0';
       }
-      return item.error ? '#e11d48' : '#5eead4';
+      return item.error ? '#c2410c' : '#6ee7b7';
     }
     if (selectedSlices != null) {
       let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-      if (allEqual)
-        return colorScale(item.slices.reduce((prev, curr) => prev + curr, 0));
+      if (allEqual) return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
       return '#e2e8f0';
-    } else if (selectedIndex != null) {
-      if (item.slices[selectedIndex])
-        colorScale(item.slices.reduce((prev, curr) => prev + curr, 0));
+    } else if (selIndexes != null) {
+      if (selIndexes.some((s, i) => item.slices[i] && s))
+        return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
       return '#e2e8f0';
     }
-    return colorScale(item.slices.reduce((prev, curr) => prev + curr, 0));
+    return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
   }
 </script>
 
 {#if intersectionCounts.length > 0}
   <div class="w-full h-full relative">
     <LayerCake
-      padding={{ top: 0, right: 0, bottom: 100, left: 0 }}
+      padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
       data={pointData}
     >
       <Canvas>
@@ -123,7 +133,7 @@
             color(
               item,
               hoveredSlices != null ? hoveredSlices : null,
-              selectedIndex
+              selectedIndexes
             )}
         />
       </Canvas>
@@ -151,21 +161,12 @@
     <div class="absolute bottom-0 right-0 p-3 text-gray-700">
       One dot = {numPerPoint} points
     </div>
-    <div class="absolute bottom-0 left-0 p-3 text-gray-600">
-      {#each labels as label, i}
-        <p
-          class={(hoveredSlices != null && hoveredSlices[i]) ||
-          (selectedIndex != null && selectedIndex == i)
-            ? 'text-blue-700 font-bold'
-            : ''}
-          on:mouseenter={(e) => (selectedIndex = i)}
-          on:mouseleave={(e) => (selectedIndex = null)}
-        >
-          {@html describeSlice(label.featureValues)} (count = {label.metrics[
-            'Count'
-          ].count}, error = {d3.format('.1%')(label.metrics[errorKey].mean)})
-        </p>
-      {/each}
-    </div>
+    {#if hoveredSliceInfo != null}
+      <div class="absolute bottom-0 left-0 p-3 text-gray-600">
+        {hoveredSliceInfo.count} instances, {hoveredSliceInfo[errorKey]} errors ({d3.format(
+          '.1%'
+        )(hoveredSliceInfo[errorKey] / hoveredSliceInfo.count)})
+      </div>
+    {/if}
   </div>
 {/if}
