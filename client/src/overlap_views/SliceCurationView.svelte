@@ -1,8 +1,8 @@
 <script lang="ts">
-  import Checkbox from './Checkbox.svelte';
+  import Checkbox from '../utils/Checkbox.svelte';
   import SliceOverlapPlot from './SliceOverlapPlot.svelte';
-  import SliceMetricBar from './metric_charts/SliceMetricBar.svelte';
-  import type { Slice } from './slice.type';
+  import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
+  import type { Slice } from '../utils/slice.type';
   import * as d3 from 'd3';
 
   export let sliceIntersectionCounts: any[] = [];

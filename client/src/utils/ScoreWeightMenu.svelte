@@ -4,7 +4,7 @@
   import { format } from 'd3-format';
   import Fa from 'svelte-fa/src/fa.svelte';
   import { faCheck } from '@fortawesome/free-solid-svg-icons';
-  import Checkbox from './Checkbox.svelte';
+  import Checkbox from '../Checkbox.svelte';
 
   export let weights: { [key: string]: number } = {};
   export let scoreNames: string[] = [];

@@ -5,7 +5,7 @@
   import Column from './Column.svelte';
   import { scaleBand, scaleLog, scaleLinear } from 'd3-scale';
   import BarTooltip from './BarTooltip.svelte';
-  import type { Histogram } from '../slice.type';
+  import type { Histogram } from '../utils/slice.type';
 
   export let width = 100;
 

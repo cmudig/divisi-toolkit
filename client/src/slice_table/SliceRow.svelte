@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Slice } from './slice.type';
-  import SliceMetricBar from './metric_charts/SliceMetricBar.svelte';
+  import type { Slice } from '../utils/slice.type';
+  import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
   import { format } from 'd3-format';
-  import SliceMetricHistogram from './metric_charts/SliceMetricHistogram.svelte';
-  import SliceMetricCategoryBar from './metric_charts/SliceMetricCategoryBar.svelte';
+  import SliceMetricHistogram from '../metric_charts/SliceMetricHistogram.svelte';
+  import SliceMetricCategoryBar from '../metric_charts/SliceMetricCategoryBar.svelte';
   import { createEventDispatcher, onMount } from 'svelte';
   import Select from 'svelte-select';
   import Fa from 'svelte-fa/src/fa.svelte';
@@ -16,7 +16,7 @@
     faCirclePlus,
     faEllipsisVertical,
   } from '@fortawesome/free-solid-svg-icons';
-  import ActionMenuButton from './ActionMenuButton.svelte';
+  import ActionMenuButton from '../utils/ActionMenuButton.svelte';
 
   const dispatch = createEventDispatcher();
 

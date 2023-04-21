@@ -2,7 +2,7 @@
   import { format } from 'd3-format';
   import { interpolateViridis, schemeCategory10 } from 'd3-scale-chromatic';
   import TableCellBar from './TableCellBar.svelte';
-  import { cumulativeSum } from '../utils';
+  import { cumulativeSum } from '../utils/utils';
 
   export let width = 100;
   export let scale = null;

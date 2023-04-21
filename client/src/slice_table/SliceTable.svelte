@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { Slice } from './slice.type';
+  import type { Slice } from '../utils/slice.type';
   import SliceRow from './SliceRow.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
-  import Hoverable from './Hoverable.svelte';
+  import Hoverable from '../utils/Hoverable.svelte';
   import {
     faAngleLeft,
     faAngleRight,
@@ -10,7 +10,7 @@
     faEyeSlash,
     faGripLinesVertical,
   } from '@fortawesome/free-solid-svg-icons';
-  import { areObjectsEqual, areSetsEqual } from './utils';
+  import { areObjectsEqual, areSetsEqual } from '../utils/utils';
 
   export let slices: Array<Slice> = [];
 

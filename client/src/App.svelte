@@ -1,16 +1,16 @@
 <script lang="ts">
-  import SliceTable from './SliceTable.svelte';
+  import SliceTable from './slice_table/SliceTable.svelte';
   import { traitlet } from './stores';
-  import ScoreWeightMenu from './ScoreWeightMenu.svelte';
+  import ScoreWeightMenu from './utils/ScoreWeightMenu.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
   import {
     faChevronLeft,
     faCompress,
     faExpand,
   } from '@fortawesome/free-solid-svg-icons';
-  import SliceCurationView from './SliceCurationView.svelte';
-  import SliceOverlapPlot from './SliceOverlapPlot.svelte';
-  import SliceUpsetPlot from './SliceUpsetPlot.svelte';
+  import SliceCurationView from './overlap_views/SliceCurationView.svelte';
+  import SliceOverlapPlot from './overlap_views/SliceOverlapPlot.svelte';
+  import SliceUpsetPlot from './overlap_views/SliceUpsetPlot.svelte';
 
   export let model;
 
