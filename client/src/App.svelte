@@ -25,6 +25,7 @@
   let slices = traitlet(model, 'slices', []);
   let customSlices = traitlet(model, 'custom_slices', []);
   let customSliceResults = traitlet(model, 'custom_slice_results', []);
+  let selectedSlices = traitlet(model, 'selected_slices', []);
   let overallSlice = traitlet(model, 'overall_slice', {});
   let positiveOnly = traitlet(model, 'positive_only', false);
 
@@ -178,128 +179,96 @@
     if (isFullScreen && !document.fullscreenElement) isFullScreen = false;
     console.log('is full screen', isFullScreen, document.fullscreenElement);
   }
-
-  let showUpsetPlot = false;
 </script>
 
 <main
-  class="w-full flex flex-col"
+  class="w-full flex"
   class:p-4={isFullScreen}
   style={isFullScreen ? 'height: 100vh;' : 'height: 640px; max-height: 90vh;'}
   bind:this={parentElement}
 >
-  <div
-    class="px-3 py-3 rounded w-full flex items-center mb-2 transition-colors duration-300 {$searchSpecStack.length >
-    1
-      ? 'bg-indigo-600 text-white indigo'
-      : 'bg-slate-200 text-gray-700'}"
-  >
-    {#if $runningSampler}
-      <button
-        class="ml-2 mr-4 btn btn-blue disabled:opacity-50"
-        disabled={$shouldCancel}
-        on:click={() => ($shouldCancel = true)}>Stop</button
-      >
-      <div class="flex-auto">
-        <div class="text-sm">
-          {#if $shouldCancel}
-            Canceling...
-          {:else}
-            Running sampler ({($samplerRunProgress * 100).toFixed(1)}%
-            complete)...
-          {/if}
-        </div>
-        <div
-          class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
-        >
-          <div
-            class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
-            style="width: {($samplerRunProgress * 100).toFixed(1)}%"
-          />
-        </div>
-      </div>
-    {:else}
-      {#if $searchSpecStack.length > 1}
+  <div class="flex flex-col w-full">
+    <div
+      class="px-3 py-3 rounded w-full flex items-center mb-2 transition-colors duration-300 {$searchSpecStack.length >
+      1
+        ? 'bg-indigo-600 text-white indigo'
+        : 'bg-slate-200 text-gray-700'}"
+    >
+      {#if $runningSampler}
         <button
-          class="ml-1 p-2 rounded hover:bg-indigo-500 bg-transparent"
-          on:click={(e) =>
-            ($searchSpecStack = $searchSpecStack.slice(
-              0,
-              $searchSpecStack.length - 1
-            ))}
+          class="ml-2 mr-4 btn btn-blue disabled:opacity-50"
+          disabled={$shouldCancel}
+          on:click={() => ($shouldCancel = true)}>Stop</button
         >
-          <span class="my-0.5 block"> <Fa icon={faChevronLeft} /></span>
-        </button>
-      {/if}
-
-      <button
-        class="ml-1 btn btn-blue disabled:opacity-50"
-        disabled={$runningSampler}
-        on:click={() => ($shouldRerun = true)}>Find Slices</button
-      >
-      <div class="flex-auto ml-2">
-        in <strong>{@html searchScopeDescription}</strong> by drawing
-        <input
-          class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
-          type="number"
-          min="0"
-          max="500"
-          step="5"
-          bind:value={$numSamples}
-        />
-        samples from <strong>{@html searchSampleDescription}</strong>
-      </div>
-      <button
-        class="mr-2 p-3 rounded indigo:hover:bg-indigo-500 bg-transparent hover:bg-slate-300"
-        on:click={isFullScreen ? exitFullScreen : enterFullScreen}
-      >
-        <span class="my-0.5 block">
-          <Fa icon={isFullScreen ? faCompress : faExpand} /></span
-        >
-      </button>
-    {/if}
-  </div>
-  <div class="flex flex-1 w-full h-0" class:disable-div={$runningSampler}>
-    {#if $sliceIntersectionCounts.length > 0}
-      {#if showUpsetPlot}
-        <div class="flex h-full w-full">
-          <!--<div class="flex-1 h-full">
-          <SliceOverlapPlot
-            errorKey="Error Rate"
-            intersectionCounts={$sliceIntersectionCounts}
-            labels={$sliceIntersectionLabels}
-            colorByError
-          />
-        </div>-->
-          <!--<div class="flex-1 h-full">
-          <SliceChordDiagram
-            intersectionCounts={$sliceIntersectionCounts}
-            labels={$sliceIntersectionLabels}
-          />
-        </div>-->
-          <SliceUpsetPlot
-            intersectionCounts={$sliceIntersectionCounts}
-            labels={$sliceIntersectionLabels}
-          />
+        <div class="flex-auto">
+          <div class="text-sm">
+            {#if $shouldCancel}
+              Canceling...
+            {:else}
+              Running sampler ({($samplerRunProgress * 100).toFixed(1)}%
+              complete)...
+            {/if}
+          </div>
+          <div
+            class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
+          >
+            <div
+              class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
+              style="width: {($samplerRunProgress * 100).toFixed(1)}%"
+            />
+          </div>
         </div>
       {:else}
-        <SliceCurationView
-          sliceIntersectionCounts={$sliceIntersectionCounts}
-          sliceIntersectionLabels={$sliceIntersectionLabels}
-          overallSlice={$overallSlice}
-        />
+        {#if $searchSpecStack.length > 1}
+          <button
+            class="ml-1 p-2 rounded hover:bg-indigo-500 bg-transparent"
+            on:click={(e) =>
+              ($searchSpecStack = $searchSpecStack.slice(
+                0,
+                $searchSpecStack.length - 1
+              ))}
+          >
+            <span class="my-0.5 block"> <Fa icon={faChevronLeft} /></span>
+          </button>
+        {/if}
+
+        <button
+          class="ml-1 btn btn-blue disabled:opacity-50"
+          disabled={$runningSampler}
+          on:click={() => ($shouldRerun = true)}>Find Slices</button
+        >
+        <div class="flex-auto ml-2">
+          in <strong>{@html searchScopeDescription}</strong> by drawing
+          <input
+            class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
+            type="number"
+            min="0"
+            max="500"
+            step="5"
+            bind:value={$numSamples}
+          />
+          samples from <strong>{@html searchSampleDescription}</strong>
+        </div>
+        <button
+          class="mr-2 p-3 rounded indigo:hover:bg-indigo-500 bg-transparent hover:bg-slate-300"
+          on:click={isFullScreen ? exitFullScreen : enterFullScreen}
+        >
+          <span class="my-0.5 block">
+            <Fa icon={isFullScreen ? faCompress : faExpand} /></span
+          >
+        </button>
       {/if}
-    {:else}
-      <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 250px;">
+    </div>
+    <div class="flex flex-1 w-full h-0" class:disable-div={$runningSampler}>
+      <!-- <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 280px;">
         <div class="p-4 bg-slate-200 rounded w-full min-h-full">
           <ScoreWeightMenu bind:weights={$scoreWeights} {scoreNames} />
         </div>
-      </div>
+      </div> -->
       <div class="flex-auto overflow-scroll h-full">
         <SliceTable
           slices={$slices}
-          bind:customSlices={$customSlices}
-          bind:customSliceResults={$customSliceResults}
+          overallSlice={$overallSlice}
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           positiveOnly={$positiveOnly}
@@ -312,6 +281,9 @@
             if (!e.detail.score_weights) e.detail.score_weights = $scoreWeights;
             $searchSpecStack = [...$searchSpecStack, e.detail];
           }}
+          on:saveslice={(e) => {
+            $selectedSlices = [...$selectedSlices, e.detail];
+          }}
         />
         {#if $slices.length > 0}
           <div class="mt-2">
@@ -322,8 +294,18 @@
           </div>
         {/if}
       </div>
-    {/if}
+    </div>
   </div>
+  <!-- <div class="flex-1 h-full">
+    {#if $sliceIntersectionCounts.length > 0}
+      <SliceOverlapPlot
+        errorKey="Error Rate"
+        intersectionCounts={$sliceIntersectionCounts}
+        labels={$sliceIntersectionLabels}
+        colorByError
+      />
+    {/if}
+  </div> -->
 </main>
 
 <style>

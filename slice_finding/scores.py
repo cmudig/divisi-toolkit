@@ -227,12 +227,12 @@ class OutcomeRateScore(ScoreFunctionBase):
         super().__init__("outcome_rate", data)
         self.inverse = inverse
         self.eps = eps
-        self._mean = self.data.mean()
+        self._mean = np.nanmean(self.data)
         
     def calculate_score(self, slice, mask, univariate_masks):
         if self.inverse: 
-            return (self.eps + self._mean) / (self.eps + self.data[mask].mean())
-        return (self.eps + self.data[mask].mean()) / (self.eps + self._mean)
+            return (self.eps + self._mean) / (self.eps + np.nanmean(self.data[mask]))
+        return (self.eps + np.nanmean(self.data[mask])) / (self.eps + self._mean)
 
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         mean = slice_sum / slice_count
@@ -295,7 +295,7 @@ class InteractionEffectScore(ScoreFunctionBase):
     
     def __init__(self, data, eps=1e-6):
         super().__init__("interaction_effect", data)
-        self._mean = self.data.mean()
+        self._mean = np.nanmean(self.data)
         self.eps = eps
         
     def _superslice_score(self, masks):
@@ -303,11 +303,11 @@ class InteractionEffectScore(ScoreFunctionBase):
         for m in masks:
             if overall_mask is None: overall_mask = m.copy()
             else: overall_mask &= m
-        return (self.eps + self.data[overall_mask].mean()) / (self.eps + self._mean)
+        return (self.eps + np.nanmean(self.data[overall_mask])) / (self.eps + self._mean)
 
     def calculate_score(self, slice, mask, univariate_masks):
         if len(univariate_masks) <= 1: return 1.0
-        overall_effect = max(0, ((self.eps + self.data[mask].mean()) / (self.eps + self._mean)))
+        overall_effect = max(0, ((self.eps + np.nanmean(self.data[mask])) / (self.eps + self._mean)))
         itemized_effect = max(self._superslice_score(ms)
                     for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks))
         return max(0, overall_effect / itemized_effect)

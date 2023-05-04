@@ -118,6 +118,7 @@ def detect_data_type(arr):
     if arr.dtype == np.dtype('object'):
         return 'categorical'
     uniques = np.unique(arr)
+    uniques = uniques[~np.isnan(uniques)]
     if len(uniques) == 2 and np.allclose(uniques, np.arange(2)):
         return 'binary'
     

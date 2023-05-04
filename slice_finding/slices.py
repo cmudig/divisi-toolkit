@@ -293,9 +293,9 @@ class RankedSliceList:
                 data_type = options.get("type", detect_data_type(data))
                 if data_type == "binary":
                     slice_metrics[metric_name] = {"type": data_type, 
-                                                  "count": data[mask].sum(),
-                                                  "mean": data[mask].mean(), 
-                                                  "share": data[mask].sum() / data[base_mask].sum()}
+                                                  "count": np.nansum(data[mask]),
+                                                  "mean": np.nanmean(data[mask]), 
+                                                  "share": np.nansum(data[mask]) / np.nansum(data[base_mask])}
                 elif data_type == "categorical":
                     slice_metrics[metric_name] = {"type": data_type, 
                                                   "counts": dict(zip(*np.unique(data[mask], return_counts=True)))}
@@ -318,7 +318,7 @@ class RankedSliceList:
                     hist_values, _ = np.histogram(data[mask], bins=hist_bins)
                     slice_metrics[metric_name] = {"type": data_type,
                                                   "hist": dict(zip(hist_bins, hist_values)),
-                                                  "mean": data[mask].mean()}
+                                                  "mean": np.nanmean(data[mask])}
         slice_desc["metrics"] = slice_metrics
             
         return convert_to_native_types(slice_desc)

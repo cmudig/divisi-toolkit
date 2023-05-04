@@ -45,7 +45,7 @@
   }
 </script>
 
-<div style="width: {width}px; height: 28px;">
+<div style="width: {width}px; height: 22px;">
   <LayerCake
     padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
     x="bin"
@@ -67,7 +67,7 @@
     </Svg>
   </LayerCake>
 </div>
-<div class="mt-1 text-xs text-slate-800">
+<div class="mt-1 text-xs text-slate-800 truncate">
   {#if !$$slots.caption}
     {#if hoveredBin != null}
       {makeTooltipText(data.find((d) => d.bin == hoveredBin))}

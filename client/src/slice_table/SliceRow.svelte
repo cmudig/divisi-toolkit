@@ -17,6 +17,7 @@
     faEllipsisVertical,
   } from '@fortawesome/free-solid-svg-icons';
   import ActionMenuButton from '../utils/ActionMenuButton.svelte';
+  import { TableWidths } from './tablewidths';
 
   const dispatch = createEventDispatcher();
 
@@ -38,6 +39,10 @@
   export let metricInfo = {};
 
   export let rowClass = '';
+  export let maxIndent = 0;
+  export let indent = 0;
+
+  const indentAmount = 24;
 
   export let showCreateSliceButton = false;
   export let focusOnMount = false;
@@ -135,8 +140,11 @@
 </script>
 
 {#if !!sliceToShow}
-  <tr class={rowClass}>
-    <td class="py-2 px-2">
+  <div
+    class="slice-row {rowClass} flex"
+    style="margin-left: {indentAmount * (maxIndent - indent)}px;"
+  >
+    <div class="py-2 px-2" style="width: {TableWidths.ActionMenus}px;">
       <div class="flex items-center h-full">
         <ActionMenuButton>
           {#if !!customSlice}
@@ -159,8 +167,9 @@
               href="#"
               tabindex="0"
               role="menuitem"
-              title="Create a new custom slice based on this slice"
-              on:click={() => dispatch('customize')}>Customize</a
+              title="Save this slice"
+              on:click={() => dispatch('saveslice', sliceToShow.featureValues)}
+              >Save Slice</a
             >
           {/if}
           <a
@@ -201,151 +210,90 @@
           >
         {/if}
       </div>
-    </td>
-    {#each featureOrder as col, i}
-      <td class="py-2 px-2 text-xs">
-        {#if editingColumn != null && editingColumn == i}
-          <Select
-            class="p-2 focus:ring-1 focus:ring-blue-600"
-            --font-size="13px"
-            placeholder="Select variable"
-            value={sliceToShow[col]}
-            items={columnOptions}
-            focused
-            on:change={(e) => {
-              if (e.detail.value != col) {
-                editFeatureValue(
-                  col,
-                  e.detail.value,
-                  positiveOnly ? 1 : $valueNames[e.detail.value][1][0]
-                );
-              }
-              editingColumn = null;
-              dispatch('endedit', i);
-            }}
-            on:blur={() => {
-              editingColumn = null;
-              console.log('blur');
-              dispatch('endedit', i);
-            }}
-          />
-        {:else if !slice && i == 0 && Object.keys(baseSlice.featureValues).length == 0}
-          <button
-            class="bg-slate-200 hover:bg-slate-300 px-2 py-2 mr-1 rounded text-sm font-bold w-full"
-            title="Create a custom slice"
-            on:click={() => (editingColumn = 0)}>Define Slice</button
-          >
-        {:else if col.length > 0}
-          {@const featureDisabled =
-            !sliceToShow.featureValues.hasOwnProperty(col) &&
-            baseSlice.featureValues.hasOwnProperty(col)}
-          {#if positiveOnly}
-            <button
-              class="bg-transparent hover:opacity-70 font-mono text-sm text-left"
-              class:opacity-30={featureDisabled}
-              class:line-through={featureDisabled}
-              title={featureDisabled
-                ? 'Reset slice'
-                : 'Test effect of removing this feature from the slice'}
-              on:click={() => dispatch('toggle', col)}>{col}</button
-            >
-          {:else}
-            <button
-              class="bg-transparent mr-1 text-sm font-mono hover:opacity-70"
-              class:opacity-50={featureDisabled}
-              title={featureDisabled
-                ? 'Reset slice'
-                : 'Test effect of removing this feature from the slice'}
-              on:click={() => dispatch('toggle', col)}>{col}</button
-            >
-          {/if}
-          <div class="flex items-center">
-            {#if !positiveOnly}
-              {#if featureDisabled}
-                <span class="mt-1 mb-1 opacity-50">(any value)</span>
-              {:else if !customSlice}
-                <span class="mt-1 text-gray-600 mb-1"
-                  >{sliceToShow.featureValues[col]}</span
-                >
-              {:else}
-                <div
-                  class="hover:bg-slate-200 hover:transition-colors hover:duration-200 p-1 rounded relative"
-                  style="width: fit-content;"
-                >
-                  <select
-                    value={sliceToShow.featureValues[col]}
-                    class="flat-select bg-transparent {!!slice &&
-                    sliceToShow.featureValues[col] != slice.featureValues[col]
-                      ? 'text-orange-700'
-                      : 'text-slate-900'} text-xs focus:ring-blue-500 focus:border-blue-500 block px-1 pr-6"
-                    on:change={(e) => {
-                      if (!slice) {
-                        editFeatureValue(col, col, e.currentTarget.value);
-                      } else {
-                        dispatch('edit', {
-                          [col]: e.currentTarget.value,
-                        });
-                      }
-                    }}
-                  >
-                    {#each Object.entries($valueNames[featureOrder[i]][1]) as possibleValue}
-                      <option value={possibleValue[1]}
-                        >{possibleValue[1]}</option
-                      >
-                    {/each}
-                  </select>
-                  <div
-                    class="absolute right-0 pr-2 top-0 bottom-0 my-auto pointer-events-none {!!slice &&
-                    sliceToShow.featureValues[col] != slice.featureValues[col]
-                      ? 'text-orange-700'
-                      : 'text-slate-900'}"
-                    style="height: 12px;"
-                  >
-                    <Fa icon={faChevronDown} />
-                  </div>
-                </div>
-                {#if !!slice && sliceToShow.featureValues[col] != slice.featureValues[col]}
-                  <button
-                    class="bg-transparent hover:opacity-60 ml-2 text-slate-600"
-                    title="Reset this feature to its original value"
-                    on:click={() =>
-                      dispatch('edit', {
-                        [col]: slice.featureValues[col],
-                      })}><Fa icon={faRotateLeft} /></button
+    </div>
+    <div
+      class="py-2 px-2 text-xs flex items-center overflow-x-scroll whitespace-nowrap"
+      style="width: {TableWidths.FeatureList -
+        indentAmount * (maxIndent - indent)}px;"
+    >
+      {#if featureOrder.every((f) => f.length == 0)}
+        <span class="text-slate-600 text-base">Overall Dataset</span>
+      {/if}
+      {#each featureOrder as col, i}
+        {@const featureDisabled =
+          !sliceToShow.featureValues.hasOwnProperty(col) &&
+          baseSlice.featureValues.hasOwnProperty(col)}
+        {#if col.length > 0}
+          <div class="pt-1">
+            {#if positiveOnly}
+              <button
+                class="bg-transparent hover:opacity-70 font-mono text-sm text-left"
+                class:opacity-30={featureDisabled}
+                class:line-through={featureDisabled}
+                title={featureDisabled
+                  ? 'Reset slice'
+                  : 'Test effect of removing this feature from the slice'}
+                on:click={() => dispatch('toggle', col)}>{col}</button
+              >
+            {:else}
+              <button
+                class="bg-transparent mr-1 text-sm font-mono hover:opacity-70"
+                class:opacity-50={featureDisabled}
+                title={featureDisabled
+                  ? 'Reset slice'
+                  : 'Test effect of removing this feature from the slice'}
+                on:click={() => dispatch('toggle', col)}>{col}</button
+              >
+            {/if}
+            <div class="flex items-center">
+              {#if !positiveOnly}
+                {#if featureDisabled}
+                  <span class="mt-1 mb-1 opacity-50">(any value)</span>
+                {:else if !customSlice}
+                  <span class="mt-1 text-gray-600 mb-1"
+                    >{sliceToShow.featureValues[col]}</span
                   >
                 {/if}
+                {#if !slice}
+                  <button
+                    class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                    on:click={() => (editingColumn = i)}
+                    title="Choose a different feature to slice by"
+                    ><Fa icon={faPencil} /></button
+                  >
+                  <button
+                    class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                    on:click={() => deleteFeatureValue(col)}
+                    ><Fa icon={faTrash} /></button
+                  >
+                  {#if i == Object.keys(baseSlice.featureValues).length - 1}
+                    <button
+                      class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+                      title="Slice by an additional feature"
+                      on:click={() => {
+                        editingColumn = i + 1;
+                        dispatch('beginedit', i + 1);
+                      }}><Fa icon={faPlus} /></button
+                    >
+                  {/if}
+                {/if}
               {/if}
-            {/if}
-            {#if !slice}
-              <button
-                class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                on:click={() => (editingColumn = i)}
-                title="Choose a different feature to slice by"
-                ><Fa icon={faPencil} /></button
-              >
-              <button
-                class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                on:click={() => deleteFeatureValue(col)}
-                ><Fa icon={faTrash} /></button
-              >
-              {#if i == Object.keys(baseSlice.featureValues).length - 1}
-                <button
-                  class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                  title="Slice by an additional feature"
-                  on:click={() => {
-                    editingColumn = i + 1;
-                    dispatch('beginedit', i + 1);
-                  }}><Fa icon={faPlus} /></button
-                >
-              {/if}
-            {/if}
+            </div>
           </div>
+          {#if !featureOrder.slice(i + 1).every((f) => f.length == 0)}
+            <div class="w-0.5 mx-3 h-1/3 bg-slate-300 rounded-full" />
+          {/if}
         {/if}
-      </td>
-    {/each}
+      {/each}
+    </div>
     {#each metricNames as name}
       {@const metric = sliceToShow.metrics[name]}
-      <td class="p-2">
+      <div
+        class="p-2 pt-3"
+        style="width: {!!metricInfo[name] && metricInfo[name].visible
+          ? TableWidths.Metric
+          : TableWidths.CollapsedMetric}px;"
+      >
         {#if sliceToShow.isEmpty}
           <span class="text-slate-600">Empty</span>
         {:else if !!metricInfo[name] && metricInfo[name].visible}
@@ -358,16 +306,21 @@
               <span slot="caption">
                 <strong>{format('.1%')(metric.mean)}</strong>
                 {#if metric.hasOwnProperty('share')}
-                  ({format('.1%')(metric.share)} of total)
+                  <br />
+                  <span style="font-size: 0.7rem;" class="italic text-gray-700"
+                    >({format('.1%')(metric.share)} of total)</span
+                  >
                 {/if}
               </span>
             </SliceMetricBar>
           {:else if metric.type == 'count'}
             <SliceMetricBar value={metric.share} width={scoreCellWidth}>
               <span slot="caption">
-                <strong>{format(',')(metric.count)}</strong> ({format('.1%')(
-                  metric.share
-                )})
+                <strong>{format(',')(metric.count)}</strong><br /><span
+                  style="font-size: 0.7rem;"
+                  class="italic text-gray-700"
+                  >({format('.1%')(metric.share)})</span
+                >
               </span>
             </SliceMetricBar>
           {:else if metric.type == 'continuous'}
@@ -384,29 +337,26 @@
             />
           {/if}
         {/if}
-      </td>
+      </div>
     {/each}
     {#if showScores}
       {#each scoreNames as scoreName}
-        <td class="p-2">
+        <div class="p-2 pt-3" style="width: {TableWidths.Score}px;">
           <SliceMetricBar
             value={sliceToShow.scoreValues[scoreName]}
             scale={scoreWidthScalers[scoreName] || ((v) => v)}
             width={scoreCellWidth}
           />
-        </td>
+        </div>
       {/each}
     {:else}
-      <td />
+      <div />
     {/if}
-  </tr>
+  </div>
 {/if}
 
 <style>
-  tr {
-    height: 1px;
-  }
-  td {
-    height: inherit;
+  .slice-row > * {
+    flex: 0 0 auto;
   }
 </style>

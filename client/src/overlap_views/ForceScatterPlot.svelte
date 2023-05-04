@@ -27,6 +27,8 @@
 
   let simulation;
 
+  let showConvexHulls = false;
+
   onDestroy(cleanUp);
 
   $: if ($data.length > 0) {
@@ -45,6 +47,8 @@
   }
 
   function resetNodePositions(ds, w, h) {
+    showConvexHulls = false;
+
     nodeData = ds.map((d) => ({
       numSlices: d.slices.reduce((prev, curr) => prev + curr, 0),
     }));
@@ -76,6 +80,7 @@
     });
 
     let links = [];
+    let repulsions = [];
     $data.forEach((n1, i) => {
       $data.forEach((n2, j) => {
         if (i <= j) return;
@@ -96,6 +101,7 @@
           return; // links.push({ source: i, target: j, strength: 1.0 });
         } else if ((sum1 == 0 || sum2 == 0) && !(n1.error && n2.error))
           return; // links.push({ source: i, target: j, strength: 0.8, repel: true });
+        else if (countEqual == 0) repulsions.push({ source: i, target: j });
         else {
           links.push({
             source: i,
@@ -111,10 +117,16 @@
       .distance(10)
       .strength((l) => l.strength);
 
+    let magnetForce = forceMagnetic()
+      .links(repulsions)
+      .strength(2)
+      .polarity(false);
+
     simulation = d3
       .forceSimulation(nodePositions)
       .force('center', d3.forceCenter(w / 2, h / 2))
       .force('link', linkForce)
+      .force('magnet', magnetForce)
       .force(
         'collide',
         d3
@@ -137,11 +149,14 @@
       .alphaDecay(0.005)
       .alphaMin(1e-6)
       .on('tick', () => {
+        // if (totalTicks > numTicksBeforeAnimation) {
+        updatePositions();
         if (totalTicks > numTicksBeforeAnimation) {
-          updatePositions();
-          simulationProgress = 0.0;
-        } else if (totalTicks % 20 == 0)
-          simulationProgress = totalTicks / numTicksBeforeAnimation;
+          showConvexHulls = true;
+        }
+        // simulationProgress = 0.0;
+        // } else if (totalTicks % 20 == 0)
+        //   simulationProgress = totalTicks / numTicksBeforeAnimation;
         let f = simulation.force('collide');
         f.strength(Math.min(1.0, f.strength() * 1.005));
         if (numTicks >= alphaResetInterval && initialAlpha > finalAlpha) {
@@ -223,6 +238,31 @@
         }
       }
     });
+
+    if (showConvexHulls) {
+      renderConvexHulls();
+    }
+  }
+
+  function renderConvexHulls() {
+    let numSlices = $data[0].slices.length;
+    d3.range(numSlices).forEach((sliceIndex) => {
+      let hull = d3.polygonHull(
+        nodePositions
+          .map((d) => [d.x, d.y])
+          .filter((d, i) => $data[i].slices[sliceIndex])
+      );
+      if (hull.length == 0) return;
+      $ctx.beginPath();
+      $ctx.moveTo(hull[0][0], hull[0][1]);
+      hull.slice(1).forEach((p) => {
+        $ctx.lineTo(p[0], p[1]);
+      });
+      $ctx.fillStyle = '#bbbbbb';
+      $ctx.globalAlpha = 0.3;
+      $ctx.fill();
+    });
+    $ctx.globalAlpha = 1.0;
   }
 
   $: if (!!$ctx && !!simulation) {

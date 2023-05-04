@@ -11,9 +11,14 @@
     faGripLinesVertical,
   } from '@fortawesome/free-solid-svg-icons';
   import { areObjectsEqual, areSetsEqual } from '../utils/utils';
+  import { TableWidths } from './tablewidths';
+  import { createEventDispatcher } from 'svelte';
+
+  const dispatch = createEventDispatcher();
 
   export let slices: Array<Slice> = [];
 
+  export let overallSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
 
@@ -25,18 +30,14 @@
 
   export let valueNames: any = {};
 
-  export let customSlices: any[] = [];
-  export let customSliceResults: Slice[] = [];
-
   let maxFeatures = 1;
   let metricNames = [];
   let metricInfo = {};
   let scoreNames = [];
   let scoreWidthScalers = {};
-  let addingFeatureSize = 0;
 
   let allSlices: Array<Slice> = [];
-  $: allSlices = [...customSliceResults, ...slices];
+  $: allSlices = [...(!!overallSlice ? [overallSlice] : []), ...slices];
 
   $: if (allSlices.length > 0) {
     let testSlice = allSlices.find((s) => !s.isEmpty);
@@ -46,7 +47,6 @@
       (curr, next) => Math.max(curr, Object.keys(next.featureValues).length),
       1
     );
-    maxFeatures = Math.max(maxFeatures, addingFeatureSize);
 
     // tabulate score names and normalize
     let newScoreNames = Object.keys(testSlice.scoreValues);
@@ -196,224 +196,149 @@
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
   }
-
-  function editCustomSlice(i: number, featureValues: any) {
-    let newRequests = [...customSlices];
-    // if there was a toggled feature on this custom slice, remove it
-    if (
-      customSliceResults.length > i &&
-      sliceRequests.hasOwnProperty(customSliceResults[i].stringRep)
-    ) {
-      let allRequests = Object.assign({}, sliceRequests);
-      delete allRequests[customSliceResults[i].stringRep];
-      sliceRequests = allRequests;
-    }
-    if (Object.keys(featureValues).length == 0 && newRequests.length > 1)
-      newRequests.splice(i, 1);
-    else newRequests[i] = featureValues;
-    customSlices = newRequests;
-  }
-
-  function deleteCustomSlice(i: number) {
-    let newRequests = [...customSlices];
-    // if there was a toggled feature on this custom slice, remove it
-    if (
-      customSliceResults.length > i &&
-      sliceRequests.hasOwnProperty(customSliceResults[i].stringRep)
-    ) {
-      let allRequests = Object.assign({}, sliceRequests);
-      delete allRequests[customSliceResults[i].stringRep];
-      sliceRequests = allRequests;
-    }
-    newRequests.splice(i, 1);
-    if (newRequests.length == 0) newRequests = [{}];
-    customSlices = newRequests;
-  }
-
-  function createCustomSlice(featureValues = {}) {
-    customSlices = [...customSlices, Object.assign({}, featureValues)];
-  }
 </script>
 
 <div>
-  <table class="relative" cellspacing="0" cellpadding="0">
-    <thead class="text-left">
-      <tr>
-        <th class="bg-slate-100 button-menu rounded-tl">
-          <div class="p-2 border-b border-slate-600 w-full h-full" />
-        </th>
-        {#each Array(maxFeatures) as _, i}
-          <th class="bg-slate-100 feature">
-            <div class="p-2 border-b border-slate-600">
-              Feature {i + 1}
-            </div></th
-          >
-        {/each}
-        {#each metricNames as name}
-          <th
-            class="bg-slate-100 hover:bg-slate-200"
-            class:metric={metricInfo[name].visible}
-            class:opacity-30={draggingColumn == name}
-            draggable={clickingColumn == name}
-            on:dragstart={(e) => metricDragStart(e, name)}
-            on:dragend={(e) => metricDragEnd(e, name)}
-            on:dragover|preventDefault={() => false}
-            on:dragenter={(e) => metricDragEnter(e, name)}
-            on:dragleave={(e) => metricDragLeave(e, name)}
-            on:drop|preventDefault|stopPropagation={(e) => metricDrop(e, name)}
-          >
-            <Hoverable
-              class="potential-drop-zone p-2 border-b border-slate-600"
-              let:hovering
-            >
-              {#if metricInfo[name].visible}
-                <div class="flex items-center">
-                  <div>{name}</div>
-                  <div class="flex-1" />
-                  <button
-                    class="bg-transparent hover:opacity-60"
-                    class:opacity-0={!hovering}
-                    class:disabled={!hovering}
-                    on:click={(e) => {
-                      let mi = Object.assign({}, metricInfo);
-                      mi[name].visible = !mi[name].visible;
-                      metricInfo = mi;
-                    }}><Fa icon={faEye} /></button
-                  >
-                  <button
-                    class="ml-2 bg-transparent text-slate-400 cursor-move"
-                    on:mousedown={() => (clickingColumn = name)}
-                    on:mouseup={() => (clickingColumn = null)}
-                    class:opacity-0={!hovering}
-                    class:disabled={!hovering}
-                    ><Fa icon={faGripLinesVertical} /></button
-                  >
-                </div>
-              {:else}
+  <div class="relative">
+    <div
+      class="text-left flex font-bold slice-header whitespace-nowrap bg-slate-100 rounded-t border-b border-slate-600"
+    >
+      <div style="width: {TableWidths.ActionMenus}px;">
+        <div class="p-2 w-full h-full" />
+      </div>
+      <div style="width: {TableWidths.FeatureList}px;">
+        <div class="p-2">Slice</div>
+      </div>
+      {#each metricNames as name}
+        <div
+          class="bg-slate-100 hover:bg-slate-200"
+          style="width: {metricInfo[name].visible
+            ? TableWidths.Metric
+            : TableWidths.CollapsedMetric}px;"
+          class:opacity-30={draggingColumn == name}
+          draggable={clickingColumn == name}
+          on:dragstart={(e) => metricDragStart(e, name)}
+          on:dragend={(e) => metricDragEnd(e, name)}
+          on:dragover|preventDefault={() => false}
+          on:dragenter={(e) => metricDragEnter(e, name)}
+          on:dragleave={(e) => metricDragLeave(e, name)}
+          on:drop|preventDefault|stopPropagation={(e) => metricDrop(e, name)}
+        >
+          <Hoverable class="potential-drop-zone p-2 " let:hovering>
+            {#if metricInfo[name].visible}
+              <div class="flex items-center">
+                <div>{name}</div>
+                <div class="flex-1" />
                 <button
-                  class="bg-transparent opacity-30 hover:opacity-60"
+                  class="bg-transparent hover:opacity-60"
+                  class:opacity-0={!hovering}
+                  class:disabled={!hovering}
                   on:click={(e) => {
                     let mi = Object.assign({}, metricInfo);
                     mi[name].visible = !mi[name].visible;
                     metricInfo = mi;
-                  }}><Fa icon={faEyeSlash} /></button
+                  }}><Fa icon={faEye} /></button
                 >
-              {/if}
-            </Hoverable>
-          </th>
-        {/each}
-        {#if showScores}
-          {#each scoreNames as score, i}
-            <th class="bg-slate-100 score">
-              <div class="p-2 border-b border-slate-600">
-                {score}
-              </div></th
-            >
-          {/each}
-        {/if}
-        <th
-          class="bg-slate-100 hover:bg-slate-200 rounded-tr"
-          on:click={() => (showScores = !showScores)}
-        >
-          <div
-            class="w-full h-full px-4 flex justify-center items-center border-b border-slate-600"
-          >
-            {#if showScores}
-              <Fa icon={faAngleLeft} />
+                <button
+                  class="ml-2 bg-transparent text-slate-400 cursor-move"
+                  on:mousedown={() => (clickingColumn = name)}
+                  on:mouseup={() => (clickingColumn = null)}
+                  class:opacity-0={!hovering}
+                  class:disabled={!hovering}
+                  ><Fa icon={faGripLinesVertical} /></button
+                >
+              </div>
             {:else}
-              <Fa icon={faAngleRight} />
+              <button
+                class="bg-transparent opacity-30 hover:opacity-60"
+                on:click={(e) => {
+                  let mi = Object.assign({}, metricInfo);
+                  mi[name].visible = !mi[name].visible;
+                  metricInfo = mi;
+                }}><Fa icon={faEyeSlash} /></button
+              >
             {/if}
+          </Hoverable>
+        </div>
+      {/each}
+      {#if showScores}
+        {#each scoreNames as score, i}
+          <div class="bg-slate-100" style="width: {TableWidths.Score}px;">
+            <div class="p-2">
+              {score}
+            </div>
           </div>
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each customSliceResults as slice, i (i)}
-        <SliceRow
-          customSlice={slice}
-          {maxFeatures}
-          {scoreNames}
-          {positiveOnly}
-          scoreCellWidth={100}
-          {scoreWidthScalers}
-          {showScores}
-          {metricNames}
-          {metricInfo}
-          {valueNames}
-          rowClass="{!!searchBaseSlice &&
-          areObjectsEqual(searchBaseSlice, slice.featureValues)
-            ? 'bg-indigo-100'
-            : 'bg-slate-100'} {i == customSliceResults.length - 1
-            ? 'border-b-2 border-dotted'
-            : ''}"
-          temporarySlice={sliceRequestResults[slice.stringRep]}
-          showCreateSliceButton={i == customSliceResults.length - 1}
-          focusOnMount={i > 0 && i == customSliceResults.length - 1}
-          {fixedFeatureOrder}
-          on:edit={(e) => editCustomSlice(i, e.detail)}
-          on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
-          on:beginedit={(e) => (addingFeatureSize = e.detail + 1)}
-          on:endedit={() => (addingFeatureSize = 0)}
-          on:create={() => createCustomSlice()}
-          on:delete={() => deleteCustomSlice(i)}
-          on:duplicate={() => createCustomSlice(slice.featureValues)}
-          on:newsearch
-        />
-      {/each}
-      {#each slices as slice, i (slice.stringRep || i)}
-        <SliceRow
-          {slice}
-          {maxFeatures}
-          {scoreNames}
-          {positiveOnly}
-          scoreCellWidth={100}
-          {scoreWidthScalers}
-          {showScores}
-          {metricNames}
-          {metricInfo}
-          {valueNames}
-          {fixedFeatureOrder}
-          rowClass={!!searchBaseSlice &&
-          areObjectsEqual(searchBaseSlice, slice.featureValues)
-            ? 'bg-indigo-100 hover:bg-indigo-200'
-            : 'hover:bg-slate-100'}
-          temporarySlice={sliceRequestResults[slice.stringRep]}
-          on:edit={(e) => editSliceFeature(slice, e.detail)}
-          on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
-          on:customize={() => createCustomSlice(slice.featureValues)}
-          on:newsearch
-        />
-      {/each}
-    </tbody>
-  </table>
+        {/each}
+      {/if}
+      <div
+        class="bg-slate-100 hover:bg-slate-200"
+        on:click={() => (showScores = !showScores)}
+      >
+        <div class="w-full h-full px-4 flex justify-center items-center">
+          {#if showScores}
+            <Fa icon={faAngleLeft} />
+          {:else}
+            <Fa icon={faAngleRight} />
+          {/if}
+        </div>
+      </div>
+    </div>
+    {#if !!overallSlice}
+      <SliceRow
+        slice={overallSlice}
+        {maxFeatures}
+        {scoreNames}
+        {positiveOnly}
+        scoreCellWidth={100}
+        {scoreWidthScalers}
+        {showScores}
+        {metricNames}
+        {metricInfo}
+        {valueNames}
+        rowClass="{!!searchBaseSlice &&
+        areObjectsEqual(searchBaseSlice, overallSlice.featureValues)
+          ? 'bg-indigo-100'
+          : 'bg-slate-100'} border-b-2 border-dotted"
+        temporarySlice={sliceRequestResults[overallSlice.stringRep]}
+        {fixedFeatureOrder}
+        on:edit={(e) => editSliceFeature(overallSlice, e.detail)}
+        on:toggle={(e) => toggleSliceFeature(overallSlice, e.detail)}
+        on:newsearch
+        on:saveslice
+      />
+    {/if}
+    {#each slices as slice, i (slice.stringRep || i)}
+      <SliceRow
+        {slice}
+        {maxFeatures}
+        {scoreNames}
+        {positiveOnly}
+        scoreCellWidth={100}
+        {scoreWidthScalers}
+        {showScores}
+        {metricNames}
+        {metricInfo}
+        {valueNames}
+        {fixedFeatureOrder}
+        rowClass={!!searchBaseSlice &&
+        areObjectsEqual(searchBaseSlice, slice.featureValues)
+          ? 'bg-indigo-100 hover:bg-indigo-200'
+          : 'hover:bg-slate-100'}
+        temporarySlice={sliceRequestResults[slice.stringRep]}
+        on:edit={(e) => editSliceFeature(slice, e.detail)}
+        on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+        on:newsearch
+        on:saveslice
+      />
+    {/each}
+  </div>
 </div>
 
 <style>
-  th {
-    position: sticky;
-    position: -webkit-sticky;
-    top: 0;
-    z-index: 1;
-    height: inherit;
+  .slice-header {
+    min-width: 100%;
   }
-
-  th.feature {
-    min-width: 180px;
-  }
-
-  th.metric {
-    min-width: 160px;
-  }
-
-  th.score {
-    min-width: 100px;
-  }
-
-  tr {
-    height: 1px;
-  }
-
-  th.button-menu {
-    min-width: 36px;
+  .slice-header > * {
+    flex: 0 0 auto;
   }
 </style>
