@@ -5,11 +5,11 @@ import threading
 import numpy as np
 import pandas as pd
 import time
-from .slices import Slice
+from .slices import Slice, SliceFeatureBase
 from .filters import *
 from .scores import *
 from .discretization import DiscretizedData
-from .utils import make_mask, powerset, detect_data_type
+from .utils import powerset, detect_data_type
 
 def default_thread_starter(fn, args=[], kwargs={}):
     thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
@@ -43,7 +43,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     slices = traitlets.List([]).tag(sync=True)
     custom_slices = traitlets.List([]).tag(sync=True)
     custom_slice_results = traitlets.List([]).tag(sync=True)
-    overall_slice = traitlets.Dict({}).tag(sync=True)
+    base_slice = traitlets.Dict({}).tag(sync=True)
     
     value_names = traitlets.Dict({}).tag(sync=True)
     
@@ -86,7 +86,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             self.value_names = {col: sorted(self.slice_finder.inputs[:,col].unique())
                                 for col in range(self.slice_finder.inputs.shape[1])}
-        self.custom_slices = [{}]
         
         self.finder_stack = [self.slice_finder]
         self.search_spec_stack = [{
@@ -179,7 +178,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.get_slice_description(slice_obj, metrics=metrics or self.metrics)
             for slice_obj in ranked_results
         ]
-        self.overall_slice = self.get_slice_description(Slice({}), metrics=metrics or self.metrics)
+        self.base_slice = self.get_slice_description(Slice(SliceFeatureBase()), metrics=metrics or self.metrics)
         
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):
@@ -230,7 +229,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
         elif new_spec["type"] == "related":
             initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = make_mask(raw_inputs, initial_slice)
+            ref_mask = initial_slice.make_mask(raw_inputs)
+            assert False, "TODO fix this implementation with new slice structure"
             new_filter = ExcludeIfAll([
                 ExcludeFeatureValue(f, v)
                 for f, v in initial_slice.feature_values.items()
@@ -246,6 +246,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             new_score_weights = {"Similarity": 1.0}
         elif new_spec["type"] == "exclude":
             initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+            assert False, "TODO fix this implementation with new slice structure"
             new_filter = ExcludeIfAny([
                 ExcludeFeatureValue(f, v)
                 for f, v in initial_slice.feature_values.items()
@@ -258,7 +259,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
         elif new_spec["type"] == "counterfactual":
             initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = make_mask(raw_inputs, initial_slice)
+            ref_mask = initial_slice.make_mask(raw_inputs)
+            assert False, "TODO fix this implementation with new slice structure"
             
             new_filter = ExcludeIfAny([
                 ExcludeFeatureValue(f, v)

@@ -1,57 +1,300 @@
+import scipy.sparse as sps
 from scipy.sparse import csr_matrix
 import numpy as np
 import pandas as pd
-from .utils import pairwise_jaccard_similarities, make_mask, detect_data_type, convert_to_native_types, powerset
+from .utils import pairwise_jaccard_similarities, detect_data_type, convert_to_native_types, powerset
 from .discretization import DiscretizedData
 
-class Slice:
-    def __init__(self, feature_values, score_values=None):
-        """
-
-        :param feature_values: dictionary of feature to value mappings
-        :param score_values: dictionary of score function to score values
-        """
-        self.feature_values = feature_values
-        self.score_values = score_values or {}
-        
-        # create a tuple representation that can be hashed
-        tuple_keys = tuple(sorted(self.feature_values.keys()))
-        self.tuple_rep = (tuple_keys, tuple([self.feature_values[c] for c in tuple_keys]))
-        
+class SliceFeatureBase:
+    def __init__(self):
+        self.empty = True
+        self.num_univariate_features = 0
+    
     def __hash__(self):
-        return hash(self.tuple_rep)
+        return 0
+    
+    def __contains__(self, f):
+        return False
     
     def __eq__(self, other):
-        return isinstance(other, Slice) and other.tuple_rep == self.tuple_rep
+        return type(other) is SliceFeatureBase
     
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def __lt__(self, other):
+        return type(other) is not SliceFeatureBase
     
-    def subslice(self, other_feature, other_value):
-        """
-        Creates a new Slice object with the given feature and value added.
-        """
-        return Slice({**self.feature_values, other_feature: other_value})
-    
-    def intersect(self, other_slice):
-        return Slice({**self.feature_values, **other_slice.feature_values})
-    
-    def __contains__(self, feature):
-        return feature in self.feature_values
+    def make_mask(self, inputs, univariate_masks=None):
+        return np.ones(inputs.shape[0], dtype=bool)
 
-    def __getitem__(self, feature):
-        return self.feature_values[feature]
+    def univariate_features(self):
+        return tuple()
+    
+    def to_dict(self):
+        return {"type": "base"}
+    
+    @staticmethod
+    def from_dict(data):
+        if data["type"] == "base":
+            return SliceFeatureBase()
+        elif data["type"] == "feature":
+            return SliceFeature(data["col"], data["vals"])
+        elif data["type"] == "negation":
+            return SliceFeatureNegation(SliceFeatureBase.from_dict(data["feature"]))
+        elif data["type"] == "and":
+            return SliceFeatureAnd(SliceFeatureBase.from_dict(data["lhs"]), SliceFeatureBase.from_dict(data["rhs"]))
+        elif data["type"] == "or":
+            return SliceFeatureOr(SliceFeatureBase.from_dict(data["lhs"]), SliceFeatureBase.from_dict(data["rhs"]))
+        raise ValueError(f"Unknown data type '{data['type']}'")
         
+    def transform_features(self, transform_func):
+        """
+        Returns a new SliceFeatureBase instance with the given transform function
+        applied to all SliceFeatures (not to the logical operations surrounding
+        them).
+        """
+        return self
+        
+    def __str__(self):
+        return "<empty>"
+    
+    def __repr__(self):
+        return str(self)
+
+class SliceFeature(SliceFeatureBase):
+    def __init__(self, feature_name, allowed_values):
+        super().__init__()
+        self.empty = False
+        self.feature_name = feature_name
+        assert len(allowed_values) > 0
+        self.allowed_values = tuple(sorted(allowed_values))
+        self.num_univariate_features = 1
+        
+    def __hash__(self):
+        return hash((self.feature_name, self.allowed_values))
+    
+    def __str__(self):
+        if len(self.allowed_values) > 1:
+            return f"{self.feature_name} in ({', '.join(str(x) for x in self.allowed_values)})"
+        return f"{self.feature_name} = {self.allowed_values[0]}"
+    
+    def __eq__(self, other):
+        return isinstance(other, SliceFeature) and other.feature_name == self.feature_name and other.allowed_values == self.allowed_values
+    
+    def __lt__(self, other):
+        if isinstance(other, SliceFeature):
+            return self.feature_name < other.feature_name
+        return True
+    
+    def __contains__(self, f):
+        return self == f
+    
+    def univariate_features(self):
+        return (self,)
+    
+    def to_dict(self):
+        return {"type": "feature", "col": self.feature_name, "vals": self.allowed_values}
+
+    def transform_features(self, transform_func):
+        return transform_func(self)
+
+    def make_mask(self, inputs, univariate_masks=None):
+        univ_mask = None
+        # Check if univariate mask available in cache
+        if univariate_masks is not None:
+            univ_mask = univariate_masks.get(self, None)
+            
+        if univ_mask is None:
+            for val in self.allowed_values:
+                if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
+                    mask = (inputs[:,self.feature_name] == val).toarray().flatten()
+                elif isinstance(inputs, np.ndarray):
+                    mask = inputs[:,self.feature_name] == val
+                else:
+                    mask = inputs[self.feature_name] == val
+                if univ_mask is None:
+                    univ_mask = mask.copy()
+                else:
+                    univ_mask &= mask
+                    
+            # Update cache  
+            if univariate_masks is not None and self not in univariate_masks:
+                univariate_masks[self] = univ_mask
+
+        return univ_mask
+    
+class SliceFeatureNegation(SliceFeatureBase):
+    def __init__(self, feature):
+        super().__init__()
+        self.empty = False
+        self.feature = feature
+        self.num_univariate_features = self.feature.num_univariate_features
+        
+    def make_mask(self, inputs, univariate_masks=None):
+        return ~self.feature.make_mask(inputs, univariate_masks=univariate_masks)
+    
+    def univariate_features(self):
+        return self.feature.univariate_features()
+
+    def to_dict(self):
+        return {"type": "negation", "feature": self.feature.to_dict()}
+    
+    def transform_features(self, transform_func):
+        return SliceFeatureNegation(self.feature.transform_features(transform_func))
+
+    def __hash__(self):
+        return hash(self.feature)
+
+    def __contains__(self, f):
+        return self == f or self.feature == f
+
+    def __eq__(self, other):
+        return isinstance(other, SliceFeatureNegation) and other.feature == self.feature
+    
+    def __lt__(self, other):
+        return self.feature < other
+    
+    def __str__(self):
+        return f"~({str(self.feature)})"
+    
+class SliceFeatureAnd(SliceFeatureBase):
+    def __init__(self, lhs, rhs):
+        super().__init__()
+        self.empty = False
+        self.lhs = lhs
+        self.rhs = rhs
+        self.num_univariate_features = self.lhs.num_univariate_features + self.rhs.num_univariate_features
+        
+    def make_mask(self, inputs, univariate_masks=None):
+        return self.lhs.make_mask(inputs, univariate_masks=univariate_masks) & self.rhs.make_mask(inputs, univariate_masks=univariate_masks)
+
+    def univariate_features(self):
+        return (*self.lhs.univariate_features(), *self.rhs.univariate_features())
+
+    def to_dict(self):
+        return {"type": "and", "lhs": self.lhs.to_dict(), "rhs": self.rhs.to_dict()}
+
+    def transform_features(self, transform_func):
+        return SliceFeatureAnd(self.lhs.transform_features(transform_func),
+                               self.rhs.transform_features(transform_func))
+
+    def __hash__(self):
+        return hash((self.lhs, self.rhs))
+
+    def __contains__(self, f):
+        return self == f or self.lhs == f or self.rhs == f
+
+    def __eq__(self, other):
+        return isinstance(other, SliceFeatureAnd) and other.lhs == self.lhs and other.rhs == self.rhs
+    
+    def __lt__(self, other):
+        return self.lhs < other.lhs
+    
+    def __str__(self):
+        return f"({str(self.lhs)} & {str(self.rhs)})"
+        
+class SliceFeatureOr(SliceFeatureBase):
+    def __init__(self, lhs, rhs):
+        super().__init__()
+        self.empty = False
+        self.lhs = lhs
+        self.rhs = rhs
+        self.num_univariate_features = self.lhs.num_univariate_features + self.rhs.num_univariate_features
+        
+    def make_mask(self, inputs, univariate_masks=None):
+        return self.lhs.make_mask(inputs, univariate_masks=univariate_masks) | self.rhs.make_mask(inputs, univariate_masks=univariate_masks)
+
+    def univariate_features(self):
+        return (*self.lhs.univariate_features(), *self.rhs.univariate_features())
+
+    def to_dict(self):
+        return {"type": "or", "lhs": self.lhs.to_dict(), "rhs": self.rhs.to_dict()}
+
+    def transform_features(self, transform_func):
+        return SliceFeatureOr(self.lhs.transform_features(transform_func),
+                              self.rhs.transform_features(transform_func))
+
+    def __hash__(self):
+        return hash((self.lhs, self.rhs))
+
+    def __contains__(self, f):
+        return self == f or self.lhs == f or self.rhs == f
+
+    def __eq__(self, other):
+        return isinstance(other, SliceFeatureOr) and other.lhs == self.lhs and other.rhs == self.rhs
+    
+    def __lt__(self, other):
+        return self.lhs < other.lhs
+    
+    def __str__(self):
+        return f"({str(self.lhs)} | {str(self.rhs)})"
+
+class Slice:
+    def __init__(self, feature, score_values=None):
+        """
+
+        :param feature: a SliceFeatureBase instance describing the slice
+        :param score_values: dictionary of score function to score values
+        """
+        assert isinstance(feature, SliceFeatureBase)
+        self.feature = feature
+        self.score_values = score_values or {}
+                
+    def __hash__(self):
+        return hash(self.feature)
+    
+    def __eq__(self, other):
+        return isinstance(other, Slice) and other.feature == self.feature
+    
+    def __contains__(self, f):
+        return f in self.feature
+        
+    def subslice(self, other_feature):
+        """
+        Creates a new Slice object with the given slice feature.
+        """
+        if self.feature.empty:
+            return Slice(other_feature)
+        return Slice(SliceFeatureAnd(self.feature, other_feature))
+    
     def rescore(self, new_scores):
         """
         Returns a Slice object with identical feature values but a new dictionary
         of scores.
         """
-        return Slice(self.feature_values, new_scores)
+        return Slice(self.feature, new_scores)
+
+    def univariate_features(self):
+        return self.feature.univariate_features()
+    
+    def make_mask(self, inputs, existing_mask=None, univariate_masks=None):
+        """
+        Creates a binary mask representing membership in the given slice.
+        
+        :param inputs: a dataframe containing data points to check for membership
+            in the slice
+        :param existing_mask: if provided, a binary mask that will be intersected
+            with the mask for the given slice
+        :param univariate_masks: if provided, a dictionary mapping tuples of
+            (col, val) to binary masks of the same length as inputs. This cache will
+            be mutated if the function needs to compute a new univariate mask
+            
+        :return: a binary array where 1 indicates that a row is part of the
+            slice
+        """
+        mask = existing_mask.copy() if existing_mask is not None else existing_mask
+        
+        if mask is None:
+            mask = self.feature.make_mask(inputs, univariate_masks=univariate_masks)
+        else:
+            mask &= self.feature.make_mask(inputs, univariate_masks=univariate_masks)
+        
+        if mask is None:
+            mask = np.ones(inputs.shape[0], dtype=bool)
+        if isinstance(mask, pd.Series): mask = mask.values
+        return mask
 
     def __str__(self):
-        base = "<Slice: "
-        base += ", ".join(f"{feature}: {value}" for feature, value in self.feature_values.items())
+        base = f"<Slice: "
+        base += str(self.feature)
         if self.score_values:
             base += "; scores: "
             base += ", ".join(f"{score_name}: {value}" for score_name, value in self.score_values.items())
@@ -62,8 +305,47 @@ class Slice:
         return str(self)
     
     def string_rep(self):
-        return str(self.tuple_rep)
+        return str(self.feature)
 
+class IntersectionSlice(Slice):
+    """
+    A special case of a Slice that consists of an AND'ed set of features, where
+    each feature can be a SliceFeature or a SliceFeatureOr. Unlike normal Slice
+    objects, IntersectionSlice instances are order-invariant when testing for
+    equality and hashing.
+    """
+    def __init__(self, features, score_values=None):
+        if not features:
+            feature = SliceFeatureBase()
+        else:
+            feature = features[0]
+            for i in range(1, len(features)):
+                feature = SliceFeatureAnd(feature, features[i])
+        super().__init__(feature, score_values=score_values)
+        self.base_features = tuple(sorted(features))
+        
+    def __hash__(self):
+        return hash(self.base_features)
+    
+    def __eq__(self, other):
+        return isinstance(other, IntersectionSlice) and other.base_features == self.base_features
+    
+    def subslice(self, other_feature):
+        """
+        Creates a new Slice object with the given slice feature.
+        """
+        if self.feature.empty:
+            return IntersectionSlice([other_feature])
+        return IntersectionSlice((*self.base_features, other_feature))
+
+    def rescore(self, new_scores):
+        """
+        Returns a Slice object with identical feature values but a new dictionary
+        of scores.
+        """
+        return IntersectionSlice(self.base_features, new_scores)
+
+    
 class RankedSliceList:
     """
     A type that manages a list of slices and associated scores. When the
@@ -125,19 +407,19 @@ class RankedSliceList:
             results = results[:k]
         return results
     
-    def encode_slice(self, feature_values):
+    def encode_slice(self, feature_set):
         """
-        Returns a discretized version of the slice defined by the given feature
-        values.
+        Returns a discretized version of the slice defined by the given dictionary
+        representation of a slice feature.
         """
         try:
-            return self.data.encode_slice(feature_values)
+            return self.data.encode_slice(feature_set)
         except AttributeError:
-            return Slice(feature_values)
+            return Slice(feature_set)
         
     def score_slice(self, slice_obj, return_mask=False):
-        mask = make_mask(self.eval_df, slice_obj, univariate_masks=self.univariate_masks)
-        itemized_masks = [self.univariate_masks[(c, v)] for (c, v) in slice_obj.feature_values.items()]
+        mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks)
+        itemized_masks = [self.univariate_masks[f] for f in slice_obj.univariate_features()]
         group_scores = {key: item.calculate_score(slice_obj, mask, itemized_masks)
                         for key, item in self.score_functions.items()}
         if return_mask:
@@ -228,20 +510,11 @@ class RankedSliceList:
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
         return ranked_results[:min(len(ranked_results), n_slices)]
     
-    def slice_mask(self, slice_obj, powerset=False):
+    def slice_mask(self, slice_obj):
         """
-        Calculates slice masks for every combination of features in the given
-        slice, if powerset is True, otherwise just returns the mask for the given
-        slice.
+        Calculates the slice mask for the given slice.
         """
-        if powerset:
-            masks = {}
-            for features in powerset(slice_obj.feature_values.keys()):
-                if len(features) == 0: continue
-                test_slice = Slice({f: slice_obj.feature_values[f] for f in features})
-                masks[test_slice] = make_mask(self.eval_df, test_slice, univariate_masks=self.univariate_masks)
-            return masks
-        return make_mask(self.eval_df, slice_obj, univariate_masks=self.univariate_masks)
+        return slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks)
         
     def generate_slice_description(self, slice_obj, metrics=None, metrics_mask=None):
         """
@@ -260,16 +533,16 @@ class RankedSliceList:
         """
         slice_desc = {
             "scoreValues": slice_obj.score_values, 
-            "rawFeatureValues": slice_obj.feature_values,
+            "rawFeature": slice_obj.feature.to_dict(),
             "stringRep": slice_obj.string_rep()
         }
         try:
-            slice_desc["featureValues"] = self.data.describe_slice(slice_obj)
+            slice_desc["feature"] = self.data.describe_slice(slice_obj)
         except AttributeError:
-            slice_desc["featureValues"] = slice_obj.feature_values
+            slice_desc["feature"] = slice_obj.feature.to_dict()
             
         slice_metrics = {}
-        slice_mask = make_mask(self.eval_df, slice_obj, univariate_masks=self.univariate_masks)
+        slice_mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks)
         if metrics_mask is not None:
             slice_mask &= metrics_mask
         mask = np.arange(self.df.shape[0])[self.eval_mask][slice_mask]

@@ -194,7 +194,7 @@ class NumFeaturesScore(ScoreFunctionBase):
         super().__init__("num_features")
 
     def calculate_score(self, slice, mask, univariate_masks):
-        return 1 / (1 + np.log2(1 + len(slice.feature_values)))
+        return 1 / (1 + np.log2(1 + slice.feature.num_univariate_features))
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         return self.calculate_score(slice, None, univariate_masks)

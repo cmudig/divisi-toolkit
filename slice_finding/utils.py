@@ -63,51 +63,6 @@ def pairwise_jaccard_similarities(mat):
     np.true_divide(intersection.todense(), union, out=result)
     return result
 
-def make_mask(inputs, slice_obj, existing_mask=None, univariate_masks=None):
-    """
-    Creates a binary mask representing membership in the given slice.
-    
-    :param inputs: a dataframe containing data points to check for membership
-        in the slice
-    :param slice_obj: a `Slice` object
-    :param existing_mask: if provided, a binary mask that will be intersected
-        with the mask for the given slice
-    :param univariate_masks: if provided, a dictionary mapping tuples of
-        (col, val) to binary masks of the same length as inputs. This cache will
-        be mutated if the function needs to compute a new univariate mask
-        
-    :return: a binary array where 1 indicates that a row is part of the
-        slice
-    """
-    mask = existing_mask.copy() if existing_mask is not None else existing_mask
-    for col, val in slice_obj.feature_values.items():
-        univ_mask = None
-        # Check if univariate mask available in cache
-        if univariate_masks is not None:
-            univ_mask = univariate_masks.get((col, val), None)
-            
-        if univ_mask is None:
-            if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
-                univ_mask = (inputs[:,col] == val).toarray().flatten()
-            elif isinstance(inputs, np.ndarray):
-                univ_mask = inputs[:,col] == val
-            else:
-                univ_mask = inputs[col] == val
-              
-        # Update cache  
-        if univariate_masks is not None and (col, val) not in univariate_masks:
-            univariate_masks[(col, val)] = univ_mask
-
-        if mask is None:
-            mask = univ_mask.copy()
-        else:
-            mask &= univ_mask
-
-    if mask is None:
-        mask = np.ones(inputs.shape[0], dtype=bool)
-    if isinstance(mask, pd.Series): mask = mask.values
-    return mask
-    
 def detect_data_type(arr):
     """
     :param arr: An array to check the type of

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from .utils import RankedList, make_mask
-from .slices import Slice, RankedSliceList
+from .utils import RankedList
+from .slices import *
 from .scores import ScoreFunctionBase
 import tqdm
 import os
@@ -151,7 +151,7 @@ def explore_groups_beam_search(inputs,
                                max_weight=5.0, 
                                num_candidates=20):
     scored_slices = set()
-    if initial_slice is None: initial_slice = Slice({}, {})
+    if initial_slice is None: initial_slice = IntersectionSlice([])
     if num_candidates is not None:
         # Maintain a ranking for each function separately, as different slices may
         # maximize different functions
@@ -188,19 +188,18 @@ def explore_groups_beam_search(inputs,
             saved_groups = set(g for g in best_groups)
         for base_slice in saved_groups:
             a = time.time()
-            base_mask = make_mask(mat_for_masks, base_slice, univariate_masks=univariate_masks)
+            base_mask = base_slice.make_mask(mat_for_masks, univariate_masks=univariate_masks)
                 
             for i, col in enumerate(input_columns):
                 # Skip if only slicing using positive values and the row has a negative value
                 if positive_only and not source_row[col]: continue
                 # Skip if we've already looked at this column
-                if col in base_slice and base_slice[col] == source_row[col]: continue
+                feature_to_add = SliceFeature(col, (source_row[col],))
+                if feature_to_add in base_slice: continue
                 
-                new_slice = base_slice.subslice(col, source_row[col])
+                new_slice = base_slice.subslice(feature_to_add)
                 
                 # Skip if the user wants to filter this slice out
-                if new_slice in seen_slices and len(new_slice.feature_values) == max_features:
-                    continue
                 if new_slice in scored_slices: 
                     continue
                 if group_filter is not None and not group_filter(new_slice): 
@@ -213,11 +212,11 @@ def explore_groups_beam_search(inputs,
                     new_slice.score_values = slice_scores
                 else:
                     # Generate a mask for the slice and score it
-                    mask = make_mask(mat_for_masks, Slice({col: source_row[col]}), base_mask, univariate_masks=univariate_masks)
+                    mask = base_mask & SliceFeature(col, (source_row[col],)).make_mask(mat_for_masks, univariate_masks=univariate_masks)
                     if mask.sum() < min_items: 
                         seen_slices[new_slice] = None
                         continue
-                    itemized_masks = [univariate_masks[(c, v)] for (c, v) in new_slice.feature_values.items()]
+                    itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
                     for key, scorer in score_fns.items():
                         new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
                     scored_slices.add(new_slice)
@@ -444,7 +443,7 @@ class SamplingSliceFinder:
             discovery_inputs = self.raw_inputs[self.discovery_mask]
         
         if self.initial_slice is not None:
-            initial_slice_mask = make_mask(self.raw_inputs, self.initial_slice)
+            initial_slice_mask = self.initial_slice.make_mask(self.raw_inputs)
             source_mask &= initial_slice_mask
             if source_mask.sum() == 0:
                 raise ValueError("No samples can be taken from the intersection of the provided source mask and the initial slice")
@@ -496,6 +495,7 @@ class SamplingSliceFinder:
                                                     min_weight=self.min_weight,
                                                     max_weight=self.max_weight)
                
+        print(len(self.all_scores), [type(x) for x in self.all_scores[100:200]], len(set(self.all_scores)))
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
                             self.score_fns,

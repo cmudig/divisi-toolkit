@@ -15,19 +15,25 @@
     faRotateLeft,
     faCirclePlus,
     faEllipsisVertical,
+    faRotateRight,
+    faCheck,
   } from '@fortawesome/free-solid-svg-icons';
   import ActionMenuButton from '../utils/ActionMenuButton.svelte';
   import { TableWidths } from './tablewidths';
+  import SliceFeature from './SliceFeature.svelte';
+  import { areObjectsEqual, featuresHaveSameTree } from '../utils/utils';
+  import SliceFeatureEditor from './SliceFeatureEditor.svelte';
+  import { featureToString, parseFeature } from '../utils/slice_parsing';
 
   const dispatch = createEventDispatcher();
 
   export let slice: Slice = null;
-  export let maxFeatures: number = 0;
   export let scoreNames: Array<string> = [];
   export let showScores = false;
   export let metricNames: Array<string> = [];
   export let positiveOnly = false;
   export let valueNames: any = {}; // svelte store
+  export let allowedValues: any = null;
 
   export let fixedFeatureOrder: Array<any> = [];
 
@@ -42,21 +48,13 @@
   export let maxIndent = 0;
   export let indent = 0;
 
+  export let isEditing = false;
+
   const indentAmount = 24;
 
   export let showCreateSliceButton = false;
-  export let focusOnMount = false;
 
-  onMount(() => {
-    if (
-      !slice &&
-      Object.keys(sliceToShow.featureValues).length == 0 &&
-      focusOnMount
-    )
-      editingColumn = 0;
-  });
-
-  let featureOrder = [];
+  /*let featureOrder = [];
   $: {
     let sliceForFeatures = slice || customSlice || temporarySlice;
     featureOrder = Object.keys(sliceForFeatures.featureValues);
@@ -68,49 +66,18 @@
       if (aIndex == bIndex) return a.localeCompare(b);
       return b - a;
     });
-    while (featureOrder.length < maxFeatures) featureOrder.push('');
-  }
+  }*/
 
   let baseSlice: Slice;
   $: baseSlice = customSlice || slice;
   let sliceToShow: Slice;
   $: sliceToShow = temporarySlice || customSlice || slice;
 
-  let columnOptions = [];
-  $: if (editingColumn != null) {
-    // valueNames format: {raw_col_name: [col_name, {index: col_value, ...}]}
-    columnOptions = Object.values($valueNames)
-      .map((v) => v[0])
-      .filter(
-        (v) =>
-          featureOrder[editingColumn] == v ||
-          !Object.keys(baseSlice.featureValues).includes(v)
-      );
-    columnOptions.sort();
-  } else columnOptions = [];
-
-  let editingColumn = null;
-
-  function deleteFeatureValue(col) {
-    let newFeatureValues = Object.assign({}, baseSlice.featureValues);
-    delete newFeatureValues[col];
-    dispatch('edit', newFeatureValues);
-  }
-
-  function editFeatureValue(oldCol: string, col: string, newValue: any) {
-    let newFeatureValues = Object.assign({}, baseSlice.featureValues);
-    if (oldCol != col) delete newFeatureValues[oldCol];
-    newFeatureValues[col] = newValue;
-    console.log(newFeatureValues);
-    dispatch('edit', newFeatureValues);
-  }
-
   function searchSubslices() {
     if (!customSlice) dispatch('customize');
     dispatch('newsearch', {
       type: 'subslice',
-      base_slice: sliceToShow.featureValues,
-      feature_order: featureOrder,
+      base_slice: sliceToShow.feature,
     });
   }
 
@@ -118,7 +85,7 @@
     if (!customSlice) dispatch('customize');
     dispatch('newsearch', {
       type: 'related',
-      base_slice: sliceToShow.featureValues,
+      base_slice: sliceToShow.feature,
     });
   }
 
@@ -126,7 +93,7 @@
     if (!customSlice) dispatch('customize');
     dispatch('newsearch', {
       type: 'exclude',
-      base_slice: sliceToShow.featureValues,
+      base_slice: sliceToShow.feature,
     });
   }
 
@@ -134,14 +101,14 @@
     if (!customSlice) dispatch('customize');
     dispatch('newsearch', {
       type: 'counterfactual',
-      base_slice: sliceToShow.featureValues,
+      base_slice: sliceToShow.feature,
     });
   }
 </script>
 
 {#if !!sliceToShow}
   <div
-    class="slice-row {rowClass} flex"
+    class="slice-row {rowClass ? rowClass : 'bg-white'} inline-flex"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
   >
     <div class="py-2 px-2" style="width: {TableWidths.ActionMenus}px;">
@@ -168,7 +135,7 @@
               tabindex="0"
               role="menuitem"
               title="Save this slice"
-              on:click={() => dispatch('saveslice', sliceToShow.featureValues)}
+              on:click={() => dispatch('saveslice', sliceToShow.feature)}
               >Save Slice</a
             >
           {/if}
@@ -216,10 +183,56 @@
       style="width: {TableWidths.FeatureList -
         indentAmount * (maxIndent - indent)}px;"
     >
-      {#if featureOrder.every((f) => f.length == 0)}
-        <span class="text-slate-600 text-base">Overall Dataset</span>
+      {#if isEditing}
+        <SliceFeatureEditor
+          featureText={featureToString(
+            featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
+              slice.feature.type != 'base'
+              ? slice.feature
+              : sliceToShow.feature
+          )}
+          {positiveOnly}
+          {allowedValues}
+          on:cancel={(e) => {
+            isEditing = false;
+            dispatch('endedit');
+          }}
+          on:save={(e) => {
+            let newFeature = parseFeature(e.detail, allowedValues);
+            console.log('new feature:', newFeature);
+            isEditing = false;
+            dispatch('endedit');
+            dispatch('edit', newFeature);
+          }}
+        />
+      {:else}
+        <SliceFeature
+          feature={featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
+          slice.feature.type != 'base'
+            ? slice.feature
+            : sliceToShow.feature}
+          currentFeature={sliceToShow.feature}
+          on:toggle
+        />
+        <button
+          class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
+          on:click={() => {
+            isEditing = true;
+            dispatch('beginedit');
+          }}
+          title="Temporarily modify the slice definition"
+          ><Fa icon={faPencil} /></button
+        >
+        {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
+          <button
+            class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
+            on:click={() => dispatch('reset')}
+            title="Reset the slice definition"
+            ><Fa icon={faRotateRight} /></button
+          >
+        {/if}
       {/if}
-      {#each featureOrder as col, i}
+      <!-- {#each featureOrder as col, i}
         {@const featureDisabled =
           !sliceToShow.featureValues.hasOwnProperty(col) &&
           baseSlice.featureValues.hasOwnProperty(col)}
@@ -284,7 +297,7 @@
             <div class="w-0.5 mx-3 h-1/3 bg-slate-300 rounded-full" />
           {/if}
         {/if}
-      {/each}
+      {/each} -->
     </div>
     {#each metricNames as name}
       {@const metric = sliceToShow.metrics[name]}
@@ -345,7 +358,7 @@
           <SliceMetricBar
             value={sliceToShow.scoreValues[scoreName]}
             scale={scoreWidthScalers[scoreName] || ((v) => v)}
-            width={scoreCellWidth}
+            width={TableWidths.Score - 24}
           />
         </div>
       {/each}
@@ -356,6 +369,9 @@
 {/if}
 
 <style>
+  .slice-row {
+    min-width: 100%;
+  }
   .slice-row > * {
     flex: 0 0 auto;
   }

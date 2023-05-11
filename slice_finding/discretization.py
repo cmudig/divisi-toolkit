@@ -28,30 +28,33 @@ class DiscretizedData:
         
     def describe_slice(self, slice_obj):
         """
-        Returns a dictionary of column-value pairs describing the given slice.
+        Returns a dictionary representing the structure of the given slice with
+        pre-discretization feature and value names.
         
         :param slice_obj: A Slice to describe.
         :return: A dictionary corresponding to the slice's `feature_values`,
             but using column and value names from pre-discretization.
         """
-        results = {}
-        for col, val in slice_obj.feature_values.items():
-            col_values = self.value_names[col]
-            results[col_values[0]] = col_values[1][val]
-        return results
+        from .slices import SliceFeature
+
+        def transform(feature):
+            col_values = self.value_names[feature.feature_name]
+            return SliceFeature(col_values[0], [col_values[1][val] for val in feature.allowed_values])
+        return slice_obj.feature.transform_features(transform).to_dict()
     
     def encode_slice(self, decoded_feature_values):
         """
-        Creates a Slice representing the given feature values, but converted
-        back into the discretized numerical representation.
+        Creates a Slice representing the given feature value dictionary, but
+        converted back into the discretized numerical representation.
         """
-        from .slices import Slice
+        from .slices import Slice, SliceFeatureBase, SliceFeature
         
-        feature_values = {}
-        for dec_key, dec_value in decoded_feature_values.items():
-            enc_key, enc_mapping = self.inverse_value_mapping[dec_key]
-            feature_values[enc_key] = enc_mapping[dec_value]
-        return Slice(feature_values)
+        described_slice = SliceFeatureBase.from_dict(decoded_feature_values)
+        def invert(feature):
+            enc_key, enc_mapping = self.inverse_value_mapping[feature.feature_name]
+            return SliceFeature(enc_key, [enc_mapping[dec_value] for dec_value in feature.allowed_values])
+        
+        return Slice(described_slice.transform_features(invert))
     
 def _represent_bin(bins, i, quantile=False):
     if quantile:

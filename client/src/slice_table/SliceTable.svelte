@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Slice } from '../utils/slice.type';
+  import type { Slice, SliceFeatureBase } from '../utils/slice.type';
   import SliceRow from './SliceRow.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
   import Hoverable from '../utils/Hoverable.svelte';
@@ -10,15 +10,22 @@
     faEyeSlash,
     faGripLinesVertical,
   } from '@fortawesome/free-solid-svg-icons';
-  import { areObjectsEqual, areSetsEqual } from '../utils/utils';
+  import {
+    areObjectsEqual,
+    areSetsEqual,
+    withToggledFeature,
+  } from '../utils/utils';
   import { TableWidths } from './tablewidths';
   import { createEventDispatcher } from 'svelte';
+  import type { SliceFeature } from '../utils/slice.type';
 
   const dispatch = createEventDispatcher();
 
+  export let showHeader = true;
+
   export let slices: Array<Slice> = [];
 
-  export let overallSlice: Slice = null;
+  export let baseSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
 
@@ -30,99 +37,12 @@
 
   export let valueNames: any = {};
 
-  let maxFeatures = 1;
-  let metricNames = [];
-  let metricInfo = {};
-  let scoreNames = [];
-  let scoreWidthScalers = {};
+  export let metricNames = [];
+  export let metricInfo = {};
+  export let scoreNames = [];
+  export let scoreWidthScalers = {};
 
-  let allSlices: Array<Slice> = [];
-  $: allSlices = [...(!!overallSlice ? [overallSlice] : []), ...slices];
-
-  $: if (allSlices.length > 0) {
-    let testSlice = allSlices.find((s) => !s.isEmpty);
-    if (!testSlice) testSlice = allSlices[0];
-
-    maxFeatures = allSlices.reduce(
-      (curr, next) => Math.max(curr, Object.keys(next.featureValues).length),
-      1
-    );
-
-    // tabulate score names and normalize
-    let newScoreNames = Object.keys(testSlice.scoreValues);
-    if (!areSetsEqual(new Set(scoreNames), new Set(newScoreNames))) {
-      scoreNames = newScoreNames;
-      scoreNames.sort();
-    }
-
-    scoreWidthScalers = {};
-    scoreNames.forEach((n) => {
-      let maxScore =
-        allSlices.reduce(
-          (curr, next) => Math.max(curr, next.scoreValues[n]),
-          -1e9
-        ) + 0.01;
-      let minScore =
-        allSlices.reduce(
-          (curr, next) => Math.min(curr, next.scoreValues[n]),
-          1e9
-        ) - 0.01;
-      scoreWidthScalers[n] = (v: number) =>
-        (v - minScore) / (maxScore - minScore);
-    });
-
-    // tabulate metric names and normalize
-    if (!!testSlice.metrics) {
-      let newMetricNames = Object.keys(testSlice.metrics);
-      if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
-        metricNames = newMetricNames;
-        metricNames.sort();
-      }
-      updateMetricInfo(testSlice.metrics);
-    }
-  } else {
-    maxFeatures = 0;
-    scoreNames = [];
-    scoreWidthScalers = {};
-    metricNames = [];
-    metricInfo = {};
-  }
-
-  function updateMetricInfo(testMetrics) {
-    let oldMetricInfo = metricInfo;
-    metricInfo = {};
-    metricNames.forEach((n) => {
-      if (testMetrics[n].type == 'binary' || testMetrics[n].type == 'count') {
-        let maxScore =
-          testMetrics[n].type == 'count'
-            ? allSlices.reduce(
-                (curr, next) => Math.max(curr, next.metrics[n].mean),
-                -1e9
-              ) + 0.01
-            : 1;
-        let minScore =
-          allSlices.reduce(
-            (curr, next) => Math.min(curr, next.metrics[n].mean),
-            1e9
-          ) - 0.01;
-        metricInfo[n] = { scale: (v: number) => v / maxScore };
-      } else if (testMetrics[n].type == 'categorical') {
-        let uniqueKeys: Set<string> = new Set();
-        allSlices.forEach((s) =>
-          Object.keys(s.metrics[n].counts).forEach((v) => uniqueKeys.add(v))
-        );
-        let order = Array.from(uniqueKeys);
-        order.sort(
-          (a, b) => testMetrics[n].counts[b] - testMetrics[n].counts[a]
-        );
-        metricInfo[n] = { order };
-      } else {
-        metricInfo[n] = {};
-      }
-      metricInfo[n].visible = (oldMetricInfo[n] || { visible: true }).visible;
-    });
-    console.log('metric info:', metricInfo, testMetrics);
-  }
+  let editingSlice = null;
 
   // Drag and drop metrics logic
 
@@ -175,33 +95,49 @@
     return false;
   }
 
-  function toggleSliceFeature(slice: Slice, feature: string) {
+  function toggleSliceFeature(slice: Slice, feature: SliceFeature) {
     let allRequests = Object.assign({}, sliceRequests);
     let r;
     if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
-    else r = Object.assign({}, slice.featureValues);
-    if (r.hasOwnProperty(feature)) delete r[feature];
-    else r[feature] = slice.featureValues[feature];
+    else r = slice.feature;
+    r = withToggledFeature(r, slice.feature, feature);
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
     console.log('slice requests:', sliceRequests);
   }
 
-  function editSliceFeature(slice: Slice, newFeatureValues: any) {
+  function resetSlice(slice: Slice) {
+    let allRequests = Object.assign({}, sliceRequests);
+    delete allRequests[slice.stringRep];
+    sliceRequests = allRequests;
+  }
+
+  function editSliceFeature(slice: Slice, newFeature: SliceFeatureBase) {
     let allRequests = Object.assign({}, sliceRequests);
     let r;
     if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
-    else r = Object.assign({}, slice.featureValues);
-    Object.assign(r, newFeatureValues);
+    else r = slice.feature;
+    r = newFeature;
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
+    console.log('slice requests:', sliceRequests);
+  }
+
+  let allowedValues;
+  $: if (!!valueNames && valueNames.hasOwnProperty('subscribe')) {
+    allowedValues = {};
+    Object.entries($valueNames).forEach((item) => {
+      allowedValues[item[1][0]] = Object.values(item[1][1]);
+    });
+  } else {
+    allowedValues = null;
   }
 </script>
 
-<div>
-  <div class="relative">
+<div class="relative">
+  {#if showHeader}
     <div
-      class="text-left flex font-bold slice-header whitespace-nowrap bg-slate-100 rounded-t border-b border-slate-600"
+      class="text-left inline-flex align-top font-bold slice-header whitespace-nowrap bg-slate-100 rounded-t border-b border-slate-600"
     >
       <div style="width: {TableWidths.ActionMenus}px;">
         <div class="p-2 w-full h-full" />
@@ -283,55 +219,59 @@
         </div>
       </div>
     </div>
-    {#if !!overallSlice}
-      <SliceRow
-        slice={overallSlice}
-        {maxFeatures}
-        {scoreNames}
-        {positiveOnly}
-        scoreCellWidth={100}
-        {scoreWidthScalers}
-        {showScores}
-        {metricNames}
-        {metricInfo}
-        {valueNames}
-        rowClass="{!!searchBaseSlice &&
-        areObjectsEqual(searchBaseSlice, overallSlice.featureValues)
-          ? 'bg-indigo-100'
-          : 'bg-slate-100'} border-b-2 border-dotted"
-        temporarySlice={sliceRequestResults[overallSlice.stringRep]}
-        {fixedFeatureOrder}
-        on:edit={(e) => editSliceFeature(overallSlice, e.detail)}
-        on:toggle={(e) => toggleSliceFeature(overallSlice, e.detail)}
-        on:newsearch
-        on:saveslice
-      />
-    {/if}
-    {#each slices as slice, i (slice.stringRep || i)}
-      <SliceRow
-        {slice}
-        {maxFeatures}
-        {scoreNames}
-        {positiveOnly}
-        scoreCellWidth={100}
-        {scoreWidthScalers}
-        {showScores}
-        {metricNames}
-        {metricInfo}
-        {valueNames}
-        {fixedFeatureOrder}
-        rowClass={!!searchBaseSlice &&
-        areObjectsEqual(searchBaseSlice, slice.featureValues)
-          ? 'bg-indigo-100 hover:bg-indigo-200'
-          : 'hover:bg-slate-100'}
-        temporarySlice={sliceRequestResults[slice.stringRep]}
-        on:edit={(e) => editSliceFeature(slice, e.detail)}
-        on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
-        on:newsearch
-        on:saveslice
-      />
-    {/each}
-  </div>
+  {/if}
+  {#if !!baseSlice}
+    <SliceRow
+      slice={baseSlice}
+      {scoreNames}
+      {positiveOnly}
+      scoreCellWidth={100}
+      {scoreWidthScalers}
+      {showScores}
+      {metricNames}
+      {metricInfo}
+      {valueNames}
+      {allowedValues}
+      temporarySlice={sliceRequestResults[baseSlice.stringRep]}
+      {fixedFeatureOrder}
+      isEditing={baseSlice.stringRep == editingSlice}
+      on:beginedit={(e) => (editingSlice = baseSlice.stringRep)}
+      on:endedit={(e) => (editingSlice = null)}
+      on:edit={(e) => editSliceFeature(baseSlice, e.detail)}
+      on:toggle={(e) => toggleSliceFeature(baseSlice, e.detail)}
+      on:reset={(e) => resetSlice(baseSlice)}
+      on:newsearch
+      on:saveslice
+    />
+  {/if}
+  {#each slices as slice, i (slice.stringRep || i)}
+    <SliceRow
+      {slice}
+      {scoreNames}
+      {positiveOnly}
+      scoreCellWidth={100}
+      {scoreWidthScalers}
+      {showScores}
+      {metricNames}
+      {metricInfo}
+      {valueNames}
+      {allowedValues}
+      {fixedFeatureOrder}
+      rowClass={!!searchBaseSlice &&
+      areObjectsEqual(searchBaseSlice, slice.feature)
+        ? 'bg-indigo-100 hover:bg-indigo-200'
+        : 'hover:bg-slate-100'}
+      temporarySlice={sliceRequestResults[slice.stringRep]}
+      isEditing={slice.stringRep == editingSlice}
+      on:beginedit={(e) => (editingSlice = slice.stringRep)}
+      on:endedit={(e) => (editingSlice = null)}
+      on:edit={(e) => editSliceFeature(slice, e.detail)}
+      on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+      on:reset={(e) => resetSlice(slice)}
+      on:newsearch
+      on:saveslice
+    />
+  {/each}
 </div>
 
 <style>
