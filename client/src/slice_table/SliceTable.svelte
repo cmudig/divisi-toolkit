@@ -43,6 +43,7 @@
   export let scoreWidthScalers = {};
 
   let editingSlice = null;
+  let tempRevertedSlice = null;
 
   // Drag and drop metrics logic
 
@@ -232,7 +233,9 @@
       {metricInfo}
       {valueNames}
       {allowedValues}
-      temporarySlice={sliceRequestResults[baseSlice.stringRep]}
+      temporarySlice={tempRevertedSlice == baseSlice.stringRep
+        ? baseSlice
+        : sliceRequestResults[baseSlice.stringRep]}
       {fixedFeatureOrder}
       isEditing={baseSlice.stringRep == editingSlice}
       on:beginedit={(e) => (editingSlice = baseSlice.stringRep)}
@@ -240,6 +243,8 @@
       on:edit={(e) => editSliceFeature(baseSlice, e.detail)}
       on:toggle={(e) => toggleSliceFeature(baseSlice, e.detail)}
       on:reset={(e) => resetSlice(baseSlice)}
+      on:temprevert={(e) =>
+        (tempRevertedSlice = e.detail ? baseSlice.stringRep : null)}
       on:newsearch
       on:saveslice
     />
@@ -261,13 +266,17 @@
       areObjectsEqual(searchBaseSlice, slice.feature)
         ? 'bg-indigo-100 hover:bg-indigo-200'
         : 'hover:bg-slate-100'}
-      temporarySlice={sliceRequestResults[slice.stringRep]}
+      temporarySlice={tempRevertedSlice == slice.stringRep
+        ? slice
+        : sliceRequestResults[slice.stringRep]}
       isEditing={slice.stringRep == editingSlice}
       on:beginedit={(e) => (editingSlice = slice.stringRep)}
       on:endedit={(e) => (editingSlice = null)}
       on:edit={(e) => editSliceFeature(slice, e.detail)}
       on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
       on:reset={(e) => resetSlice(slice)}
+      on:temprevert={(e) =>
+        (tempRevertedSlice = e.detail ? slice.stringRep : null)}
       on:newsearch
       on:saveslice
     />

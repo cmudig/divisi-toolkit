@@ -9,6 +9,7 @@
   export let positiveOnly = false;
   export let currentFeature: SliceFeatureBase;
   export let needsParentheses = false;
+  export let canToggle = true;
 
   let featureDisabled = false;
 
@@ -23,6 +24,7 @@
       {#if positiveOnly}
         <button
           class="bg-transparent hover:opacity-70 font-mono text-sm font-normal text-black text-left"
+          disabled={!canToggle}
           class:opacity-30={featureDisabled}
           class:line-through={featureDisabled}
           title={featureDisabled
@@ -33,6 +35,7 @@
       {:else}
         <button
           class="bg-transparent text-sm font-mono text-black font-normal hover:opacity-70"
+          disabled={!canToggle}
           class:opacity-50={featureDisabled}
           title={featureDisabled
             ? 'Reset slice'
@@ -55,6 +58,7 @@
       feature={feature.feature}
       currentFeature={currentFeature.feature}
       needsParentheses={featureNeedsParentheses(feature.feature, feature)}
+      {canToggle}
       on:toggle
     />
   {:else if feature.type == 'and'}
@@ -62,6 +66,7 @@
       feature={feature.lhs}
       currentFeature={currentFeature.lhs}
       needsParentheses={featureNeedsParentheses(feature.lhs, feature)}
+      {canToggle}
       on:toggle
     />
     <span class="px-1">&</span>
@@ -69,6 +74,7 @@
       feature={feature.rhs}
       currentFeature={currentFeature.rhs}
       needsParentheses={featureNeedsParentheses(feature.rhs, feature)}
+      {canToggle}
       on:toggle
     />{needsParentheses ? ')' : ''}
   {:else if feature.type == 'or'}
@@ -76,6 +82,7 @@
       feature={feature.lhs}
       currentFeature={currentFeature.lhs}
       needsParentheses={featureNeedsParentheses(feature.lhs, feature)}
+      {canToggle}
       on:toggle
     />
     <span class="px-1">|</span>
@@ -83,6 +90,7 @@
       feature={feature.rhs}
       currentFeature={currentFeature.rhs}
       needsParentheses={featureNeedsParentheses(feature.rhs, feature)}
+      {canToggle}
       on:toggle
     />{needsParentheses ? ')' : ''}
   {:else}

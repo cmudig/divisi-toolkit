@@ -73,6 +73,9 @@
   let sliceToShow: Slice;
   $: sliceToShow = temporarySlice || customSlice || slice;
 
+  let sliceForScores: Slice;
+  $: sliceForScores = revertedScores ? customSlice || slice : sliceToShow;
+
   function searchSubslices() {
     if (!customSlice) dispatch('customize');
     dispatch('newsearch', {
@@ -103,6 +106,11 @@
       type: 'counterfactual',
       base_slice: sliceToShow.feature,
     });
+  }
+
+  let revertedScores = false;
+  function temporaryRevertSlice(revert) {
+    revertedScores = revert;
   }
 </script>
 
@@ -180,6 +188,7 @@
     </div>
     <div
       class="py-2 px-2 text-xs flex items-center overflow-x-scroll whitespace-nowrap"
+      class:opacity-50={revertedScores}
       style="width: {TableWidths.FeatureList -
         indentAmount * (maxIndent - indent)}px;"
     >
@@ -212,6 +221,7 @@
             ? slice.feature
             : sliceToShow.feature}
           currentFeature={sliceToShow.feature}
+          canToggle={featuresHaveSameTree(slice.feature, sliceToShow.feature)}
           on:toggle
         />
         <button
@@ -226,7 +236,12 @@
         {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
           <button
             class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-            on:click={() => dispatch('reset')}
+            on:click={() => {
+              temporaryRevertSlice(false);
+              dispatch('reset');
+            }}
+            on:mouseenter={() => temporaryRevertSlice(true)}
+            on:mouseleave={() => temporaryRevertSlice(false)}
             title="Reset the slice definition"
             ><Fa icon={faRotateRight} /></button
           >
@@ -300,14 +315,14 @@
       {/each} -->
     </div>
     {#each metricNames as name}
-      {@const metric = sliceToShow.metrics[name]}
+      {@const metric = sliceForScores.metrics[name]}
       <div
         class="p-2 pt-3"
         style="width: {!!metricInfo[name] && metricInfo[name].visible
           ? TableWidths.Metric
           : TableWidths.CollapsedMetric}px;"
       >
-        {#if sliceToShow.isEmpty}
+        {#if sliceForScores.isEmpty}
           <span class="text-slate-600">Empty</span>
         {:else if !!metricInfo[name] && metricInfo[name].visible}
           {#if metric.type == 'binary'}
@@ -356,7 +371,7 @@
       {#each scoreNames as scoreName}
         <div class="p-2 pt-3" style="width: {TableWidths.Score}px;">
           <SliceMetricBar
-            value={sliceToShow.scoreValues[scoreName]}
+            value={sliceForScores.scoreValues[scoreName]}
             scale={scoreWidthScalers[scoreName] || ((v) => v)}
             width={TableWidths.Score - 24}
           />

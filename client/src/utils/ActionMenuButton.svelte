@@ -44,7 +44,7 @@
   >
   {#if visible}
     <div
-      class="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-10 bg-green"
+      class="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-10"
       on:click={hideOptionsMenu}
       on:keydown={(e) => {}}
     />

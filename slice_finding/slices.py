@@ -113,7 +113,7 @@ class SliceFeature(SliceFeatureBase):
                 if univ_mask is None:
                     univ_mask = mask.copy()
                 else:
-                    univ_mask &= mask
+                    univ_mask |= mask
                     
             # Update cache  
             if univariate_masks is not None and self not in univariate_masks:
