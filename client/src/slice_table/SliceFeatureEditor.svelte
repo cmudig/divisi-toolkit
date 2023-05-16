@@ -54,7 +54,7 @@
     if (!result) {
       return Object.keys(allowedValues)
         .filter((v) =>
-          v.toLocaleLowerCase().startsWith(searchQuery.toLocaleLowerCase())
+          v.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase())
         )
         .map((v) => ({ value: v, type: 'col' }));
     }
@@ -62,12 +62,13 @@
     let featureColumn = result[1];
     return allowedValues[featureColumn]
       .filter((v) =>
-        v.toLocaleLowerCase().startsWith(searchQuery.toLocaleLowerCase())
+        v.toLocaleLowerCase().includes(searchQuery.toLocaleLowerCase())
       )
       .map((v) => ({ value: v, type: 'val' }));
   }
 
   function performAutocomplete(item, trigger, fullPrefix) {
+    if (positiveOnly) return `${trigger}${item.value}${trigger}`;
     if (item.type == 'col') return `${trigger}${item.value}${trigger} = `;
     return `${trigger}${item.value}${trigger}`;
   }

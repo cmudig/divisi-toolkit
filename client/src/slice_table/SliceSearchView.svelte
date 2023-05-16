@@ -317,7 +317,11 @@
           <div class="flex-auto flex items-center">
             {#if editingControl == SliceControlEnableNames[control]}
               <SliceFeatureEditor
-                featureText={featureToString(controlFeatures[control])}
+                featureText={featureToString(
+                  controlFeatures[control],
+                  false,
+                  positiveOnly
+                )}
                 {positiveOnly}
                 {allowedValues}
                 on:cancel={(e) => {
@@ -334,6 +338,7 @@
                 feature={controlFeatures[control]}
                 currentFeature={controlFeatures[control]}
                 canToggle={false}
+                {positiveOnly}
               />
               <button
                 class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"

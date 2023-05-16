@@ -23,7 +23,8 @@
     <div class="px-2">
       {#if positiveOnly}
         <button
-          class="bg-transparent hover:opacity-70 font-mono text-sm font-normal text-black text-left"
+          class="bg-transparent hover:opacity-70 font-mono text-sm font-normal text-black text-left break-words whitespace-normal"
+          style="max-width: 240px;"
           disabled={!canToggle}
           class:opacity-30={featureDisabled}
           class:line-through={featureDisabled}
@@ -43,15 +44,15 @@
           on:click={() => dispatch('toggle', feature)}>{feature.col}</button
         >
       {/if}
-      <div class="flex items-center text-xs font-normal">
-        {#if !positiveOnly}
+      {#if !positiveOnly}
+        <div class="flex items-center text-xs font-normal">
           {#if featureDisabled}
             <span class="opacity-50">(any value)</span>
           {:else}
             <span class="text-gray-600">{feature.vals.join(', ')}</span>
           {/if}
-        {/if}
-      </div>
+        </div>
+      {/if}
     </div>
   {:else if feature.type == 'negation'}
     ! <svelte:self
@@ -59,6 +60,7 @@
       currentFeature={currentFeature.feature}
       needsParentheses={featureNeedsParentheses(feature.feature, feature)}
       {canToggle}
+      {positiveOnly}
       on:toggle
     />
   {:else if feature.type == 'and'}
@@ -67,6 +69,7 @@
       currentFeature={currentFeature.lhs}
       needsParentheses={featureNeedsParentheses(feature.lhs, feature)}
       {canToggle}
+      {positiveOnly}
       on:toggle
     />
     <span class="px-1">&</span>
@@ -75,6 +78,7 @@
       currentFeature={currentFeature.rhs}
       needsParentheses={featureNeedsParentheses(feature.rhs, feature)}
       {canToggle}
+      {positiveOnly}
       on:toggle
     />{needsParentheses ? ')' : ''}
   {:else if feature.type == 'or'}
@@ -83,6 +87,7 @@
       currentFeature={currentFeature.lhs}
       needsParentheses={featureNeedsParentheses(feature.lhs, feature)}
       {canToggle}
+      {positiveOnly}
       on:toggle
     />
     <span class="px-1">|</span>
@@ -91,6 +96,7 @@
       currentFeature={currentFeature.rhs}
       needsParentheses={featureNeedsParentheses(feature.rhs, feature)}
       {canToggle}
+      {positiveOnly}
       on:toggle
     />{needsParentheses ? ')' : ''}
   {:else}

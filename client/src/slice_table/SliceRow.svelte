@@ -193,7 +193,9 @@
             featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
               slice.feature.type != 'base'
               ? slice.feature
-              : sliceToShow.feature
+              : sliceToShow.feature,
+            false,
+            positiveOnly
           )}
           {positiveOnly}
           {allowedValues}
@@ -217,6 +219,7 @@
             : sliceToShow.feature}
           currentFeature={sliceToShow.feature}
           canToggle={featuresHaveSameTree(slice.feature, sliceToShow.feature)}
+          {positiveOnly}
           on:toggle
         />
         <button

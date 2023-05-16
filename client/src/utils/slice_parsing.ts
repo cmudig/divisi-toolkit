@@ -11,12 +11,14 @@ export const BaseFeatureToken = 'ANY';
 
 export function featureToString(
   feature: SliceFeatureBase,
-  needsParentheses: boolean = false
+  needsParentheses: boolean = false,
+  positiveOnly: boolean = false
 ): string {
   if (feature.type == 'base') {
     return BaseFeatureToken;
   } else if (feature.type == 'feature') {
     let atomicFeature = feature as SliceFeature;
+    if (positiveOnly) return `"${atomicFeature.col}"`;
     let base = `"${atomicFeature.col}" = `;
     if (atomicFeature.vals.length > 1)
       base += `[${atomicFeature.vals.map((v) => '"' + v + '"').join(', ')}]`;
@@ -28,7 +30,8 @@ export function featureToString(
       '!' +
       featureToString(
         negationFeature.feature,
-        featureNeedsParentheses(negationFeature.feature, feature)
+        featureNeedsParentheses(negationFeature.feature, feature),
+        positiveOnly
       )
     );
   } else if (feature.type == 'and' || feature.type == 'or') {
@@ -36,12 +39,14 @@ export function featureToString(
     let base = needsParentheses ? '(' : '';
     base += featureToString(
       conjFeature.lhs,
-      featureNeedsParentheses(conjFeature.lhs, feature)
+      featureNeedsParentheses(conjFeature.lhs, feature),
+      positiveOnly
     );
     base += feature.type == 'and' ? ' & ' : ' | ';
     base += featureToString(
       conjFeature.rhs,
-      featureNeedsParentheses(conjFeature.rhs, feature)
+      featureNeedsParentheses(conjFeature.rhs, feature),
+      positiveOnly
     );
     base += needsParentheses ? ')' : '';
     return base;
