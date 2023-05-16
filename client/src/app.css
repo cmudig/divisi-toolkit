@@ -81,7 +81,14 @@ h1 {
   @apply bg-slate-300;
 }
 .btn-slate:hover {
-  @apply bg-slate-400;
+  @apply opacity-70;
+}
+
+.btn-dark-slate {
+  @apply bg-slate-600 text-white;
+}
+.btn-dark-slate:hover {
+  @apply opacity-70;
 }
 
 .indigo .btn-slate {

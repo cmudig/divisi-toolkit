@@ -49,7 +49,7 @@
       on:keydown={(e) => {}}
     />
     <div
-      class="absolute left-0 z-20 w-56 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none transition-opacity duration-200"
+      class="absolute left-0 z-20 w-60 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none transition-opacity duration-200"
       style="opacity: {optionsMenuOpacity};"
       role="menu"
       aria-orientation="vertical"

@@ -50,15 +50,24 @@ class SliceFinderWidget(anywidget.AnyWidget):
     slice_score_requests = traitlets.Dict({}).tag(sync=True)
     slice_score_results = traitlets.Dict({}).tag(sync=True)
     
-    # Adding more slice finding tasks
-    search_spec_stack = traitlets.List().tag(sync=True)
-    
     selected_slices = traitlets.List([]).tag(sync=True)
     slice_intersection_labels = traitlets.List([]).tag(sync=True)
     slice_intersection_counts = traitlets.List([]).tag(sync=True)
     selected_intersection_index = traitlets.Int(-1).tag(sync=True)
     
     thread_starter = traitlets.Any(default_thread_starter)
+    
+    # Allows setting slices to filter search by
+    enabled_slice_controls = traitlets.Dict({
+        "contains_slice": False,
+        "contained_in_slice": False,
+        "similar_to_slice": False,
+        "subslice_of_slice": False
+    }).tag(sync=True)
+    contains_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
+    contained_in_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
+    similar_to_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
+    subslice_of_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
     
     def __init__(self, slice_finder, *args, **kwargs):
         try:
@@ -87,11 +96,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.value_names = {col: sorted(self.slice_finder.inputs[:,col].unique())
                                 for col in range(self.slice_finder.inputs.shape[1])}
         
-        self.finder_stack = [self.slice_finder]
-        self.search_spec_stack = [{
-            "type": "default",
-            "score_weights": self.score_weights
-        }]
+        self.original_slice_finder = self.slice_finder
         
     def get_slice_description(self, slice_obj, metrics=None):
         """
@@ -199,92 +204,171 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             return spec["score_weights"]
         
-    @traitlets.observe("search_spec_stack")
-    def search_spec_stack_changed(self, change=None):
-        search_specs = change.new if change is not None else self.search_spec_stack
-        if len(search_specs) < len(self.finder_stack):
-            self.finder_stack = self.finder_stack[:len(search_specs)]
-            self.slice_finder = self.finder_stack[-1]
-            self.score_weights = self._base_score_weights_for_spec(search_specs, search_specs[-1], self.slice_finder)
+    @traitlets.observe("enabled_slice_controls")
+    def _update_enabled_slice_controls(self, change):
+        self.update_search_scopes(enabled_mask=change.new)
+    @traitlets.observe("contains_slice")
+    def _update_contains_slice(self, change):
+        self.update_search_scopes(contains_slice=change.new)
+    @traitlets.observe("contained_in_slice")
+    def _update_contained_in_slice(self, change):
+        self.update_search_scopes(contained_in_slice=change.new)
+    @traitlets.observe("similar_to_slice")
+    def _update_similar_to_slice(self, change):
+        self.update_search_scopes(similar_to_slice=change.new)
+    @traitlets.observe("subslice_of_slice")
+    def _update_subslice_of_slice(self, change):
+        self.update_search_scopes(subslice_of_slice=change.new)
+        
+        
+    def update_search_scopes(self, 
+                             enabled_mask=None, 
+                             contains_slice=None, 
+                             contained_in_slice=None, 
+                             similar_to_slice=None, 
+                             subslice_of_slice=None):
+        enabled_mask = enabled_mask or self.enabled_slice_controls
+        contains_slice = contains_slice or self.contains_slice
+        contained_in_slice = contained_in_slice or self.contained_in_slice
+        similar_to_slice = similar_to_slice or self.similar_to_slice
+        subslice_of_slice = subslice_of_slice or self.subslice_of_slice
+        
+        if all(not v for v in enabled_mask.values()):
+            self.slice_finder = self.original_slice_finder
+            self.score_weights = {s: w for s, w in self.score_weights.items() if s not in ("contains_slice", "contained_in_slice", "similar_to_slice", "subslice_of_slice")}
             self._slice_description_cache = {}
             self.rerank_results()
             return
-        elif len(search_specs) == len(self.finder_stack): return
         
-        assert len(search_specs) <= len(self.finder_stack) + 1
-        base_finder = self.finder_stack[0]
-        new_spec = search_specs[-1]
-        assert "type" in new_spec
-        assert "score_weights" in new_spec
+        base_finder = self.original_slice_finder
+        new_score_fns = {}
+        initial_slice = base_finder.initial_slice
+        new_source_mask = base_finder.source_mask.copy()
         
-        new_score_weights = self._base_score_weights_for_spec(search_specs, new_spec, base_finder)
-        
-        if new_spec["type"] == "default":
-            new_finder = base_finder.copy_spec()
-        elif new_spec["type"] == "subslice":
-            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-            new_finder = base_finder.copy_spec(
-                initial_slice=initial_slice
-            )
-        elif new_spec["type"] == "related":
-            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+        contains_slice = base_finder.results.encode_slice(contains_slice)
+        if enabled_mask["contains_slice"] and contains_slice.feature != SliceFeatureBase():
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = initial_slice.make_mask(raw_inputs)
-            assert False, "TODO fix this implementation with new slice structure"
-            new_filter = ExcludeIfAll([
-                ExcludeFeatureValue(f, v)
-                for f, v in initial_slice.feature_values.items()
-            ])
-            if base_finder.group_filter is not None:
-                new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
-            new_finder = base_finder.copy_spec(
-                score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask)},
-                source_mask=base_finder.source_mask & ref_mask,
-                group_filter=new_filter,
-                similarity_threshold=1.0
-            )
-            new_score_weights = {"Similarity": 1.0}
-        elif new_spec["type"] == "exclude":
-            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-            assert False, "TODO fix this implementation with new slice structure"
-            new_filter = ExcludeIfAny([
-                ExcludeFeatureValue(f, v)
-                for f, v in initial_slice.feature_values.items()
-            ])
-            if base_finder.group_filter is not None:
-                new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
-            new_finder = base_finder.copy_spec(
-                group_filter=new_filter,
-            )       
-        elif new_spec["type"] == "counterfactual":
-            initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = initial_slice.make_mask(raw_inputs)
-            assert False, "TODO fix this implementation with new slice structure"
-            
-            new_filter = ExcludeIfAny([
-                ExcludeFeatureValue(f, v)
-                for f, v in initial_slice.feature_values.items()
-            ])
-            if base_finder.group_filter is not None:
-                new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
+            ref_mask = contains_slice.make_mask(raw_inputs)
+            new_score_fns["contains_slice"] = SliceSimilarityScore(ref_mask, metric='superslice')
+            new_source_mask &= ref_mask
 
-            new_finder = base_finder.copy_spec(
-                score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask, metric='superslice')},
-                group_filter=new_filter,
-                similarity_threshold=1.0
-            )     
-            new_score_weights = {"Similarity": 1.0}
-        else:
-            assert False
+        contained_in_slice = base_finder.results.encode_slice(contained_in_slice)
+        if enabled_mask["contained_in_slice"] and contained_in_slice.feature != SliceFeatureBase():
+            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+            ref_mask = contained_in_slice.make_mask(raw_inputs)
+            new_score_fns["contained_in_slice"] = SliceSimilarityScore(ref_mask, metric='subslice')
+            new_source_mask &= ref_mask
+
+        similar_to_slice = base_finder.results.encode_slice(similar_to_slice)
+        if enabled_mask["similar_to_slice"] and similar_to_slice.feature != SliceFeatureBase():
+            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+            ref_mask = similar_to_slice.make_mask(raw_inputs)
+            new_score_fns["similar_to_slice"] = SliceSimilarityScore(ref_mask, metric='jaccard')
+            new_source_mask &= ref_mask
+
+        subslice_of_slice = base_finder.results.encode_slice(subslice_of_slice)
+        if enabled_mask["subslice_of_slice"] and subslice_of_slice.feature != SliceFeatureBase():
+            initial_slice = subslice_of_slice
             
-        self.finder_stack.append(new_finder)
+        new_finder = base_finder.copy_spec(
+            score_fns={**base_finder.score_fns, **new_score_fns},
+            source_mask=base_finder.source_mask & new_source_mask,
+            # group_filter=new_filter,
+            initial_slice=initial_slice
+        )
         self.slice_finder = new_finder
-        self.score_weights = {**new_score_weights,
-                              **{n: 0.0 for n in self.slice_finder.score_fns if n not in new_score_weights}}
+        self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},
+                              **{n: self.slice_finder.max_weight for n in new_score_fns}}
         self._slice_description_cache = {}
         self.rerank_results()
-        # self.should_rerun = True
+
+        
+    # @traitlets.observe("search_spec_stack")
+    # def search_spec_stack_changed(self, change=None):
+    #     search_specs = change.new if change is not None else self.search_spec_stack
+    #     if len(search_specs) < len(self.finder_stack):
+    #         self.finder_stack = self.finder_stack[:len(search_specs)]
+    #         self.slice_finder = self.finder_stack[-1]
+    #         self.score_weights = self._base_score_weights_for_spec(search_specs, search_specs[-1], self.slice_finder)
+    #         self._slice_description_cache = {}
+    #         self.rerank_results()
+    #         return
+    #     elif len(search_specs) == len(self.finder_stack): return
+        
+    #     assert len(search_specs) <= len(self.finder_stack) + 1
+    #     base_finder = self.finder_stack[0]
+    #     new_spec = search_specs[-1]
+    #     assert "type" in new_spec
+    #     assert "score_weights" in new_spec
+        
+    #     new_score_weights = self._base_score_weights_for_spec(search_specs, new_spec, base_finder)
+        
+    #     if new_spec["type"] == "default":
+    #         new_finder = base_finder.copy_spec()
+    #     elif new_spec["type"] == "subslice":
+    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+    #         new_finder = base_finder.copy_spec(
+    #             initial_slice=initial_slice
+    #         )
+    #     elif new_spec["type"] == "related":
+    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+    #         raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+    #         ref_mask = initial_slice.make_mask(raw_inputs)
+    #         assert False, "TODO fix this implementation with new slice structure"
+    #         new_filter = ExcludeIfAll([
+    #             ExcludeFeatureValue(f, v)
+    #             for f, v in initial_slice.feature_values.items()
+    #         ])
+    #         if base_finder.group_filter is not None:
+    #             new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
+    #         new_finder = base_finder.copy_spec(
+    #             score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask)},
+    #             source_mask=base_finder.source_mask & ref_mask,
+    #             group_filter=new_filter,
+    #             similarity_threshold=1.0
+    #         )
+    #         new_score_weights = {"Similarity": 1.0}
+    #     elif new_spec["type"] == "exclude":
+    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+    #         assert False, "TODO fix this implementation with new slice structure"
+    #         new_filter = ExcludeIfAny([
+    #             ExcludeFeatureValue(f, v)
+    #             for f, v in initial_slice.feature_values.items()
+    #         ])
+    #         if base_finder.group_filter is not None:
+    #             new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
+    #         new_finder = base_finder.copy_spec(
+    #             group_filter=new_filter,
+    #         )       
+    #     elif new_spec["type"] == "counterfactual":
+    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
+    #         raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+    #         ref_mask = initial_slice.make_mask(raw_inputs)
+    #         assert False, "TODO fix this implementation with new slice structure"
+            
+    #         new_filter = ExcludeIfAny([
+    #             ExcludeFeatureValue(f, v)
+    #             for f, v in initial_slice.feature_values.items()
+    #         ])
+    #         if base_finder.group_filter is not None:
+    #             new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
+
+    #         new_finder = base_finder.copy_spec(
+    #             score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask, metric='superslice')},
+    #             group_filter=new_filter,
+    #             similarity_threshold=1.0
+    #         )     
+    #         new_score_weights = {"Similarity": 1.0}
+    #     else:
+    #         assert False
+            
+    #     self.finder_stack.append(new_finder)
+    #     self.slice_finder = new_finder
+    #     self.score_weights = {**new_score_weights,
+    #                           **{n: 0.0 for n in self.slice_finder.score_fns if n not in new_score_weights}}
+    #     self._slice_description_cache = {}
+    #     self.rerank_results()
+    #     # self.should_rerun = True
         
     @traitlets.observe("selected_slices")
     def update_selected_slices(self, change=None):

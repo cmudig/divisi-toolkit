@@ -38,7 +38,11 @@
   let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
   let sliceScoreResults = traitlet(model, 'slice_score_results', {});
 
-  let searchSpecStack = traitlet(model, 'search_spec_stack', []);
+  let enabledSliceControls = traitlet(model, 'enabled_slice_controls', {});
+  let containsSlice = traitlet(model, 'contains_slice', {});
+  let containedInSlice = traitlet(model, 'contained_in_slice', {});
+  let similarToSlice = traitlet(model, 'similar_to_slice', {});
+  let subsliceOfSlice = traitlet(model, 'subslice_of_slice', {});
 
   let sliceIntersectionCounts = traitlet(
     model,
@@ -61,52 +65,6 @@
     scoreNames = Object.keys($scoreWeights);
     scoreNames.sort();
   }
-
-  let searchScopeDescription = 'all slices';
-  let searchSampleDescription = 'entire dataset';
-
-  function describeSlice(slice: { [key: string]: any }): string {
-    let descriptions = Object.entries(slice).map(
-      (e) => `<span class='font-mono'>${e[0]}</span> = ${e[1]}`
-    );
-    if (descriptions.length == 0) return '<empty slice>';
-    return '<span class="font-normal">' + descriptions.join(', ') + '</span>';
-  }
-
-  $: if ($searchSpecStack.length > 0) {
-    let searchSpec = $searchSpecStack[$searchSpecStack.length - 1];
-    if (searchSpec.type == 'default') {
-      searchScopeDescription = 'all slices';
-      searchSampleDescription = 'entire dataset'; // TODO update to reflect source mask
-    } else if (searchSpec.type == 'subslice') {
-      searchScopeDescription =
-        'subslices of <span class="slice-description">' +
-        describeSlice(searchSpec.base_slice) +
-        '</span>';
-      searchSampleDescription = 'within slice';
-    } else if (searchSpec.type == 'related') {
-      searchScopeDescription =
-        'slices similar to <span class="slice-description">' +
-        describeSlice(searchSpec.base_slice) +
-        '</span>';
-      searchSampleDescription = 'within slice';
-    } else if (searchSpec.type == 'exclude') {
-      searchScopeDescription =
-        'slices excluding features from <span class="slice-description">' +
-        describeSlice(searchSpec.base_slice) +
-        '</span>';
-      searchSampleDescription = 'entire dataset';
-    } else if (searchSpec.type == 'counterfactual') {
-      searchScopeDescription =
-        'slices counterfactual to <span class="slice-description">' +
-        describeSlice(searchSpec.base_slice) +
-        '</span>';
-      searchSampleDescription = 'entire dataset';
-    }
-  }
-
-  $: $searchSpecStack[$searchSpecStack.length - 1].score_weights =
-    $scoreWeights;
 
   let parentElement: Element;
   let isFullScreen = false;
@@ -201,7 +159,6 @@
   </div>
   <div class="flex-1 w-full min-h-0 overflow-auto">
     <SliceSearchView
-      searchSpec={$searchSpecStack[$searchSpecStack.length - 1]}
       runningSampler={$runningSampler}
       numSamples={$numSamples}
       positiveOnly={$positiveOnly}
@@ -212,12 +169,13 @@
       baseSlice={$baseSlice}
       bind:sliceRequests={$sliceScoreRequests}
       bind:sliceRequestResults={$sliceScoreResults}
+      bind:enabledSliceControls={$enabledSliceControls}
+      bind:containsSlice={$containsSlice}
+      bind:containedInSlice={$containedInSlice}
+      bind:similarToSlice={$similarToSlice}
+      bind:subsliceOfSlice={$subsliceOfSlice}
       on:runsampler={() => ($shouldRerun = true)}
       on:loadmore={() => ($numSlices += 10)}
-      on:newsearch={(e) => {
-        if (!e.detail.score_weights) e.detail.score_weights = $scoreWeights;
-        $searchSpecStack = [...$searchSpecStack, e.detail];
-      }}
       on:saveslice={(e) => {
         $selectedSlices = [...$selectedSlices, e.detail];
       }}

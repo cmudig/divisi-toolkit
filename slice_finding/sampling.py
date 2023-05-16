@@ -256,7 +256,8 @@ class SamplingSliceFinder:
                  show_progress=True,
                  progress_fn=None,
                  n_workers=None,
-                 initial_slice=None):
+                 initial_slice=None,
+                 discovery_mask=None):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
         self.score_fns = score_fns
@@ -287,8 +288,11 @@ class SamplingSliceFinder:
             self.positive_only = positive_only or False
 
         self.all_scores = []
-        self.seen_slices = {}        
-        self.discovery_mask = (np.random.uniform(size=self.raw_inputs.shape[0]) >= self.holdout_fraction)
+        self.seen_slices = {} 
+        if discovery_mask is None:       
+            self.discovery_mask = (np.random.uniform(size=self.raw_inputs.shape[0]) >= self.holdout_fraction)
+        else:
+            self.discovery_mask = discovery_mask
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
@@ -315,7 +319,8 @@ class SamplingSliceFinder:
             show_progress=kwargs.get("show_progress", self.show_progress),
             progress_fn=kwargs.get("progress_fn", self.progress_fn),
             n_workers=kwargs.get("n_workers", self.n_workers),
-            initial_slice=kwargs.get("initial_slice", self.initial_slice)
+            initial_slice=kwargs.get("initial_slice", self.initial_slice),
+            discovery_mask=kwargs.get("discovery_mask", self.discovery_mask)
         )
         
     def _create_worker_initializer(self, discovery_inputs, discovery_score_fns):

@@ -36,6 +36,7 @@
   export let positiveOnly = false;
 
   export let valueNames: any = {};
+  export let allowedValues: any = {};
 
   export let metricNames = [];
   export let metricInfo = {};
@@ -122,16 +123,6 @@
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
     console.log('slice requests:', sliceRequests);
-  }
-
-  let allowedValues;
-  $: if (!!valueNames && valueNames.hasOwnProperty('subscribe')) {
-    allowedValues = {};
-    Object.entries($valueNames).forEach((item) => {
-      allowedValues[item[1][0]] = Object.values(item[1][1]);
-    });
-  } else {
-    allowedValues = null;
   }
 </script>
 

@@ -76,34 +76,30 @@
   let sliceForScores: Slice;
   $: sliceForScores = revertedScores ? customSlice || slice : sliceToShow;
 
-  function searchSubslices() {
-    if (!customSlice) dispatch('customize');
+  function searchContainsSlice() {
     dispatch('newsearch', {
-      type: 'subslice',
+      type: 'containsSlice',
+      base_slice: sliceToShow.feature,
+    });
+  }
+
+  function searchContainedInSlice() {
+    dispatch('newsearch', {
+      type: 'containedInSlice',
+      base_slice: sliceToShow.feature,
+    });
+  }
+
+  function searchSubslices() {
+    dispatch('newsearch', {
+      type: 'subsliceOfSlice',
       base_slice: sliceToShow.feature,
     });
   }
 
   function searchSimilarSlices() {
-    if (!customSlice) dispatch('customize');
     dispatch('newsearch', {
-      type: 'related',
-      base_slice: sliceToShow.feature,
-    });
-  }
-
-  function searchExcludingSlice() {
-    if (!customSlice) dispatch('customize');
-    dispatch('newsearch', {
-      type: 'exclude',
-      base_slice: sliceToShow.feature,
-    });
-  }
-
-  function searchCounterfactualSlices() {
-    if (!customSlice) dispatch('customize');
-    dispatch('newsearch', {
-      type: 'counterfactual',
+      type: 'similarToSlice',
       base_slice: sliceToShow.feature,
     });
   }
@@ -151,30 +147,29 @@
             href="#"
             tabindex="0"
             role="menuitem"
-            title="Search among slices that are contained within this slice (i.e. more specific)"
-            on:click={searchSubslices}>Search Subslices</a
+            title="Search among slices with different features that contain most instances in this slice"
+            on:click={searchContainsSlice}>Search Containing This Slice</a
           >
           <a
             href="#"
             tabindex="0"
             role="menuitem"
-            title="Search among slices that have high overlap with this slice"
+            title="Search among slices with different features that are mostly contained in this slice"
+            on:click={searchContainedInSlice}>Search Contained In This Slice</a
+          >
+          <a
+            href="#"
+            tabindex="0"
+            role="menuitem"
+            title="Search among slices with different features that have high overlap with this slice"
             on:click={searchSimilarSlices}>Search Similar Slices</a
           >
           <a
             href="#"
             tabindex="0"
             role="menuitem"
-            title="Search among slices that do not share any feature values with this slice"
-            on:click={searchExcludingSlice}>Search Excluding Slice</a
-          >
-          <a
-            href="#"
-            tabindex="0"
-            role="menuitem"
-            title="Search among slices that overlap with this slice without using this slice's features"
-            on:click={searchCounterfactualSlices}
-            >Search Counterfactual Slices</a
+            title="Search among slices that are strict subsets of this slice"
+            on:click={searchSubslices}>Search Subslices</a
           >
         </ActionMenuButton>
         {#if showCreateSliceButton}
