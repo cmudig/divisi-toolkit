@@ -5,6 +5,11 @@
 
   export let visible = false;
 
+  export let buttonClass =
+    'bg-transparent hover:opacity-60 text-slate-600 py-2 px-1 mr-2';
+  export let buttonTitle = 'Show more actions';
+  export let buttonStyle = '';
+
   let optionsMenuOpacity = 0.0;
   let optionsMenu: Element;
 
@@ -34,14 +39,19 @@
 
 <div class="relative">
   <button
-    class="bg-transparent hover:opacity-60 text-slate-600 py-2 px-1 mr-2"
+    class={buttonClass}
+    style={buttonStyle}
     id="menu-button"
-    title="Show more actions"
+    title={buttonTitle}
     on:click|stopPropagation={showOptionsMenu}
     aria-expanded={visible}
     aria-label="Options menu"
-    aria-haspopup="true"><Fa icon={faEllipsisVertical} /></button
+    aria-haspopup="true"
   >
+    <slot name="button-content">
+      <Fa icon={faEllipsisVertical} />
+    </slot>
+  </button>
   {#if visible}
     <div
       class="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-10"
@@ -59,7 +69,7 @@
       on:keydown={(e) => {}}
     >
       <div class="py-1 menu-options" role="none">
-        <slot />
+        <slot name="options" />
       </div>
     </div>
   {/if}

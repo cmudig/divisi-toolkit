@@ -3,7 +3,8 @@
 
   const dispatch = createEventDispatcher();
 
-  export let showLabels = false;
+  export let showLabels = true;
+  export let showQuantities = false;
   export let segments: {
     name: string;
     color_tailwind?: string;
@@ -13,6 +14,8 @@
   export let widths: number[] = [];
 
   let sliderElement;
+
+  let labelOpacity = 0.0;
 
   function getPercentage(containerWidth: number, distanceMoved: number) {
     return distanceMoved / containerWidth;
@@ -120,8 +123,10 @@
 </script>
 
 <div
-  class="w-full relative h-5 my-2 rounded bg-slate-300"
+  class="w-full relative h-6 rounded bg-slate-300"
   bind:this={sliderElement}
+  on:mouseenter={() => (labelOpacity = 1.0)}
+  on:mouseleave={() => (labelOpacity = 0.0)}
 >
   {#each segments as tag, i (tag.name)}
     {@const width = widths[i] * 100}
@@ -136,22 +141,28 @@
         .toFixed(2)}%; width: {width}%;"
     >
       <div
-        class="w-full h-full text-xs text-white font-bold select-none opacity-80 {tag.color_tailwind
+        class="w-full h-full pt-1 text-xs text-white font-bold select-none opacity-80 {tag.color_tailwind
           ? 'bg-' + tag.color_tailwind
           : ''}"
         class:rounded-l={i == 0}
         class:rounded-r={i == segments.length - 1}
         style={tag.color ? `background: ${tag.color};` : ''}
+        title="{tag.name}: {width.toFixed(0) + '%'}"
       >
         {#if (draggingIndex != null && (draggingIndex == i || draggingIndex == i - 1)) || showLabels}
-          <span class="align-middle"
-            >{#if showLabels}{tag.name} {/if}{width.toFixed(0) + '%'}</span
+          <span
+            class="inline-block truncate max-w-full pointer-events-none select-none px-1 transition-opacity duration-200"
+            style="opacity: {labelOpacity};"
+            draggable="false"
+            >{#if showLabels}{tag.name} {/if}{#if showQuantities}{width.toFixed(
+                0
+              ) + '%'}{/if}</span
           >
         {/if}
       </div>
       {#if i != segments.length - 1}
         <div
-          class="rounded-full shadow h-4 absolute top-0.5 cursor-ew-resize bg-slate-100 hover:bg-white hover:scale-110 text-gray-300 z-10"
+          class="rounded-full shadow h-4 absolute top-1 cursor-ew-resize bg-slate-100 hover:bg-white hover:scale-110 text-gray-300 z-10"
           style="left: calc(100% - 3px); width: 6px; user-select: none;"
           on:pointerdown={(e) => onSliderSelect(e, i)}
         />

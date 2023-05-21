@@ -163,6 +163,7 @@
       numSamples={$numSamples}
       positiveOnly={$positiveOnly}
       bind:shouldCancel={$shouldCancel}
+      bind:scoreWeights={$scoreWeights}
       samplerRunProgress={$samplerRunProgress}
       slices={$slices}
       {valueNames}

@@ -3,9 +3,16 @@
   import ScoreWeightSlider from './ScoreWeightSlider.svelte';
   import { format } from 'd3-format';
   import Checkbox from './Checkbox.svelte';
+  import Fa from 'svelte-fa/src/fa.svelte';
+  import {
+    faChevronDown,
+    faChevronUp,
+  } from '@fortawesome/free-solid-svg-icons';
 
   export let weights: { [key: string]: number } = {};
   export let scoreNames: string[] = [];
+
+  let expanded = false;
 
   // these have to be specifically included in build for tailwind to import them
   const scoreColors = [
@@ -96,8 +103,7 @@
   }
 </script>
 
-<div>
-  <div class="text-sm font-bold">Score weights</div>
+<div class="w-full">
   <ScoreWeightSlider
     segments={scoreNames
       .map((n, i) => ({
@@ -108,32 +114,44 @@
     widths={scoreNames.filter((n) => weights[n] > 0.0).map(getWeightFraction)}
     on:change={(e) => updateWeightSubset(e.detail)}
   />
-  {#each scoreNames as score, i}
-    <div class="mb-2 flex flex-wrap items-center text-sm">
-      <Checkbox
-        colorClass={weights[score] > 0.0 ? 'bg-' + scoreColors[i] : null}
-        checked={weights[score] > 0.0}
-        on:change={(e) => {
-          if (!e.detail) {
-            removeWeight(score);
-          } else {
-            initializeWeight(score);
-          }
-        }}
-      />
-      <div class="flex-auto">
-        {score}
-      </div>
-      <div class="text-xs mr-2">
-        {format('.1f')(weights[score])}
-      </div>
-      <IncrementButtons
-        value={weights[score]}
-        on:change={(e) => updateScoreWeight(score, e.detail)}
-        min={0}
-        max={5}
-        step={0.1}
-      />
+  {#if expanded}
+    <div class="mt-2">
+      {#each scoreNames as score, i}
+        <div class="mb-2 flex flex-wrap items-center text-sm">
+          <Checkbox
+            colorClass={weights[score] > 0.0 ? 'bg-' + scoreColors[i] : null}
+            checked={weights[score] > 0.0}
+            on:change={(e) => {
+              if (!e.detail) {
+                removeWeight(score);
+              } else {
+                initializeWeight(score);
+              }
+            }}
+          />
+          <div class="flex-auto truncate">
+            {score}
+          </div>
+          <div class="text-xs mr-2">
+            {format('.1f')(weights[score])}
+          </div>
+          <IncrementButtons
+            value={weights[score]}
+            on:change={(e) => updateScoreWeight(score, e.detail)}
+            min={0}
+            max={5}
+            step={0.1}
+          />
+        </div>
+      {/each}
     </div>
-  {/each}
+  {/if}
+  <div class="flex items-center justify-center mt-1">
+    <button
+      class="bg-transparent hover:opacity-60 text-slate-600 px-1"
+      title="Show/hide granular controls"
+      on:click={() => (expanded = !expanded)}
+      ><Fa icon={expanded ? faChevronUp : faChevronDown} /></button
+    >
+  </div>
 </div>

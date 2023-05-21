@@ -100,8 +100,7 @@
       on:toggle
     />{needsParentheses ? ')' : ''}
   {:else}
-    <span class="text-slate-600 text-base font-normal px-2"
-      >Overall Dataset</span
+    <span class="text-slate-600 text-base font-normal px-2">Evaluation Set</span
     >
   {/if}
 </div>

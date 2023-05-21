@@ -118,59 +118,62 @@
     <div class="py-2 px-2" style="width: {TableWidths.ActionMenus}px;">
       <div class="flex items-center h-full">
         <ActionMenuButton>
-          {#if !!customSlice}
+          <div slot="options">
+            {#if !!customSlice}
+              <a
+                href="#"
+                tabindex="0"
+                role="menuitem"
+                title="Create a new custom slice based on this slice"
+                on:click={() => dispatch('duplicate')}>Duplicate</a
+              >
+              <a
+                href="#"
+                tabindex="0"
+                role="menuitem"
+                title="Delete this custom slice"
+                on:click={() => dispatch('delete')}>Delete</a
+              >
+            {:else}
+              <a
+                href="#"
+                tabindex="0"
+                role="menuitem"
+                title="Save this slice"
+                on:click={() => dispatch('saveslice', sliceToShow.feature)}
+                >Save Slice</a
+              >
+            {/if}
             <a
               href="#"
               tabindex="0"
               role="menuitem"
-              title="Create a new custom slice based on this slice"
-              on:click={() => dispatch('duplicate')}>Duplicate</a
+              title="Search among slices with different features that contain most instances in this slice"
+              on:click={searchContainsSlice}>Search Containing This Slice</a
             >
             <a
               href="#"
               tabindex="0"
               role="menuitem"
-              title="Delete this custom slice"
-              on:click={() => dispatch('delete')}>Delete</a
+              title="Search among slices with different features that are mostly contained in this slice"
+              on:click={searchContainedInSlice}
+              >Search Contained In This Slice</a
             >
-          {:else}
             <a
               href="#"
               tabindex="0"
               role="menuitem"
-              title="Save this slice"
-              on:click={() => dispatch('saveslice', sliceToShow.feature)}
-              >Save Slice</a
+              title="Search among slices with different features that have high overlap with this slice"
+              on:click={searchSimilarSlices}>Search Similar Slices</a
             >
-          {/if}
-          <a
-            href="#"
-            tabindex="0"
-            role="menuitem"
-            title="Search among slices with different features that contain most instances in this slice"
-            on:click={searchContainsSlice}>Search Containing This Slice</a
-          >
-          <a
-            href="#"
-            tabindex="0"
-            role="menuitem"
-            title="Search among slices with different features that are mostly contained in this slice"
-            on:click={searchContainedInSlice}>Search Contained In This Slice</a
-          >
-          <a
-            href="#"
-            tabindex="0"
-            role="menuitem"
-            title="Search among slices with different features that have high overlap with this slice"
-            on:click={searchSimilarSlices}>Search Similar Slices</a
-          >
-          <a
-            href="#"
-            tabindex="0"
-            role="menuitem"
-            title="Search among slices that are strict subsets of this slice"
-            on:click={searchSubslices}>Search Subslices</a
-          >
+            <a
+              href="#"
+              tabindex="0"
+              role="menuitem"
+              title="Search among slices that are strict subsets of this slice"
+              on:click={searchSubslices}>Search Subslices</a
+            >
+          </div>
         </ActionMenuButton>
         {#if showCreateSliceButton}
           <button
