@@ -41,8 +41,10 @@ class ExcludeFeatureValue(SliceFilterBase):
         self.value = value
         
     def __call__(self, slice_obj):
-        return not (self.feature in slice_obj.feature_values and 
-                    slice_obj.feature_values[self.feature] == self.value)
+        for feature in slice_obj.univariate_features():
+            if feature.feature_name == self.feature and self.value in feature.allowed_values:
+                return False
+        return True
 
 class ExcludeFeatureValueSet(SliceFilterBase):
     """
@@ -52,11 +54,12 @@ class ExcludeFeatureValueSet(SliceFilterBase):
     def __init__(self, features, values):
         super().__init__()
         self.features = features
-        self.values = values
+        self.values = set(values)
         
     def __call__(self, slice_obj):
-        for f, v in slice_obj.feature_values.items():
-            if f in self.features and v in self.values:
+        for feature in slice_obj.univariate_features():
+            if feature.feature_name in self.features and set(feature.allowed_values) & set(self.values):
+                print("Excluding", slice_obj)
                 return False
         return True
         
@@ -70,8 +73,10 @@ class IncludeOnlyFeatureValue(SliceFilterBase):
         self.value = value
         
     def __call__(self, slice_obj):
-        return (self.feature in slice_obj.feature_values and 
-                slice_obj.feature_values[self.feature] == self.value)
+        for feature in slice_obj.univariate_features():
+            if feature.feature_name == self.feature and self.value in feature.allowed_values:
+                return True
+        return False
         
 class IncludeOnlyFeatureValueSet(SliceFilterBase):
     """
@@ -80,7 +85,10 @@ class IncludeOnlyFeatureValueSet(SliceFilterBase):
     def __init__(self, features, values):
         super().__init__()
         self.features = features
-        self.values = values
+        self.values = set(values)
         
     def __call__(self, slice_obj):
-        return any(f in self.features and v in self.values for f, v in slice_obj.feature_values.items())
+        for feature in slice_obj.univariate_features():
+            if feature.feature_name in self.features and set(feature.allowed_values) & set(self.values):
+                return True
+        return False

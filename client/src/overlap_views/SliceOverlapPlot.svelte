@@ -7,6 +7,8 @@
   export let labels = [];
   export let numPoints = 500;
   export let selectedIndexes = null;
+  export let centerYRatio = 0.5;
+  export let centerXRatio = 0.5;
 
   export let colorByError = false;
 
@@ -127,6 +129,8 @@
         <ForceScatterPlot
           bind:simulationProgress
           bind:hoveredSlices
+          {centerYRatio}
+          {centerXRatio}
           {colorByError}
           {hoveredMousePosition}
           colorFn={(item) =>

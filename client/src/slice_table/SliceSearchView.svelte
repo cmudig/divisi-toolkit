@@ -53,6 +53,8 @@
   export let similarToSlice: any = {};
   export let subsliceOfSlice: any = {};
 
+  export let selectedSlices = [];
+
   const SliceControlStrings = {
     containsSlice: 'Contains',
     containedInSlice: 'Contained in',
@@ -229,6 +231,7 @@
   <div class="search-view-header bg-white" bind:this={searchViewHeader}>
     <SliceTable
       slices={[]}
+      {selectedSlices}
       {baseSlice}
       bind:sliceRequests
       bind:sliceRequestResults
@@ -392,6 +395,7 @@
   <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
     <SliceTable
       {slices}
+      {selectedSlices}
       bind:sliceRequests
       bind:sliceRequestResults
       {positiveOnly}

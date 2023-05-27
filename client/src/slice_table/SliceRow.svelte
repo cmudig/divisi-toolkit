@@ -8,16 +8,14 @@
   import Select from 'svelte-select';
   import Fa from 'svelte-fa/src/fa.svelte';
   import {
-    faTrash,
     faPencil,
     faPlus,
-    faChevronDown,
-    faRotateLeft,
-    faCirclePlus,
-    faEllipsisVertical,
     faRotateRight,
-    faCheck,
+    faDownload,
+    faSearch,
+    faHeart,
   } from '@fortawesome/free-solid-svg-icons';
+  import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
   import ActionMenuButton from '../utils/ActionMenuButton.svelte';
   import { TableWidths } from './tablewidths';
   import SliceFeature from './SliceFeature.svelte';
@@ -48,7 +46,9 @@
   export let maxIndent = 0;
   export let indent = 0;
 
+  export let isSaved = false;
   export let isEditing = false;
+  let showButtons = false;
 
   const indentAmount = 24;
 
@@ -114,78 +114,11 @@
   <div
     class="slice-row {rowClass ? rowClass : 'bg-white'} inline-flex"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
+    on:mouseenter={() => (showButtons = true)}
+    on:mouseleave={() => (showButtons = false)}
   >
-    <div class="py-2 px-2" style="width: {TableWidths.ActionMenus}px;">
-      <div class="flex items-center h-full">
-        <ActionMenuButton>
-          <div slot="options">
-            {#if !!customSlice}
-              <a
-                href="#"
-                tabindex="0"
-                role="menuitem"
-                title="Create a new custom slice based on this slice"
-                on:click={() => dispatch('duplicate')}>Duplicate</a
-              >
-              <a
-                href="#"
-                tabindex="0"
-                role="menuitem"
-                title="Delete this custom slice"
-                on:click={() => dispatch('delete')}>Delete</a
-              >
-            {:else}
-              <a
-                href="#"
-                tabindex="0"
-                role="menuitem"
-                title="Save this slice"
-                on:click={() => dispatch('saveslice', sliceToShow.feature)}
-                >Save Slice</a
-              >
-            {/if}
-            <a
-              href="#"
-              tabindex="0"
-              role="menuitem"
-              title="Search among slices with different features that contain most instances in this slice"
-              on:click={searchContainsSlice}>Search Containing This Slice</a
-            >
-            <a
-              href="#"
-              tabindex="0"
-              role="menuitem"
-              title="Search among slices with different features that are mostly contained in this slice"
-              on:click={searchContainedInSlice}
-              >Search Contained In This Slice</a
-            >
-            <a
-              href="#"
-              tabindex="0"
-              role="menuitem"
-              title="Search among slices with different features that have high overlap with this slice"
-              on:click={searchSimilarSlices}>Search Similar Slices</a
-            >
-            <a
-              href="#"
-              tabindex="0"
-              role="menuitem"
-              title="Search among slices that are strict subsets of this slice"
-              on:click={searchSubslices}>Search Subslices</a
-            >
-          </div>
-        </ActionMenuButton>
-        {#if showCreateSliceButton}
-          <button
-            class="bg-transparent hover:opacity-60 mx-1 text-slate-600 py-2"
-            title="Add a new custom slice"
-            on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
-          >
-        {/if}
-      </div>
-    </div>
     <div
-      class="py-2 px-2 text-xs flex items-center overflow-x-scroll whitespace-nowrap"
+      class="py-2 text-xs"
       class:opacity-50={revertedScores}
       style="width: {TableWidths.FeatureList -
         indentAmount * (maxIndent - indent)}px;"
@@ -215,38 +148,102 @@
           }}
         />
       {:else}
-        <SliceFeature
-          feature={featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
-          slice.feature.type != 'base'
-            ? slice.feature
-            : sliceToShow.feature}
-          currentFeature={sliceToShow.feature}
-          canToggle={featuresHaveSameTree(slice.feature, sliceToShow.feature)}
-          {positiveOnly}
-          on:toggle
-        />
-        <button
-          class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
-          on:click={() => {
-            isEditing = true;
-            dispatch('beginedit');
-          }}
-          title="Temporarily modify the slice definition"
-          ><Fa icon={faPencil} /></button
-        >
-        {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
-          <button
-            class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-            on:click={() => {
-              temporaryRevertSlice(false);
-              dispatch('reset');
-            }}
-            on:mouseenter={() => temporaryRevertSlice(true)}
-            on:mouseleave={() => temporaryRevertSlice(false)}
-            title="Reset the slice definition"
-            ><Fa icon={faRotateRight} /></button
-          >
-        {/if}
+        <div class="flex pt-1 items-center h-full whitespace-nowrap">
+          <div style="flex: 0 1 auto;" class="overflow-x-auto">
+            <SliceFeature
+              feature={featuresHaveSameTree(
+                slice.feature,
+                sliceToShow.feature
+              ) && slice.feature.type != 'base'
+                ? slice.feature
+                : sliceToShow.feature}
+              currentFeature={sliceToShow.feature}
+              canToggle={featuresHaveSameTree(
+                slice.feature,
+                sliceToShow.feature
+              )}
+              {positiveOnly}
+              on:toggle
+            />
+          </div>
+          {#if showButtons || isSaved}
+            <button
+              class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+              title="Add a new custom slice"
+              on:click={() => dispatch('saveslice', sliceToShow.feature)}
+              ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
+            >
+          {/if}
+          {#if showButtons}
+            {#if showCreateSliceButton}
+              <button
+                class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+                title="Add a new custom slice"
+                on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
+              >
+            {/if}
+            <button
+              class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
+              on:click={() => {
+                isEditing = true;
+                dispatch('beginedit');
+              }}
+              title="Temporarily modify the slice definition"
+              ><Fa icon={faPencil} /></button
+            >
+            {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
+              <button
+                class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
+                on:click={() => {
+                  temporaryRevertSlice(false);
+                  dispatch('reset');
+                }}
+                on:mouseenter={() => temporaryRevertSlice(true)}
+                on:mouseleave={() => temporaryRevertSlice(false)}
+                title="Reset the slice definition"
+                ><Fa icon={faRotateRight} /></button
+              >
+            {/if}
+            <ActionMenuButton
+              buttonClass="bg-transparent ml-1 px-1 hover:opacity-60"
+            >
+              <span slot="button-content"
+                ><Fa icon={faSearch} class="inline mr-1" /></span
+              >
+              <div slot="options">
+                <a
+                  href="#"
+                  tabindex="0"
+                  role="menuitem"
+                  title="Search among slices with different features that contain most instances in this slice"
+                  on:click={searchContainsSlice}>Search Containing This Slice</a
+                >
+                <a
+                  href="#"
+                  tabindex="0"
+                  role="menuitem"
+                  title="Search among slices with different features that are mostly contained in this slice"
+                  on:click={searchContainedInSlice}
+                  >Search Contained In This Slice</a
+                >
+                <a
+                  href="#"
+                  tabindex="0"
+                  role="menuitem"
+                  title="Search among slices with different features that have high overlap with this slice"
+                  on:click={searchSimilarSlices}>Search Similar Slices</a
+                >
+                <a
+                  href="#"
+                  tabindex="0"
+                  role="menuitem"
+                  title="Search among slices that are strict subsets of this slice"
+                  on:click={searchSubslices}>Search Subslices</a
+                >
+              </div>
+            </ActionMenuButton>
+          {/if}
+        </div>
       {/if}
       <!-- {#each featureOrder as col, i}
         {@const featureDisabled =

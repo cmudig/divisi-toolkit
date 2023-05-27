@@ -13,6 +13,7 @@
   import SliceUpsetPlot from './overlap_views/SliceUpsetPlot.svelte';
   import SliceRow from './slice_table/SliceRow.svelte';
   import SliceSearchView from './slice_table/SliceSearchView.svelte';
+  import { areObjectsEqual } from './utils/utils';
 
   export let model;
 
@@ -139,6 +140,8 @@
     if (isFullScreen && !document.fullscreenElement) isFullScreen = false;
     console.log('is full screen', isFullScreen, document.fullscreenElement);
   }
+
+  $: console.log('selected', $selectedSlices);
 </script>
 
 <main
@@ -157,47 +160,59 @@
       >
     </button>
   </div>
-  <div class="flex-1 w-full min-h-0 overflow-auto">
-    <SliceSearchView
-      runningSampler={$runningSampler}
-      numSamples={$numSamples}
-      positiveOnly={$positiveOnly}
-      bind:shouldCancel={$shouldCancel}
-      bind:scoreWeights={$scoreWeights}
-      samplerRunProgress={$samplerRunProgress}
-      slices={$slices}
-      {valueNames}
-      baseSlice={$baseSlice}
-      bind:sliceRequests={$sliceScoreRequests}
-      bind:sliceRequestResults={$sliceScoreResults}
-      bind:enabledSliceControls={$enabledSliceControls}
-      bind:containsSlice={$containsSlice}
-      bind:containedInSlice={$containedInSlice}
-      bind:similarToSlice={$similarToSlice}
-      bind:subsliceOfSlice={$subsliceOfSlice}
-      on:runsampler={() => ($shouldRerun = true)}
-      on:loadmore={() => ($numSlices += 10)}
-      on:saveslice={(e) => {
-        $selectedSlices = [...$selectedSlices, e.detail];
-      }}
-    />
-  </div>
-  <!-- <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 280px;">
+  <div class="flex flex-1 w-full min-h-0">
+    <div class="flex-1 h-full overflow-auto">
+      <SliceSearchView
+        runningSampler={$runningSampler}
+        numSamples={$numSamples}
+        positiveOnly={$positiveOnly}
+        bind:shouldCancel={$shouldCancel}
+        bind:scoreWeights={$scoreWeights}
+        samplerRunProgress={$samplerRunProgress}
+        slices={$slices}
+        selectedSlices={$selectedSlices}
+        {valueNames}
+        baseSlice={$baseSlice}
+        bind:sliceRequests={$sliceScoreRequests}
+        bind:sliceRequestResults={$sliceScoreResults}
+        bind:enabledSliceControls={$enabledSliceControls}
+        bind:containsSlice={$containsSlice}
+        bind:containedInSlice={$containedInSlice}
+        bind:similarToSlice={$similarToSlice}
+        bind:subsliceOfSlice={$subsliceOfSlice}
+        on:runsampler={() => ($shouldRerun = true)}
+        on:loadmore={() => ($numSlices += 10)}
+        on:saveslice={(e) => {
+          let idx = $selectedSlices.findIndex((s) =>
+            areObjectsEqual(s, e.detail)
+          );
+          if (idx >= 0)
+            $selectedSlices = [
+              ...$selectedSlices.slice(0, idx),
+              ...$selectedSlices.slice(idx + 1),
+            ];
+          else $selectedSlices = [...$selectedSlices, e.detail];
+        }}
+      />
+    </div>
+    <!-- <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 280px;">
         <div class="p-4 bg-slate-200 rounded w-full min-h-full">
           <ScoreWeightMenu bind:weights={$scoreWeights} {scoreNames} />
         </div>
       </div> -->
 
-  <!-- <div class="flex-1 h-full">
-    {#if $sliceIntersectionCounts.length > 0}
-      <SliceOverlapPlot
-        errorKey="Error Rate"
-        intersectionCounts={$sliceIntersectionCounts}
-        labels={$sliceIntersectionLabels}
-        colorByError
-      />
-    {/if}
-  </div> -->
+    <div class="w-1/3 h-full">
+      {#if $sliceIntersectionCounts.length > 0}
+        <SliceCurationView
+          errorKey="Error Rate"
+          sliceIntersectionCounts={$sliceIntersectionCounts}
+          sliceIntersectionLabels={$sliceIntersectionLabels}
+          overallSlice={$baseSlice}
+          positiveOnly={$positiveOnly}
+        />
+      {/if}
+    </div>
+  </div>
 </main>
 
 <style>

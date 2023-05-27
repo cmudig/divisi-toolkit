@@ -244,12 +244,17 @@ class SliceFinderWidget(anywidget.AnyWidget):
         new_score_fns = {}
         initial_slice = base_finder.initial_slice
         new_source_mask = base_finder.source_mask.copy()
+        exclusion_criteria = None
         
         contains_slice = base_finder.results.encode_slice(contains_slice)
         if enabled_mask["contains_slice"] and contains_slice.feature != SliceFeatureBase():
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
             ref_mask = contains_slice.make_mask(raw_inputs)
             new_score_fns["contains_slice"] = SliceSimilarityScore(ref_mask, metric='superslice')
+            exclusion_criteria = ExcludeIfAny([
+                ExcludeFeatureValueSet([f.feature_name], f.allowed_values)
+                for f in contains_slice.univariate_features()
+            ])
             new_source_mask &= ref_mask
 
         contained_in_slice = base_finder.results.encode_slice(contained_in_slice)
@@ -257,6 +262,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
             ref_mask = contained_in_slice.make_mask(raw_inputs)
             new_score_fns["contained_in_slice"] = SliceSimilarityScore(ref_mask, metric='subslice')
+            exclusion_criteria = ExcludeIfAny([
+                ExcludeFeatureValueSet([f.feature_name], f.allowed_values)
+                for f in contained_in_slice.univariate_features()
+            ])
             new_source_mask &= ref_mask
 
         similar_to_slice = base_finder.results.encode_slice(similar_to_slice)
@@ -264,17 +273,27 @@ class SliceFinderWidget(anywidget.AnyWidget):
             raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
             ref_mask = similar_to_slice.make_mask(raw_inputs)
             new_score_fns["similar_to_slice"] = SliceSimilarityScore(ref_mask, metric='jaccard')
+            exclusion_criteria = ExcludeIfAny([
+                ExcludeFeatureValueSet([f.feature_name], f.allowed_values)
+                for f in similar_to_slice.univariate_features()
+            ])
             new_source_mask &= ref_mask
 
         subslice_of_slice = base_finder.results.encode_slice(subslice_of_slice)
         if enabled_mask["subslice_of_slice"] and subslice_of_slice.feature != SliceFeatureBase():
             initial_slice = subslice_of_slice
             
+        new_filter = base_finder.group_filter
+        if exclusion_criteria is not None:
+            if new_filter is not None:
+                new_filter = ExcludeIfAny([new_filter, exclusion_criteria])
+            else:
+                new_filter = exclusion_criteria
         new_finder = base_finder.copy_spec(
             score_fns={**base_finder.score_fns, **new_score_fns},
             source_mask=base_finder.source_mask & new_source_mask,
-            # group_filter=new_filter,
-            initial_slice=initial_slice
+            group_filter=new_filter,
+            initial_slice=initial_slice,
         )
         self.slice_finder = new_finder
         self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},

@@ -6,9 +6,11 @@
 
   const { data, width, height } = getContext('LayerCake');
 
-  export let pointRadius = 6; // 4;
+  export let pointRadius = 4; // 6;
   export let colorFn = null;
   export let hoveredSlices = null;
+  export let centerYRatio = 0.5;
+  export let centerXRatio = 0.5;
 
   export let hoveredMousePosition = null;
   export let hoveredPointIndex = null;
@@ -78,6 +80,7 @@
         if (x) counts[i] += 1;
       });
     });
+    let maxCount = counts.reduce((prev, curr) => Math.max(prev, curr), 0);
 
     let links = [];
     let repulsions = [];
@@ -86,17 +89,12 @@
         if (i <= j) return;
         let countEqual = n1.slices
           .map(
-            (s1, k) => (s1 && n2.slices[k]) * Math.log10(ds.length / counts[k])
+            (s1, k) =>
+              (s1 && n2.slices[k]) * Math.log10(0.1 + maxCount / counts[k])
           )
           .reduce((prev, curr) => prev + curr, 0);
-        let sum1 = n1.slices.reduce(
-          (prev, curr, k) => prev + curr * Math.log10(ds.length / counts[k]),
-          0
-        );
-        let sum2 = n2.slices.reduce(
-          (prev, curr, k) => prev + curr * Math.log10(ds.length / counts[k]),
-          0
-        );
+        let sum1 = n1.slices.reduce((prev, curr, k) => prev + curr, 0);
+        let sum2 = n2.slices.reduce((prev, curr, k) => prev + curr, 0);
         if (sum1 == 0 && sum2 == 0) {
           return; // links.push({ source: i, target: j, strength: 1.0 });
         } else if ((sum1 == 0 || sum2 == 0) && !(n1.error && n2.error))
@@ -106,7 +104,7 @@
           links.push({
             source: i,
             target: j,
-            strength: Math.pow((countEqual / ((sum1 + sum2) * 0.5)) * 3, 2.0),
+            strength: countEqual / ((sum1 + sum2) * 0.5),
           });
         }
       });
@@ -114,7 +112,7 @@
 
     let linkForce = d3
       .forceLink(links)
-      .distance(10)
+      .distance(pointRadius * 0.5)
       .strength((l) => l.strength);
 
     let magnetForce = forceMagnetic()
@@ -124,7 +122,7 @@
 
     simulation = d3
       .forceSimulation(nodePositions)
-      .force('center', d3.forceCenter(w / 2, h / 2))
+      .force('center', d3.forceCenter(w * centerXRatio, h * centerYRatio))
       .force('link', linkForce)
       .force('magnet', magnetForce)
       .force(
@@ -134,8 +132,8 @@
           .radius(pointRadius * 1.5)
           .strength(0.1)
       )
-      .force('x', d3.forceX(w / 2).strength(0.1))
-      .force('y', d3.forceY(w / 2).strength(0.1));
+      .force('x', d3.forceX(w * centerXRatio).strength(0.1))
+      .force('y', d3.forceY(h * centerYRatio).strength(0.1));
 
     let alphaResetInterval = 200;
     let initialAlpha = 0.1;
@@ -239,12 +237,12 @@
       }
     });
 
-    if (showConvexHulls) {
+    /*if (showConvexHulls) {
       renderConvexHulls();
-    }
+    }*/
   }
 
-  function renderConvexHulls() {
+  /*function renderConvexHulls() {
     let numSlices = $data[0].slices.length;
     d3.range(numSlices).forEach((sliceIndex) => {
       let hull = d3.polygonHull(
@@ -263,7 +261,7 @@
       $ctx.fill();
     });
     $ctx.globalAlpha = 1.0;
-  }
+  }*/
 
   $: if (!!$ctx && !!simulation) {
     updatePositions(colorFn, hoveredPointIndex);

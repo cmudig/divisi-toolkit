@@ -24,6 +24,7 @@
   export let showHeader = true;
 
   export let slices: Array<Slice> = [];
+  export let selectedSlices: Array<Slice> = [];
 
   export let baseSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
@@ -131,9 +132,9 @@
     <div
       class="text-left inline-flex align-top font-bold slice-header whitespace-nowrap bg-slate-100 rounded-t border-b border-slate-600"
     >
-      <div style="width: {TableWidths.ActionMenus}px;">
+      <!-- <div style="width: {TableWidths.ActionMenus}px;">
         <div class="p-2 w-full h-full" />
-      </div>
+      </div> -->
       <div style="width: {TableWidths.FeatureList}px;">
         <div class="p-2">Slice</div>
       </div>
@@ -224,6 +225,9 @@
       {metricInfo}
       {valueNames}
       {allowedValues}
+      isSaved={!!selectedSlices.find((s) =>
+        areObjectsEqual(s, baseSlice.feature)
+      )}
       temporarySlice={tempRevertedSlice == baseSlice.stringRep
         ? baseSlice
         : sliceRequestResults[baseSlice.stringRep]}
@@ -257,6 +261,7 @@
       areObjectsEqual(searchBaseSlice, slice.feature)
         ? 'bg-indigo-100 hover:bg-indigo-200'
         : 'hover:bg-slate-100'}
+      isSaved={!!selectedSlices.find((s) => areObjectsEqual(s, slice.feature))}
       temporarySlice={tempRevertedSlice == slice.stringRep
         ? slice
         : sliceRequestResults[slice.stringRep]}

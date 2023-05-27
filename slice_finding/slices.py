@@ -180,7 +180,7 @@ class SliceFeatureAnd(SliceFeatureBase):
         return hash((self.lhs, self.rhs))
 
     def __contains__(self, f):
-        return self == f or self.lhs == f or self.rhs == f
+        return self == f or f in self.lhs or f in self.rhs
 
     def __eq__(self, other):
         return isinstance(other, SliceFeatureAnd) and other.lhs == self.lhs and other.rhs == self.rhs
@@ -216,7 +216,7 @@ class SliceFeatureOr(SliceFeatureBase):
         return hash((self.lhs, self.rhs))
 
     def __contains__(self, f):
-        return self == f or self.lhs == f or self.rhs == f
+        return self == f or f in self.lhs or f in self.rhs
 
     def __eq__(self, other):
         return isinstance(other, SliceFeatureOr) and other.lhs == self.lhs and other.rhs == self.rhs
