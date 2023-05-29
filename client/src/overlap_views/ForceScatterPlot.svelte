@@ -6,7 +6,7 @@
 
   const { data, width, height } = getContext('LayerCake');
 
-  export let pointRadius = 4; // 6;
+  export let pointRadius = 7; // 4;
   export let colorFn = null;
   export let hoveredSlices = null;
   export let centerYRatio = 0.5;
@@ -16,6 +16,9 @@
   export let hoveredPointIndex = null;
 
   export let colorByError = false;
+  export let colorBySlice = true;
+
+  const sliceColorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
   const { ctx } = getContext('canvas');
 
@@ -58,17 +61,37 @@
       (prev, curr) => Math.max(prev, curr.numSlices),
       1
     );
-    nodePositions = nodeData.map((n, i) =>
-      n.numSlices > 0
-        ? {
-            x: w / 2 + Math.random() * 50 - 25,
-            y: h / 2 + Math.random() * 50 - 25,
-          }
-        : {
-            x: Math.random() * 800 - 400 + w / 2,
-            y: Math.random() * 800 - 400 + h / 2,
-          }
-    );
+
+    // TODO try using UMAP as an initialization
+
+    let slicePositions = {}; // put nodes with the same least-common slice in the same coordinates
+    let counts = Array.apply(null, Array(ds[0].slices.length)).map(() => 0);
+    ds.forEach((d) => {
+      d.slices.forEach((x, i) => {
+        if (x) counts[i] += 1;
+      });
+    });
+
+    nodePositions = nodeData.map((n, i) => {
+      if (n.numSlices > 0) {
+        let leastCommonSlice = ds[i].slices.reduce(
+          (prev, curr, idx) => (counts[idx] < counts[prev] ? idx : prev),
+          0
+        );
+        if (!!slicePositions[leastCommonSlice])
+          return Object.assign({}, slicePositions[leastCommonSlice]);
+        let newPos = {
+          x: w / 2 + Math.random() * 50 - 25,
+          y: h / 2 + Math.random() * 50 - 25,
+        };
+        slicePositions[leastCommonSlice] = newPos;
+        return newPos;
+      }
+      return {
+        x: Math.random() * 800 - 400 + w / 2,
+        y: Math.random() * 800 - 400 + h / 2,
+      };
+    });
   }
 
   function initSimulation(ds, w, h) {
@@ -129,7 +152,7 @@
         'collide',
         d3
           .forceCollide()
-          .radius(pointRadius * 1.5)
+          .radius(pointRadius * 1.2)
           .strength(0.1)
       )
       .force('x', d3.forceX(w * centerXRatio).strength(0.1))
@@ -185,20 +208,48 @@
 
       $ctx.globalAlpha = 1.0;
 
-      if (colorByError) {
+      if (colorBySlice) {
         $ctx.beginPath();
         let itemSlices = $data[i].slices;
-        $ctx.arc(
-          d.x,
-          d.y,
-          numSlices > 0 ? radius : radius * 0.5,
-          0,
-          2 * Math.PI,
-          false
-        );
-        $ctx.strokeStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
-        if (numSlices == 0) $ctx.globalAlpha = 0.7;
+        let color = colorFn != null ? colorFn($data[i]) : null;
+        // if (!$data[i].error) radius *= 0.7;
+        $ctx.globalAlpha = !!color ? 1.0 : 0.4;
+        $ctx.strokeStyle = '#94a3b8';
+        $ctx.lineWidth = 1;
+        $ctx.arc(d.x, d.y, radius - 3, 0, 2 * Math.PI, false);
         $ctx.stroke();
+        if ($data[i].error) {
+          $ctx.fillStyle = '#94a3b8';
+          $ctx.fill();
+        }
+        let lw = 4; // $data[i].error ? 4 : 2;
+        $ctx.lineWidth = lw;
+        // if (numSlices == 0) $ctx.globalAlpha = 0.7;
+        if (numSlices > 0) {
+          itemSlices.forEach((s, j) => {
+            if (!s) return;
+            $ctx.beginPath();
+            $ctx.strokeStyle = sliceColorScale(j);
+            $ctx.arc(
+              d.x,
+              d.y,
+              radius - 1, // (numSlices > 0 ? radius : radius * 0.5) + ($data[i].error ? 1 : 0),
+              -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
+              -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
+              false
+            );
+            $ctx.stroke();
+          });
+        }
+      } else if (colorByError) {
+        $ctx.beginPath();
+        let itemSlices = $data[i].slices;
+        let color = colorFn != null ? colorFn($data[i]) : 'steelblue';
+        radius = numSlices > 0 ? radius : radius * 0.5;
+        $ctx.arc(d.x, d.y, radius, 0, 2 * Math.PI, false);
+        $ctx.strokeStyle = color;
+        $ctx.stroke();
+        // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
           $ctx.beginPath();
           $ctx.moveTo(d.x, d.y);
@@ -214,7 +265,7 @@
             );
             $ctx.lineTo(d.x, d.y);
           });
-          $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.fillStyle = color;
           $ctx.fill();
         }
       } else {
@@ -265,6 +316,16 @@
 
   $: if (!!$ctx && !!simulation) {
     updatePositions(colorFn, hoveredPointIndex);
+  }
+
+  $: if (!!$ctx) {
+    let canvas = d3.select($ctx.canvas);
+    console.log('canvas:', canvas);
+    canvas.call(
+      d3.zoom().on('zoom', (e) => {
+        console.log('zooming');
+      })
+    );
   }
 
   $: if (!!hoveredMousePosition && !!simulation) {

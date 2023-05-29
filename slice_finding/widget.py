@@ -50,6 +50,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     slice_score_requests = traitlets.Dict({}).tag(sync=True)
     slice_score_results = traitlets.Dict({}).tag(sync=True)
     
+    saved_slices = traitlets.List([]).tag(sync=True)
     selected_slices = traitlets.List([]).tag(sync=True)
     slice_intersection_labels = traitlets.List([]).tag(sync=True)
     slice_intersection_counts = traitlets.List([]).tag(sync=True)
@@ -397,8 +398,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
         # Calculate the sizes of all intersections of the given sets
         manager = self.slice_finder.results
-        for features in selected:
-            slice_obj = manager.encode_slice(features)
+        for s in selected:
+            slice_obj = manager.encode_slice(s['feature'])
             slice_masks[slice_obj] = manager.slice_mask(slice_obj)
             # for feature in slice_obj.feature_values.keys():
             #     univ_slice = Slice({feature: slice_obj.feature_values[feature]})

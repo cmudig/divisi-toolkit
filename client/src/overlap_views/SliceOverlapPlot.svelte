@@ -11,6 +11,7 @@
   export let centerXRatio = 0.5;
 
   export let colorByError = false;
+  export let colorBySlice = true;
 
   export let errorKey;
 
@@ -94,7 +95,17 @@
 
   function color(item, selectedSlices, selIndexes) {
     let numSlices = item.slices.reduce((prev, curr) => prev + curr, 0);
-    if (colorByError) {
+    if (colorBySlice) {
+      if (selectedSlices != null) {
+        let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
+        if (allEqual) return '#94a3b8';
+        return null;
+      } else if (selIndexes != null) {
+        if (selIndexes.some((s, i) => item.slices[i] && s)) return '#94a3b8';
+        return null;
+      }
+      return '#94a3b8';
+    } else if (colorByError) {
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
         if (allEqual) return item.error ? '#c2410c' : '#6ee7b7';
@@ -132,6 +143,7 @@
           {centerYRatio}
           {centerXRatio}
           {colorByError}
+          {colorBySlice}
           {hoveredMousePosition}
           colorFn={(item) =>
             color(

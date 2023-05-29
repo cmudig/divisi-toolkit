@@ -318,9 +318,9 @@ class IntersectionSlice(Slice):
         if not features:
             feature = SliceFeatureBase()
         else:
-            feature = features[0]
-            for i in range(1, len(features)):
-                feature = SliceFeatureAnd(feature, features[i])
+            feature = features[-1]
+            for i in range(len(features) - 2, -1, -1):
+                feature = SliceFeatureAnd(features[i], feature)
         super().__init__(feature, score_values=score_values)
         self.base_features = tuple(sorted(features))
         

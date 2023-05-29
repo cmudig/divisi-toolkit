@@ -54,6 +54,7 @@
   export let subsliceOfSlice: any = {};
 
   export let selectedSlices = [];
+  export let savedSlices = [];
 
   const SliceControlStrings = {
     containsSlice: 'Contains',
@@ -231,7 +232,8 @@
   <div class="search-view-header bg-white" bind:this={searchViewHeader}>
     <SliceTable
       slices={[]}
-      {selectedSlices}
+      {savedSlices}
+      bind:selectedSlices
       {baseSlice}
       bind:sliceRequests
       bind:sliceRequestResults
@@ -250,152 +252,154 @@
       on:saveslice
     />
   </div>
-  <div
-    class="sampler-panel w-full rounded mb-2 transition-colors duration-300 bg-slate-200 text-gray-700 border-slate-200 border-2 box-border"
-    bind:this={samplerPanel}
-  >
-    {#if runningSampler}
-      <div class="flex items-center px-3 py-3">
-        <button
-          class="ml-2 mr-4 btn btn-blue disabled:opacity-50"
-          disabled={shouldCancel}
-          on:click={() => (shouldCancel = true)}>Stop</button
-        >
-        <div class="flex-auto">
-          <div class="text-sm">
-            {#if shouldCancel}
-              Canceling...
-            {:else}
-              Running sampler ({(samplerRunProgress * 100).toFixed(1)}%
-              complete)...
-            {/if}
-          </div>
-          <div
-            class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
+  <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
+    <div
+      class="mx-2 rounded transition-colors duration-300 bg-slate-200 text-gray-700 border-slate-200 border-2 box-border"
+    >
+      {#if runningSampler}
+        <div class="flex items-center px-3 py-3">
+          <button
+            class="ml-2 mr-4 btn btn-blue disabled:opacity-50"
+            disabled={shouldCancel}
+            on:click={() => (shouldCancel = true)}>Stop</button
           >
+          <div class="flex-auto">
+            <div class="text-sm">
+              {#if shouldCancel}
+                Canceling...
+              {:else}
+                Running sampler ({(samplerRunProgress * 100).toFixed(1)}%
+                complete)...
+              {/if}
+            </div>
             <div
-              class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
-              style="width: {(samplerRunProgress * 100).toFixed(1)}%"
-            />
-          </div>
-        </div>
-      </div>
-    {:else}
-      <div class="flex pl-3 items-stretch">
-        <div class="flex-1 w-0 pr-3">
-          <div class="flex items-center whitespace-nowrap py-3">
-            <button
-              class="ml-1 btn btn-blue disabled:opacity-50"
-              disabled={runningSampler}
-              on:click={() => dispatch('runsampler')}>Find Slices</button
+              class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
             >
-            <div class="ml-2">
-              <input
-                class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
-                type="number"
-                min="0"
-                max="500"
-                step="5"
-                bind:value={numSamples}
+              <div
+                class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
+                style="width: {(samplerRunProgress * 100).toFixed(1)}%"
               />
-              samples
             </div>
-
-            <div class="ml-2">
-              <ActionMenuButton
-                buttonClass="ml-1 btn btn-slate"
-                buttonStyle="padding-left: 1rem;"
-                buttonTitle="Add a filter option"
+          </div>
+        </div>
+      {:else}
+        <div class="flex pl-3 items-stretch">
+          <div class="flex-1 w-0 pr-3">
+            <div class="flex items-center whitespace-nowrap py-3">
+              <button
+                class="ml-1 btn btn-blue disabled:opacity-50"
+                disabled={runningSampler}
+                on:click={() => dispatch('runsampler')}>Find Slices</button
               >
-                <span slot="button-content"
-                  ><Fa icon={faPlus} class="inline mr-1" />
-                  Filter</span
+              <div class="ml-2">
+                <input
+                  class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="5"
+                  bind:value={numSamples}
+                />
+                samples
+              </div>
+
+              <div class="ml-2">
+                <ActionMenuButton
+                  buttonClass="ml-1 btn btn-slate"
+                  buttonStyle="padding-left: 1rem;"
+                  buttonTitle="Add a filter option"
                 >
-                <div slot="options">
-                  {#each Object.keys(SliceControlEnableNames) as control}
-                    {#if !enabledSliceControls[SliceControlEnableNames[control]]}
-                      <a
-                        href="#"
-                        tabindex="0"
-                        role="menuitem"
-                        on:click={() => toggleSliceControl(control)}
-                        >{SliceControlStrings[control]} Slice</a
-                      >
-                    {/if}
-                  {/each}
+                  <span slot="button-content"
+                    ><Fa icon={faPlus} class="inline mr-1" />
+                    Filter</span
+                  >
+                  <div slot="options">
+                    {#each Object.keys(SliceControlEnableNames) as control}
+                      {#if !enabledSliceControls[SliceControlEnableNames[control]]}
+                        <a
+                          href="#"
+                          tabindex="0"
+                          role="menuitem"
+                          on:click={() => toggleSliceControl(control)}
+                          >{SliceControlStrings[control]} Slice</a
+                        >
+                      {/if}
+                    {/each}
+                  </div>
+                </ActionMenuButton>
+              </div>
+            </div>
+            {#each Object.keys(SliceControlEnableNames) as control}
+              {#if enabledSliceControls[SliceControlEnableNames[control]]}
+                <div class="flex items-center pb-3 w-full">
+                  <button
+                    style="padding-left: 1rem;"
+                    class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
+                    on:click={() => toggleSliceControl(control)}
+                    ><Fa icon={faMinus} class="inline mr-1" />
+                    {SliceControlStrings[control]}</button
+                  >
+                  {#if editingControl == SliceControlEnableNames[control]}
+                    <SliceFeatureEditor
+                      featureText={featureToString(
+                        controlFeatures[control],
+                        false,
+                        positiveOnly
+                      )}
+                      {positiveOnly}
+                      {allowedValues}
+                      on:cancel={(e) => {
+                        editingControl = null;
+                      }}
+                      on:save={(e) => {
+                        let newFeature = parseFeature(e.detail, allowedValues);
+                        updateEditingControl(control, newFeature);
+                        editingControl = null;
+                      }}
+                    />
+                  {:else}
+                    <div
+                      class="overflow-x-auto whitespace-nowrap"
+                      style="flex: 0 1 auto;"
+                    >
+                      <SliceFeature
+                        feature={controlFeatures[control]}
+                        currentFeature={controlFeatures[control]}
+                        canToggle={false}
+                        {positiveOnly}
+                      />
+                    </div>
+                    <button
+                      class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
+                      on:click={() => {
+                        editingControl = SliceControlEnableNames[control];
+                      }}
+                      title="Modify the slice definition"
+                      ><Fa icon={faPencil} /></button
+                    >
+                  {/if}
                 </div>
-              </ActionMenuButton>
+              {/if}
+            {/each}
+          </div>
+
+          <div class="flex flex-0 items-start bg-slate-150 pl-4 pr-4 rounded-r">
+            <div class="text-slate-400 text-lg pt-4">
+              <Fa class="block" icon={faScaleBalanced} />
+            </div>
+            <div class="w-80 ml-2 flex-0 pt-3 pb-2">
+              <ScoreWeightMenu bind:weights={scoreWeights} {scoreNames} />
             </div>
           </div>
-          {#each Object.keys(SliceControlEnableNames) as control}
-            {#if enabledSliceControls[SliceControlEnableNames[control]]}
-              <div class="flex items-center pb-3 w-full">
-                <button
-                  style="padding-left: 1rem;"
-                  class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-                  on:click={() => toggleSliceControl(control)}
-                  ><Fa icon={faMinus} class="inline mr-1" />
-                  {SliceControlStrings[control]}</button
-                >
-                {#if editingControl == SliceControlEnableNames[control]}
-                  <SliceFeatureEditor
-                    featureText={featureToString(
-                      controlFeatures[control],
-                      false,
-                      positiveOnly
-                    )}
-                    {positiveOnly}
-                    {allowedValues}
-                    on:cancel={(e) => {
-                      editingControl = null;
-                    }}
-                    on:save={(e) => {
-                      let newFeature = parseFeature(e.detail, allowedValues);
-                      updateEditingControl(control, newFeature);
-                      editingControl = null;
-                    }}
-                  />
-                {:else}
-                  <div
-                    class="overflow-x-auto whitespace-nowrap"
-                    style="flex: 0 1 auto;"
-                  >
-                    <SliceFeature
-                      feature={controlFeatures[control]}
-                      currentFeature={controlFeatures[control]}
-                      canToggle={false}
-                      {positiveOnly}
-                    />
-                  </div>
-                  <button
-                    class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
-                    on:click={() => {
-                      editingControl = SliceControlEnableNames[control];
-                    }}
-                    title="Modify the slice definition"
-                    ><Fa icon={faPencil} /></button
-                  >
-                {/if}
-              </div>
-            {/if}
-          {/each}
         </div>
-
-        <div class="flex flex-0 items-start bg-slate-150 pl-4 pr-4 rounded-r">
-          <div class="text-slate-400 text-lg pt-4">
-            <Fa class="block" icon={faScaleBalanced} />
-          </div>
-          <div class="w-80 ml-2 flex-0 pt-3 pb-2">
-            <ScoreWeightMenu bind:weights={scoreWeights} {scoreNames} />
-          </div>
-        </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
   </div>
   <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
     <SliceTable
       {slices}
-      {selectedSlices}
+      {savedSlices}
+      bind:selectedSlices
       bind:sliceRequests
       bind:sliceRequestResults
       {positiveOnly}

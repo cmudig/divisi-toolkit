@@ -22,6 +22,7 @@
   import { areObjectsEqual, featuresHaveSameTree } from '../utils/utils';
   import SliceFeatureEditor from './SliceFeatureEditor.svelte';
   import { featureToString, parseFeature } from '../utils/slice_parsing';
+  import Checkbox from '../utils/Checkbox.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -47,6 +48,7 @@
   export let indent = 0;
 
   export let isSaved = false;
+  export let isSelected = false;
   export let isEditing = false;
   let showButtons = false;
 
@@ -112,11 +114,19 @@
 
 {#if !!sliceToShow}
   <div
-    class="slice-row {rowClass ? rowClass : 'bg-white'} inline-flex"
+    class="slice-row {rowClass
+      ? rowClass
+      : 'bg-white'} inline-flex items-center"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
     on:mouseenter={() => (showButtons = true)}
     on:mouseleave={() => (showButtons = false)}
   >
+    <div class="p-2" style="width: {TableWidths.Checkbox}px;">
+      <Checkbox
+        checked={isSelected}
+        on:change={(e) => dispatch('select', !isSelected)}
+      />
+    </div>
     <div
       class="py-2 text-xs"
       class:opacity-50={revertedScores}
@@ -170,7 +180,7 @@
             <button
               class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
               title="Add a new custom slice"
-              on:click={() => dispatch('saveslice', sliceToShow.feature)}
+              on:click={() => dispatch('saveslice', sliceToShow)}
               ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
             >
           {/if}

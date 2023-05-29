@@ -25,6 +25,7 @@
 
   export let slices: Array<Slice> = [];
   export let selectedSlices: Array<Slice> = [];
+  export let savedSlices: Array<Slice> = [];
 
   export let baseSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
@@ -125,6 +126,25 @@
     sliceRequests = allRequests;
     console.log('slice requests:', sliceRequests);
   }
+
+  function selectSlice(slice: Slice, selected: boolean = true) {
+    if (selected) selectedSlices = [...selectedSlices, slice];
+    else {
+      let idx = selectedSlices.findIndex((s) =>
+        areObjectsEqual(s, slice.feature)
+      );
+      if (idx >= 0)
+        selectedSlices = [
+          ...selectedSlices.slice(0, idx),
+          ...selectedSlices.slice(idx + 1),
+        ];
+    }
+  }
+
+  $: console.log(
+    `table with ${slices.length} slices has selected slices:`,
+    selectedSlices
+  );
 </script>
 
 <div class="relative">
@@ -132,9 +152,9 @@
     <div
       class="text-left inline-flex align-top font-bold slice-header whitespace-nowrap bg-slate-100 rounded-t border-b border-slate-600"
     >
-      <!-- <div style="width: {TableWidths.ActionMenus}px;">
+      <div style="width: {TableWidths.Checkbox}px;">
         <div class="p-2 w-full h-full" />
-      </div> -->
+      </div>
       <div style="width: {TableWidths.FeatureList}px;">
         <div class="p-2">Slice</div>
       </div>
@@ -225,8 +245,17 @@
       {metricInfo}
       {valueNames}
       {allowedValues}
-      isSaved={!!selectedSlices.find((s) =>
-        areObjectsEqual(s, baseSlice.feature)
+      isSaved={!!savedSlices.find((s) =>
+        areObjectsEqual(
+          s.feature,
+          (sliceRequestResults[baseSlice.stringRep] || baseSlice).feature
+        )
+      )}
+      isSelected={!!selectedSlices.find((s) =>
+        areObjectsEqual(
+          s.feature,
+          (sliceRequestResults[baseSlice.stringRep] || baseSlice).feature
+        )
       )}
       temporarySlice={tempRevertedSlice == baseSlice.stringRep
         ? baseSlice
@@ -242,9 +271,15 @@
         (tempRevertedSlice = e.detail ? baseSlice.stringRep : null)}
       on:newsearch
       on:saveslice
+      on:select={(e) =>
+        selectSlice(
+          sliceRequestResults[baseSlice.stringRep] || baseSlice,
+          e.detail
+        )}
     />
   {/if}
   {#each slices as slice, i (slice.stringRep || i)}
+    {@const sliceToShow = sliceRequestResults[slice.stringRep] || slice}
     <SliceRow
       {slice}
       {scoreNames}
@@ -261,10 +296,15 @@
       areObjectsEqual(searchBaseSlice, slice.feature)
         ? 'bg-indigo-100 hover:bg-indigo-200'
         : 'hover:bg-slate-100'}
-      isSaved={!!selectedSlices.find((s) => areObjectsEqual(s, slice.feature))}
+      isSaved={!!savedSlices.find((s) =>
+        areObjectsEqual(s.feature, sliceToShow.feature)
+      )}
+      isSelected={!!selectedSlices.find((s) =>
+        areObjectsEqual(s.feature, sliceToShow.feature)
+      )}
       temporarySlice={tempRevertedSlice == slice.stringRep
         ? slice
-        : sliceRequestResults[slice.stringRep]}
+        : sliceToShow}
       isEditing={slice.stringRep == editingSlice}
       on:beginedit={(e) => (editingSlice = slice.stringRep)}
       on:endedit={(e) => (editingSlice = null)}
@@ -275,6 +315,7 @@
         (tempRevertedSlice = e.detail ? slice.stringRep : null)}
       on:newsearch
       on:saveslice
+      on:select={(e) => selectSlice(sliceToShow, e.detail)}
     />
   {/each}
 </div>
