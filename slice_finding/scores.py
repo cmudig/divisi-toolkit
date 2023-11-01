@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from .utils import powerset
 
 class ScoreFunctionBase:
@@ -16,9 +17,12 @@ class ScoreFunctionBase:
         """
         self.score_type = score_type
         if data is not None:
-            assert isinstance(data, np.ndarray), "Score function data must be of type ndarray"
+            assert isinstance(data, (np.ndarray, torch.Tensor)), "Score function data must be of type ndarray or Tensor"
             assert len(data.shape) == 1, "Score function data must be 1D"
-        self.data = data
+            self.data = data if isinstance(data, torch.Tensor) else torch.from_numpy(data)
+        else:
+            self.data = None
+        self.device = 'cpu'
 
     def calculate_score(self, slice, mask, univariate_masks):
         """
@@ -47,14 +51,22 @@ class ScoreFunctionBase:
     
     def meta_dict(self):
         """A metadata dictionary for the score function, excluding the data."""
-        base = {"type": type(self).__name__}
+        base = {"type": type(self).__name__, "device": str(self.device)}
         return base
     
     @classmethod
     def from_dict(cls, meta_dict, data):
         """A metadata dictionary for the score function, excluding the data."""
         score_type = meta_dict["type"]
-        return globals()[score_type].from_dict(meta_dict, data)
+        return globals()[score_type].from_dict(meta_dict, data).to(meta_dict["device"])
+    
+    def to(self, device):
+        """Transfers all tensors to the given device."""
+        self.device = device
+        for attr, value in self.__dict__.items():
+            if isinstance(value, torch.Tensor):
+                setattr(self, attr, value.to(device))
+        return self
     
 class EntropyScore(ScoreFunctionBase):
     """
@@ -74,21 +86,23 @@ class EntropyScore(ScoreFunctionBase):
         """
         super().__init__("entropy", data)
         assert priority in (None, "low", "high")
-        assert np.issubdtype(data.dtype, np.integer), "Entropy can only be calculated on integer inputs"
+        assert not torch.is_floating_point(self.data), "Entropy can only be calculated on integer inputs"
         self.priority = priority
         self.eps = eps
         
+        self._unique_vals = torch.unique(self.data)
+        self._val_one_hot = self.data.unsqueeze(-1) == self._unique_vals
         self._base_entropy = self._calc_entropy(self.data)
        
-    def _calc_entropy(self, discrete_vals):
-        _, counts = np.unique(discrete_vals, return_counts=True)
-        return -np.sum((counts / len(discrete_vals)) * np.log2(counts / len(discrete_vals)))
+    def _calc_entropy(self, mask):
+        counts = (self._val_one_hot.unsqueeze(2).transpose(0, 1) * mask.view(mask.shape[0], -1)).transpose(0, 1).sum(0)
+        return -torch.sum((counts / self.data.shape[0]) * torch.log2(counts / self.data.shape[0]), 0)
 
     def high_entropy(self, mask):
-        return (self.eps + self._calc_entropy(self.data[mask])) / (self.eps + self._base_entropy)
+        return (self.eps + self._calc_entropy(mask)) / (self.eps + self._base_entropy)
 
     def low_entropy(self, mask):
-        return (self.eps + self._base_entropy) / (self.eps + self._calc_entropy(self.data[mask]))
+        return (self.eps + self._base_entropy) / (self.eps + self._calc_entropy(mask))
 
     def calculate_score(self, slice, mask, univariate_masks):
         if self.priority == 'high':
@@ -124,11 +138,12 @@ class MeanDifferenceScore(ScoreFunctionBase):
 
     def __init__(self, data):
         super().__init__("mean", data)
+        self.data = self.data.float()
         self._std = self.data.std()
         self._mean = self.data.mean()
         
     def calculate_score(self, slice, mask, univariate_masks):
-        return np.abs(self.data[mask].mean() - self._mean) / self._std
+        return torch.abs((self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1)).mean(0) - self._mean) / self._std
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         return np.abs(slice_sum / slice_count - self._mean) / self._std
@@ -164,8 +179,8 @@ class SliceSizeScore(ScoreFunctionBase):
         self.spread = spread
 
     def calculate_score(self, slice, mask, univariate_masks):
-        frac = mask.sum() / len(mask)
-        return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
+        frac = mask.sum(0) / mask.shape[0]
+        return torch.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
         
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         frac = slice_count / total_count
@@ -225,14 +240,17 @@ class OutcomeRateScore(ScoreFunctionBase):
         :param eps: Small constant value to add to fractions
         """
         super().__init__("outcome_rate", data)
+        self.data = self.data.float()
         self.inverse = inverse
         self.eps = eps
-        self._mean = np.nanmean(self.data)
+        self._mean = torch.nanmean(self.data)
         
     def calculate_score(self, slice, mask, univariate_masks):
+        mask = mask.view(mask.shape[0], -1)
+        mask_mean = torch.nansum(self.data.unsqueeze(-1) * mask, 0) / mask.sum(0)
         if self.inverse: 
-            return (self.eps + self._mean) / (self.eps + np.nanmean(self.data[mask]))
-        return (self.eps + np.nanmean(self.data[mask])) / (self.eps + self._mean)
+            return (self.eps + self._mean) / (self.eps + mask_mean)
+        return (self.eps + mask_mean) / (self.eps + self._mean)
 
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         mean = slice_sum / slice_count
@@ -266,10 +284,11 @@ class OutcomeShareScore(ScoreFunctionBase):
         :param data: A binary outcome to compare
         """
         super().__init__("outcome_share", data)
+        self.data = self.data.float()
         self._sum = self.data.sum()
         
     def calculate_score(self, slice, mask, univariate_masks):
-        return self.data[mask].sum() / self._sum
+        return torch.nansum(self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1), 0) / self._sum
 
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         return slice_sum / self._sum
@@ -295,6 +314,7 @@ class InteractionEffectScore(ScoreFunctionBase):
     
     def __init__(self, data, eps=1e-6):
         super().__init__("interaction_effect", data)
+        self.data = self.data.float()
         self._mean = np.nanmean(self.data)
         self.eps = eps
         
@@ -348,17 +368,18 @@ class SliceSimilarityScore(ScoreFunctionBase):
     
     def __init__(self, reference_mask, metric='jaccard'):
         super().__init__("slice_similarity", reference_mask)
+        self.data = self.data.float()
         self.metric = metric
         
     def calculate_score(self, slice, mask, univariate_masks):
-        intersect = (mask * self.data > 0).sum()
+        intersect = (mask.view(mask.shape[0], -1) * self.data.unsqueeze(-1) > 0).sum(0)
         if self.metric == 'jaccard':
-            union = (mask + self.data > 0).sum()
+            union = (mask.view(mask.shape[0], -1) + self.data.unsqueeze(-1) > 0).sum(0)
             return intersect / union
         elif self.metric == 'subslice':
-            return intersect / mask.sum()
+            return intersect / mask.sum(0)
         elif self.metric == 'superslice':
-            return intersect / self.data.sum()
+            return intersect / self.data.sum(0)
         raise AttributeError(f"Unsupported metric {self.metric}")
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count):

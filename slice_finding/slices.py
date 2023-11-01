@@ -1,9 +1,10 @@
 import scipy.sparse as sps
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, csc_matrix
 import numpy as np
 import pandas as pd
 from .utils import pairwise_jaccard_similarities, detect_data_type, convert_to_native_types, powerset
 from .discretization import DiscretizedData
+import torch
 
 class SliceFeatureBase:
     def __init__(self):
@@ -22,8 +23,8 @@ class SliceFeatureBase:
     def __lt__(self, other):
         return type(other) is not SliceFeatureBase
     
-    def make_mask(self, inputs, univariate_masks=None):
-        return np.ones(inputs.shape[0], dtype=bool)
+    def make_mask(self, inputs, univariate_masks=None, device='cpu'):
+        return torch.ones(inputs.shape[0]).bool().to(device)
 
     def univariate_features(self):
         return tuple()
@@ -96,7 +97,7 @@ class SliceFeature(SliceFeatureBase):
     def transform_features(self, transform_func):
         return transform_func(self)
 
-    def make_mask(self, inputs, univariate_masks=None):
+    def make_mask(self, inputs, univariate_masks=None, device='cpu'):
         univ_mask = None
         # Check if univariate mask available in cache
         if univariate_masks is not None:
@@ -105,13 +106,15 @@ class SliceFeature(SliceFeatureBase):
         if univ_mask is None:
             for val in self.allowed_values:
                 if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
-                    mask = (inputs[:,self.feature_name] == val).toarray().flatten()
+                    mask = torch.from_numpy((inputs[:,self.feature_name] == val).toarray().flatten()).to(device)
                 elif isinstance(inputs, np.ndarray):
+                    mask = torch.from_numpy(inputs[:,self.feature_name] == val).to(device)
+                elif isinstance(inputs, torch.Tensor):
                     mask = inputs[:,self.feature_name] == val
                 else:
                     mask = inputs[self.feature_name] == val
                 if univ_mask is None:
-                    univ_mask = mask.copy()
+                    univ_mask = mask.clone()
                 else:
                     univ_mask |= mask
                     
@@ -128,8 +131,8 @@ class SliceFeatureNegation(SliceFeatureBase):
         self.feature = feature
         self.num_univariate_features = self.feature.num_univariate_features
         
-    def make_mask(self, inputs, univariate_masks=None):
-        return ~self.feature.make_mask(inputs, univariate_masks=univariate_masks)
+    def make_mask(self, inputs, univariate_masks=None, device='cpu'):
+        return ~self.feature.make_mask(inputs, univariate_masks=univariate_masks, device='cpu')
     
     def univariate_features(self):
         return self.feature.univariate_features()
@@ -163,8 +166,9 @@ class SliceFeatureAnd(SliceFeatureBase):
         self.rhs = rhs
         self.num_univariate_features = self.lhs.num_univariate_features + self.rhs.num_univariate_features
         
-    def make_mask(self, inputs, univariate_masks=None):
-        return self.lhs.make_mask(inputs, univariate_masks=univariate_masks) & self.rhs.make_mask(inputs, univariate_masks=univariate_masks)
+    def make_mask(self, inputs, univariate_masks=None, device='cpu'):
+        return (self.lhs.make_mask(inputs, univariate_masks=univariate_masks, device='cpu') & 
+                self.rhs.make_mask(inputs, univariate_masks=univariate_masks, device='cpu'))
 
     def univariate_features(self):
         return (*self.lhs.univariate_features(), *self.rhs.univariate_features())
@@ -199,8 +203,9 @@ class SliceFeatureOr(SliceFeatureBase):
         self.rhs = rhs
         self.num_univariate_features = self.lhs.num_univariate_features + self.rhs.num_univariate_features
         
-    def make_mask(self, inputs, univariate_masks=None):
-        return self.lhs.make_mask(inputs, univariate_masks=univariate_masks) | self.rhs.make_mask(inputs, univariate_masks=univariate_masks)
+    def make_mask(self, inputs, univariate_masks=None, device='cpu'):
+        return (self.lhs.make_mask(inputs, univariate_masks=univariate_masks, device='cpu') |
+                self.rhs.make_mask(inputs, univariate_masks=univariate_masks, device='cpu'))
 
     def univariate_features(self):
         return (*self.lhs.univariate_features(), *self.rhs.univariate_features())
@@ -265,7 +270,7 @@ class Slice:
     def univariate_features(self):
         return self.feature.univariate_features()
     
-    def make_mask(self, inputs, existing_mask=None, univariate_masks=None):
+    def make_mask(self, inputs, existing_mask=None, univariate_masks=None, device='cpu'):
         """
         Creates a binary mask representing membership in the given slice.
         
@@ -280,15 +285,15 @@ class Slice:
         :return: a binary array where 1 indicates that a row is part of the
             slice
         """
-        mask = existing_mask.copy() if existing_mask is not None else existing_mask
+        mask = existing_mask.clone() if existing_mask is not None else existing_mask
         
         if mask is None:
-            mask = self.feature.make_mask(inputs, univariate_masks=univariate_masks)
+            mask = self.feature.make_mask(inputs, univariate_masks=univariate_masks, device=device)
         else:
-            mask &= self.feature.make_mask(inputs, univariate_masks=univariate_masks)
+            mask &= self.feature.make_mask(inputs, univariate_masks=univariate_masks, device=device)
         
         if mask is None:
-            mask = np.ones(inputs.shape[0], dtype=bool)
+            mask = torch.ones(inputs.shape[0]).bool().to(device)
         if isinstance(mask, pd.Series): mask = mask.values
         return mask
 
@@ -357,7 +362,7 @@ class RankedSliceList:
     slice-finding operation.
     """
     
-    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9):
+    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9, device='cpu'):
         """
         :param results: A list of Slice objects representing the results of a
             slice-finding operation
@@ -372,14 +377,17 @@ class RankedSliceList:
         self.data = data
         self.df = data.df if hasattr(data, 'df') else data
         self.eval_indexes = eval_indexes
+        self.device = device
         if eval_indexes is not None:
             if isinstance(self.df, pd.DataFrame):
-                self.eval_df = self.df.iloc[self.eval_indexes].reset_index(drop=True)
+                self.eval_df = self.df.iloc[self.eval_indexes].values.astype(np.uint8)
             else:
                 self.eval_df = self.df[self.eval_indexes]
                 if isinstance(self.eval_df, csr_matrix):
                     self.eval_df = self.eval_df.tocsc()
-            self.score_functions = {fn_name: fn.subslice(self.eval_indexes)
+            if not isinstance(self.eval_df, csc_matrix):
+                self.eval_df = torch.from_numpy(self.eval_df).to(self.device)
+            self.score_functions = {fn_name: fn.subslice(self.eval_indexes).to(self.device)
                                     for fn_name, fn in score_functions.items()}
             self.eval_mask = self.eval_indexes
         else:
@@ -418,7 +426,7 @@ class RankedSliceList:
             return Slice(feature_set)
         
     def score_slice(self, slice_obj, return_mask=False):
-        mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks)
+        mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device)
         itemized_masks = [self.univariate_masks[f] for f in slice_obj.univariate_features()]
         group_scores = {key: item.calculate_score(slice_obj, mask, itemized_masks)
                         for key, item in self.score_functions.items()}
@@ -542,7 +550,7 @@ class RankedSliceList:
             slice_desc["feature"] = slice_obj.feature.to_dict()
             
         slice_metrics = {}
-        slice_mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks)
+        slice_mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device).numpy()
         if metrics_mask is not None:
             slice_mask &= metrics_mask
         mask = np.arange(self.df.shape[0])[self.eval_mask][slice_mask]

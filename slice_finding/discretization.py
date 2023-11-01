@@ -95,15 +95,15 @@ def discretize_data(df, spec):
             
     :return: A DiscretizedData instance representing the dataframe.
     """
-    discrete_columns = {}
+    discrete_columns = np.zeros((len(df), len(spec)), dtype=np.uint8)
     column_descriptions = {}
-    for col, col_spec in spec.items():
+    for col_idx, (col, col_spec) in enumerate(spec.items()):
         if callable(col_spec["method"]):
-            discrete_columns[col], desc = col_spec["method"](df[col], col)
-            column_descriptions[col] = (col, desc)
+            discrete_columns[:,col_idx], desc = col_spec["method"](df[col], col)
+            column_descriptions[col_idx] = (col, desc)
         elif col_spec["method"] == "keep":
-            discrete_columns[col] = df[col].values
-            column_descriptions[col] = (col, {v: v for v in df[col].unique()})
+            discrete_columns[:,col_idx] = df[col].values
+            column_descriptions[col_idx] = (col, {v: v for v in df[col].unique()})
         elif col_spec["method"] == "bin":
             if "bins" in col_spec:
                 bins = np.array(col_spec["bins"])                
@@ -111,19 +111,19 @@ def discretize_data(df, spec):
                 bins = np.quantile(df[col], col_spec["quantiles"])
             else:
                 raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
-            discrete_columns[col] = np.digitize(df[col], bins)
+            discrete_columns[:,col_idx] = np.digitize(df[col], bins)
             if "names" in col_spec: 
                 assert len(col_spec["names"]) == len(bins) + 1, f"Length of names for col {col} must be 1 + num bins"
                 col_names = {i: col_spec["names"][i] for i in range(len(bins) + 1)}
             else:
                 col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
                                               for i in range(len(bins) + 1)}
-            column_descriptions[col] = (col, col_names)
+            column_descriptions[col_idx] = (col, col_names)
         elif col_spec["method"] == "unique":
             unique_vals = sorted(df[col].unique().tolist())
-            discrete_columns[col] = df[col].replace({u: i for i, u in enumerate(unique_vals)})
-            column_descriptions[col] = (col, {i: v for i, v in enumerate(unique_vals)})
-    return DiscretizedData(pd.DataFrame(discrete_columns, index=df.index),
+            discrete_columns[:,col_idx] = df[col].replace({u: i for i, u in enumerate(unique_vals)})
+            column_descriptions[col_idx] = (col, {i: v for i, v in enumerate(unique_vals)})
+    return DiscretizedData(discrete_columns,
                            column_descriptions)
 
 def discretize_token_sets(token_sets, token_idx_mapping=None, n_top_columns=None, max_column_mean=None, show_progress=True):

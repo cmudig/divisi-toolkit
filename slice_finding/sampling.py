@@ -9,6 +9,7 @@ from scipy import sparse as sps
 from multiprocessing import RawArray, Pool
 import time
 from functools import partial
+import torch
 
 # Global variables for worker processes
 worker_inputs = None
@@ -156,6 +157,7 @@ def explore_groups_worker(source_row, **kwargs):
 def explore_groups_beam_search(inputs, 
                                score_fns, 
                                source_row, 
+                               col_names=None,
                                seen_slices=None, 
                                group_filter=None, 
                                initial_slice=None,
@@ -164,7 +166,8 @@ def explore_groups_beam_search(inputs,
                                min_items=5, 
                                min_weight=0.0, 
                                max_weight=5.0, 
-                               num_candidates=20):
+                               num_candidates=20,
+                               device='cpu'):
     scored_slices = set()
     if initial_slice is None: initial_slice = IntersectionSlice([])
     if num_candidates is not None:
@@ -203,8 +206,8 @@ def explore_groups_beam_search(inputs,
             saved_groups = set(g for g in best_groups)
         for base_slice in saved_groups:
             a = time.time()
-            base_mask = base_slice.make_mask(mat_for_masks, univariate_masks=univariate_masks)
-                
+            base_mask = base_slice.make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
+            
             for i, col in enumerate(input_columns):
                 # Skip if only slicing using positive values and the row has a negative value
                 if positive_only and not source_row[col]: continue
@@ -227,7 +230,7 @@ def explore_groups_beam_search(inputs,
                     new_slice.score_values = slice_scores
                 else:
                     # Generate a mask for the slice and score it
-                    mask = base_mask & SliceFeature(col, (source_row[col],)).make_mask(mat_for_masks, univariate_masks=univariate_masks)
+                    mask = base_mask & SliceFeature(col, (source_row[col],)).make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
                     if mask.sum() < min_items: 
                         seen_slices[new_slice] = None
                         continue
@@ -272,7 +275,8 @@ class SamplingSliceFinder:
                  progress_fn=None,
                  n_workers=None,
                  initial_slice=None,
-                 discovery_mask=None):
+                 discovery_mask=None,
+                 device='cpu'):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
         self.score_fns = score_fns
@@ -287,6 +291,7 @@ class SamplingSliceFinder:
         self.show_progress = show_progress
         self.initial_slice = initial_slice
         self.similarity_threshold = similarity_threshold
+        self.device = device
         
         if n_workers is None: self.n_workers = max(1, os.cpu_count() // 2)
         else: self.n_workers = n_workers
@@ -460,13 +465,17 @@ class SamplingSliceFinder:
         # Use only score functions within the discovery subset of the data
         discovery_score_fns = {fn_name: fn.subslice(self.discovery_mask)
                             for fn_name, fn in self.score_fns.items()}
-        if isinstance(self.raw_inputs, pd.DataFrame):
-            discovery_inputs = self.raw_inputs[self.discovery_mask].reset_index(drop=True)
+        if isinstance(self.raw_inputs, (sps.csr_matrix, sps.csc_matrix)):
+            discovery_inputs = self.raw_inputs[self.discovery_mask].astype(np.uint8)
         else:
-            discovery_inputs = self.raw_inputs[self.discovery_mask]
+            if isinstance(self.raw_inputs, pd.DataFrame):
+                discovery_inputs = self.raw_inputs[self.discovery_mask].values.astype(np.uint8)
+            else:
+                discovery_inputs = self.raw_inputs[self.discovery_mask].astype(np.uint8)
+            discovery_inputs = torch.from_numpy(discovery_inputs).to(self.device)
         
         if self.initial_slice is not None:
-            initial_slice_mask = self.initial_slice.make_mask(self.raw_inputs)
+            initial_slice_mask = self.initial_slice.make_mask(self.raw_inputs).to(self.device)
             source_mask &= initial_slice_mask
             if source_mask.sum() == 0:
                 raise ValueError("No samples can be taken from the intersection of the provided source mask and the initial slice")
@@ -493,7 +502,8 @@ class SamplingSliceFinder:
                                                     initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
-                                                    max_weight=self.max_weight)
+                                                    max_weight=self.max_weight,
+                                                    device=self.device)
             
             pool = Pool(processes=self.n_workers, initializer=init_fn, initargs=init_args, maxtasksperchild=10)
             bar = pool.imap_unordered(worker, sample_rows)
@@ -527,7 +537,8 @@ class SamplingSliceFinder:
                                                     initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
-                                                    max_weight=self.max_weight)
+                                                    max_weight=self.max_weight,
+                                                    device=self.device)
                 for fn_name in discovery_score_fns:
                     best_groups = RankedList(self.num_candidates, [(s, s.score_values[fn_name]) for s in sample_results])
                     slices_to_score |= set(best_groups.items)
@@ -535,8 +546,9 @@ class SamplingSliceFinder:
         print("Scoring collected slices", len(slices_to_score))
         univariate_masks = {}
         for new_slice in slices_to_score:
-            if new_slice in self.seen_slices: continue
-            mask = new_slice.make_mask(discovery_inputs, univariate_masks=univariate_masks)
+            # we've already scored this slice (in parallel mode only)
+            if self.n_workers > 1 and new_slice in self.seen_slices: continue
+            mask = new_slice.make_mask(discovery_inputs, univariate_masks=univariate_masks).to(self.device)
             if mask.sum() < self.min_items:
                 self.seen_slices[new_slice] = None
                 continue
@@ -544,7 +556,7 @@ class SamplingSliceFinder:
             for key, scorer in discovery_score_fns.items():
                 new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
             self.all_scores.append(new_slice)
-            self.seen_slices.add(new_slice)
+            self.seen_slices[new_slice] = new_slice.score_values
                
         print(len(self.all_scores), [type(x) for x in self.all_scores[100:200]], len(set(self.all_scores)))
         self.results = RankedSliceList(list(set(self.all_scores)),
