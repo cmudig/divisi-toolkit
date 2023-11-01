@@ -59,7 +59,6 @@ class ExcludeFeatureValueSet(SliceFilterBase):
     def __call__(self, slice_obj):
         for feature in slice_obj.univariate_features():
             if feature.feature_name in self.features and set(feature.allowed_values) & set(self.values):
-                print("Excluding", slice_obj)
                 return False
         return True
         

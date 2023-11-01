@@ -121,7 +121,7 @@ def discretize_data(df, spec):
             column_descriptions[col] = (col, col_names)
         elif col_spec["method"] == "unique":
             unique_vals = sorted(df[col].unique().tolist())
-            discrete_columns[col] = df[col].apply(lambda v: unique_vals.index(v))
+            discrete_columns[col] = df[col].replace({u: i for i, u in enumerate(unique_vals)})
             column_descriptions[col] = (col, {i: v for i, v in enumerate(unique_vals)})
     return DiscretizedData(pd.DataFrame(discrete_columns, index=df.index),
                            column_descriptions)

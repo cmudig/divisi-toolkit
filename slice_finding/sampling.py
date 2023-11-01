@@ -74,6 +74,7 @@ def init_worker_dataframe(inputs,
                           inputs_shape, 
                           inputs_dtype,
                           input_columns, 
+                          sample_proportion,
                           *score_fn_args):
     """
     :param inputs: A RawArray containing the buffer of discrete input data
@@ -81,7 +82,7 @@ def init_worker_dataframe(inputs,
     :param inputs_dtype: Dtype of the input data
     :param input_columns: Column names for the dataframe
     """
-    global worker_inputs
+    global worker_inputs, worker_score_fns
     
     # Initialize worker inputs from buffer
     mat = np.frombuffer(inputs, dtype=inputs_dtype).reshape(inputs_shape)
@@ -89,9 +90,14 @@ def init_worker_dataframe(inputs,
     
     worker_global_init(*score_fn_args)
     
+    worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
+    worker_inputs = worker_inputs[worker_sample]
+    worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
+    
 def init_worker_array(inputs, 
                           inputs_shape, 
                           inputs_dtype,
+                          sample_proportion,
                           *score_fn_args):
     """
     :param inputs: A RawArray containing the buffer of discrete input data
@@ -99,10 +105,14 @@ def init_worker_array(inputs,
     :param inputs_dtype: Dtype of the input data
     :param input_columns: Column names for the dataframe
     """
-    global worker_inputs
+    global worker_inputs, worker_score_fns
     
     worker_inputs = np.frombuffer(inputs, dtype=inputs_dtype).reshape(inputs_shape)
     worker_global_init(*score_fn_args)
+    
+    worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
+    worker_inputs = worker_inputs[worker_sample]
+    worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
 
 def init_worker_sparse(inputs_data, 
                        inputs_indices,
@@ -110,6 +120,7 @@ def init_worker_sparse(inputs_data,
                        inputs_shape,
                        inputs_dtype,
                        index_dtype,
+                       sample_proportion,
                        *score_fn_args):
     """
     :param inputs_data: A RawArray containing the buffer of sparse data
@@ -120,7 +131,7 @@ def init_worker_sparse(inputs_data,
     :param inputs_dtype: Dtype of the input data
     :param input_columns: Column names for the dataframe
     """
-    global worker_inputs
+    global worker_inputs, worker_score_fns
     
     data_mat = np.frombuffer(inputs_data, dtype=inputs_dtype)
     indices_mat = np.frombuffer(inputs_indices, dtype=index_dtype)
@@ -130,6 +141,10 @@ def init_worker_sparse(inputs_data,
                                    shape=inputs_shape)
     
     worker_global_init(*score_fn_args)
+    
+    worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
+    worker_inputs = worker_inputs[worker_sample]
+    worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
 
 def explore_groups_worker(source_row, **kwargs):
     return explore_groups_beam_search(worker_inputs,
@@ -323,7 +338,7 @@ class SamplingSliceFinder:
             discovery_mask=kwargs.get("discovery_mask", self.discovery_mask)
         )
         
-    def _create_worker_initializer(self, discovery_inputs, discovery_score_fns):
+    def _create_worker_initializer(self, discovery_inputs, discovery_score_fns, sample_size=None):
         """
         Creates shared-memory arrays to store the input data and score function
         data, specific to the input format (dataframe, array, or sparse array).
@@ -379,7 +394,7 @@ class SamplingSliceFinder:
         int_score_data_np = np.frombuffer(int_score_data_buf, dtype=INT_SCORE_DTYPE).reshape((discovery_inputs.shape[0], len(int_score_names)))
         for col in range(len(int_score_data)):
             np.copyto(int_score_data_np[:,col], int_score_data[col])
-            
+                        
         score_init_args = (
             double_score_data_buf, 
             (discovery_inputs.shape[0], len(double_score_names)), 
@@ -395,6 +410,7 @@ class SamplingSliceFinder:
                 discovery_inputs.shape, 
                 input_dtype,
                 discovery_inputs.columns, 
+                1 if sample_size is None else sample_size, # sample size
                 self.seen_slices,
                 *score_init_args
             )
@@ -406,6 +422,7 @@ class SamplingSliceFinder:
                 discovery_inputs.shape, 
                 input_dtype,
                 index_dtype,
+                1 if sample_size is None else sample_size, # sample size
                 self.seen_slices,
                 *score_init_args
             )
@@ -414,6 +431,7 @@ class SamplingSliceFinder:
                 input_buf, 
                 discovery_inputs.shape, 
                 input_dtype,
+                1 if sample_size is None else sample_size, # sample size
                 self.seen_slices,
                 *score_init_args
             )
@@ -463,42 +481,70 @@ class SamplingSliceFinder:
                 if isinstance(self.raw_inputs, pd.DataFrame) else self.raw_inputs[sample_idx]
                 for sample_idx in sample_idxs]
 
+        sample_size = min(100000 / discovery_inputs.shape[0], 1 / self.n_workers) # number of rows in which to evaluate each slice
+        
+        slices_to_score = set()
         if self.n_workers > 1:
-            init_fn, init_args = self._create_worker_initializer(discovery_inputs, discovery_score_fns)
+            init_fn, init_args = self._create_worker_initializer(discovery_inputs, discovery_score_fns, sample_size=sample_size)
             
             worker = partial(explore_groups_worker, group_filter=self.group_filter,
                                                     max_features=self.max_features,
-                                                    min_items=self.min_items,
+                                                    min_items=self.min_items * sample_size,
                                                     initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
                                                     max_weight=self.max_weight)
             
-            pool = Pool(processes=self.n_workers, initializer=init_fn, initargs=init_args)
+            pool = Pool(processes=self.n_workers, initializer=init_fn, initargs=init_args, maxtasksperchild=10)
             bar = pool.imap_unordered(worker, sample_rows)
             if self.show_progress: bar = tqdm.tqdm(bar, total=len(sample_rows))
             if self.progress_fn is not None: bar = self._progress_fn_emitter(bar, len(sample_rows))
             for results in bar:
-                self.all_scores += results
+                for fn_name in discovery_score_fns:
+                    best_groups = RankedList(self.num_candidates, [(s, s.score_values[fn_name]) for s in results])
+                    slices_to_score |= set(best_groups.items)
+
             pool.close()
             pool.join()
+            
         else:
             bar = tqdm.tqdm(sample_rows) if self.show_progress else sample_rows
             if self.progress_fn is not None:
                 bar = self._progress_fn_emitter(bar, len(sample_rows))
 
             for source_row in bar:
-                self.all_scores += self.explore_fn(discovery_inputs,
-                                                    discovery_score_fns,
+                worker_sample = np.random.uniform(0.0, 1.0, size=discovery_inputs.shape[0]) <= sample_size
+                worker_inputs = discovery_inputs[worker_sample]
+                worker_score_fns = {k: v.subslice(worker_sample) for k, v in discovery_score_fns.items()}
+                
+                sample_results = self.explore_fn(worker_inputs,
+                                                    worker_score_fns,
                                                     source_row,
                                                     seen_slices=self.seen_slices,
                                                     group_filter=self.group_filter,
                                                     max_features=self.max_features,
-                                                    min_items=self.min_items,
+                                                    min_items=self.min_items * sample_size,
                                                     initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
                                                     max_weight=self.max_weight)
+                for fn_name in discovery_score_fns:
+                    best_groups = RankedList(self.num_candidates, [(s, s.score_values[fn_name]) for s in sample_results])
+                    slices_to_score |= set(best_groups.items)
+                
+        print("Scoring collected slices", len(slices_to_score))
+        univariate_masks = {}
+        for new_slice in slices_to_score:
+            if new_slice in self.seen_slices: continue
+            mask = new_slice.make_mask(discovery_inputs, univariate_masks=univariate_masks)
+            if mask.sum() < self.min_items:
+                self.seen_slices[new_slice] = None
+                continue
+            itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
+            for key, scorer in discovery_score_fns.items():
+                new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
+            self.all_scores.append(new_slice)
+            self.seen_slices.add(new_slice)
                
         print(len(self.all_scores), [type(x) for x in self.all_scores[100:200]], len(set(self.all_scores)))
         self.results = RankedSliceList(list(set(self.all_scores)),

@@ -15,12 +15,11 @@ class RankedList:
             that should populate the ranked list.
         """
         self.k = k
+        self.items = []
+        self.scores = []
         if initial_items is not None:
-            self.items = [x[0] for x in initial_items]
-            self.scores = [x[1] for x in initial_items]
-        else:
-            self.items = []
-            self.scores = []
+            for x in initial_items:
+                self.add(x[0], x[1])
         
     def add(self, item, score):
         added = False
