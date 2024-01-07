@@ -400,7 +400,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         manager = self.slice_finder.results
         for s in selected:
             slice_obj = manager.encode_slice(s['feature'])
-            slice_masks[slice_obj] = manager.slice_mask(slice_obj)
+            slice_masks[slice_obj] = manager.slice_mask(slice_obj).cpu().numpy()
             # for feature in slice_obj.feature_values.keys():
             #     univ_slice = Slice({feature: slice_obj.feature_values[feature]})
             #     slice_masks[univ_slice] = manager.slice_mask(univ_slice)

@@ -19,7 +19,8 @@ worker_seen_slices = None
 FLOAT_SCORE_DTYPE = np.dtype(np.float64)
 INT_SCORE_DTYPE = np.dtype(np.int64)
 
-def worker_global_init(seen_slices,
+def worker_global_init(device,
+                       seen_slices,
                        double_score_data, 
                     double_score_data_shape, 
                     double_score_names, 
@@ -58,12 +59,12 @@ def worker_global_init(seen_slices,
         
     worker_score_fns = {}
     for i, name in enumerate(double_score_names):
-        worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], double_mat[:,i])
+        worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], double_mat[:,i]).to(device)
     for i, name in enumerate(int_score_names):
-        worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], int_mat[:,i])
+        worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], int_mat[:,i]).to(device)
     for name in score_dicts:
         if name not in worker_score_fns:
-            worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], None)
+            worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], None).to(device)
             
     worker_seen_slices = seen_slices
     
@@ -76,6 +77,7 @@ def init_worker_dataframe(inputs,
                           inputs_dtype,
                           input_columns, 
                           sample_proportion,
+                          device,
                           *score_fn_args):
     """
     :param inputs: A RawArray containing the buffer of discrete input data
@@ -89,16 +91,19 @@ def init_worker_dataframe(inputs,
     mat = np.frombuffer(inputs, dtype=inputs_dtype).reshape(inputs_shape)
     worker_inputs = pd.DataFrame(mat, columns=input_columns)
     
-    worker_global_init(*score_fn_args)
+    worker_global_init(device, *score_fn_args)
     
-    worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
-    worker_inputs = worker_inputs[worker_sample]
-    worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
+    if sample_proportion < 1.0:
+        worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
+        worker_inputs = worker_inputs[worker_sample]
+        worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
+        
     
 def init_worker_array(inputs, 
                           inputs_shape, 
                           inputs_dtype,
                           sample_proportion,
+                          device,
                           *score_fn_args):
     """
     :param inputs: A RawArray containing the buffer of discrete input data
@@ -109,11 +114,14 @@ def init_worker_array(inputs,
     global worker_inputs, worker_score_fns
     
     worker_inputs = np.frombuffer(inputs, dtype=inputs_dtype).reshape(inputs_shape)
-    worker_global_init(*score_fn_args)
+    worker_global_init(device, *score_fn_args)
     
-    worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
-    worker_inputs = worker_inputs[worker_sample]
-    worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
+    if sample_proportion < 1.0:
+        worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
+        worker_inputs = torch.from_numpy(worker_inputs[worker_sample]).to(device)
+        worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
+    else:
+        worker_inputs = torch.from_numpy(worker_inputs).to(device)
 
 def init_worker_sparse(inputs_data, 
                        inputs_indices,
@@ -122,6 +130,7 @@ def init_worker_sparse(inputs_data,
                        inputs_dtype,
                        index_dtype,
                        sample_proportion,
+                       device,
                        *score_fn_args):
     """
     :param inputs_data: A RawArray containing the buffer of sparse data
@@ -141,11 +150,12 @@ def init_worker_sparse(inputs_data,
     worker_inputs = sps.csr_matrix((data_mat, indices_mat, indptr_mat),
                                    shape=inputs_shape)
     
-    worker_global_init(*score_fn_args)
+    worker_global_init(device, *score_fn_args)
     
-    worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
-    worker_inputs = worker_inputs[worker_sample]
-    worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
+    if sample_proportion < 1.0:
+        worker_sample = np.random.uniform(0.0, 1.0, size=worker_inputs.shape[0]) <= sample_proportion
+        worker_inputs = worker_inputs[worker_sample]
+        worker_score_fns = {k: v.subslice(worker_sample) for k, v in worker_score_fns.items()}
 
 def explore_groups_worker(source_row, **kwargs):
     return explore_groups_beam_search(worker_inputs,
@@ -208,6 +218,9 @@ def explore_groups_beam_search(inputs,
             a = time.time()
             base_mask = base_slice.make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
             
+            prescored_slices = []
+            features_to_score = []
+            
             for i, col in enumerate(input_columns):
                 # Skip if only slicing using positive values and the row has a negative value
                 if positive_only and not source_row[col]: continue
@@ -228,19 +241,49 @@ def explore_groups_beam_search(inputs,
                     slice_scores = seen_slices[new_slice]
                     if not slice_scores: continue
                     new_slice.score_values = slice_scores
+                    prescored_slices.append(new_slice)
                 else:
-                    # Generate a mask for the slice and score it
-                    mask = base_mask & SliceFeature(col, (source_row[col],)).make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
-                    if mask.sum() < min_items: 
-                        seen_slices[new_slice] = None
-                        continue
-                    itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
-                    for key, scorer in score_fns.items():
-                        new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
-                    scored_slices.add(new_slice)
+                    features_to_score.append(feature_to_add)
+                    
+            new_scored_slices = []
+            
+            mask_width = len(features_to_score)
+            combined_masks = base_mask.repeat(mask_width, 1).T
+            itemized_masks = [univariate_masks[f].repeat(mask_width, 1).T for f in base_slice.univariate_features()]
+            itemized_masks.append(torch.zeros(*combined_masks.shape, dtype=torch.bool).to(device))
+            for i, feature_to_add in enumerate(features_to_score):
+                # Generate a mask for the slice and add it to the mask matrix
+                itemized_masks[-1][:,i] = feature_to_add.make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
+                combined_masks[:,i] &= itemized_masks[-1][:,i]
+                new_scored_slices.append(base_slice.subslice(feature_to_add))
                 
+            # Remove slices that are too small
+            mask_sums = combined_masks.sum(0)
+            new_scored_slices = [s for i, s in enumerate(new_scored_slices) if mask_sums[i] >= min_items]
+            combined_masks = combined_masks[:,mask_sums >= min_items]
+            itemized_masks = [m[:,mask_sums >= min_items] for m in itemized_masks]
+            mask_width = (mask_sums >= min_items).sum()
+
+            if mask_width > 0:
+                batch_size = 64
+                for start_idx in range(0, len(new_scored_slices), batch_size):
+                    end_idx = min(len(new_scored_slices), start_idx + batch_size)
+                    
+                    computed_scores = torch.zeros((len(score_fns), end_idx - start_idx)).to(device)
+                    print(combined_masks[:,start_idx:end_idx].shape)
+                    for i, (key, scorer) in enumerate(score_fns.items()):
+                        computed_scores[i] = scorer.calculate_score(new_slice, 
+                                                                    combined_masks[:,start_idx:end_idx], 
+                                                                    [m[:,start_idx:end_idx] for m in itemized_masks])
+                    
+                    new_scored_slices[start_idx:end_idx] = [new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
+                                        for i, new_slice in enumerate(new_scored_slices[start_idx:end_idx])]
+            else:
+                new_scored_slices = []
+                
+            for new_slice in prescored_slices + new_scored_slices:
                 seen_slices[new_slice] = new_slice.score_values
-                
+                scored_slices.add(new_slice)
                 if num_candidates is not None:
                     for fn_name in score_fns:
                         # Add to each ranking the score where only the current score
@@ -271,6 +314,7 @@ class SamplingSliceFinder:
                  min_weight=0.0,
                  max_weight=5.0,
                  similarity_threshold=0.9,
+                 scoring_fraction=None, # None, 'auto', or number between 0 and 1
                  show_progress=True,
                  progress_fn=None,
                  n_workers=None,
@@ -291,6 +335,7 @@ class SamplingSliceFinder:
         self.show_progress = show_progress
         self.initial_slice = initial_slice
         self.similarity_threshold = similarity_threshold
+        self.scoring_fraction = scoring_fraction
         self.device = device
         
         if n_workers is None: self.n_workers = max(1, os.cpu_count() // 2)
@@ -383,12 +428,12 @@ class SamplingSliceFinder:
         for name, score_fn in discovery_score_fns.items():
             score_dicts[name] = score_fn.meta_dict()
             if score_fn.data is None: continue
-            if np.issubdtype(score_fn.data.dtype, np.integer):
-                int_score_data.append(score_fn.data)
-                int_score_names.append(name)
-            else:
-                double_score_data.append(score_fn.data)
+            if torch.is_floating_point(score_fn.data):
+                double_score_data.append(score_fn.data.cpu().numpy())
                 double_score_names.append(name)
+            else:
+                int_score_data.append(score_fn.data.cpu().numpy())
+                int_score_names.append(name)
                 
         double_score_data_buf = RawArray(FLOAT_SCORE_DTYPE.char, discovery_inputs.shape[0] * len(double_score_names))
         double_score_data_np = np.frombuffer(double_score_data_buf, dtype=FLOAT_SCORE_DTYPE).reshape((discovery_inputs.shape[0], len(double_score_names)))
@@ -416,6 +461,7 @@ class SamplingSliceFinder:
                 input_dtype,
                 discovery_inputs.columns, 
                 1 if sample_size is None else sample_size, # sample size
+                self.device,
                 self.seen_slices,
                 *score_init_args
             )
@@ -428,6 +474,7 @@ class SamplingSliceFinder:
                 input_dtype,
                 index_dtype,
                 1 if sample_size is None else sample_size, # sample size
+                self.device,
                 self.seen_slices,
                 *score_init_args
             )
@@ -437,6 +484,7 @@ class SamplingSliceFinder:
                 discovery_inputs.shape, 
                 input_dtype,
                 1 if sample_size is None else sample_size, # sample size
+                self.device,
                 self.seen_slices,
                 *score_init_args
             )
@@ -475,7 +523,7 @@ class SamplingSliceFinder:
             discovery_inputs = torch.from_numpy(discovery_inputs).to(self.device)
         
         if self.initial_slice is not None:
-            initial_slice_mask = self.initial_slice.make_mask(self.raw_inputs).to(self.device)
+            initial_slice_mask = self.initial_slice.make_mask(self.raw_inputs).cpu().numpy()
             source_mask &= initial_slice_mask
             if source_mask.sum() == 0:
                 raise ValueError("No samples can be taken from the intersection of the provided source mask and the initial slice")
@@ -490,11 +538,18 @@ class SamplingSliceFinder:
                 if isinstance(self.raw_inputs, pd.DataFrame) else self.raw_inputs[sample_idx]
                 for sample_idx in sample_idxs]
 
-        sample_size = min(100000 / discovery_inputs.shape[0], 1 / self.n_workers) # number of rows in which to evaluate each slice
+        if str(self.scoring_fraction).lower() == 'auto':
+            sample_size = min(10000 / discovery_inputs.shape[0], 1 / self.n_workers) # number of rows in which to evaluate each slice
+        elif self.scoring_fraction is None:
+            sample_size = 1.0
+        else:
+            sample_size = self.scoring_fraction
         
-        slices_to_score = set()
+        best_groups = {fn_name: RankedList(self.num_candidates) 
+                        for fn_name in discovery_score_fns}
         if self.n_workers > 1:
-            init_fn, init_args = self._create_worker_initializer(discovery_inputs, discovery_score_fns, sample_size=sample_size)
+            worker_inputs = discovery_inputs.cpu().numpy() if isinstance(discovery_inputs, torch.Tensor) else discovery_inputs
+            init_fn, init_args = self._create_worker_initializer(worker_inputs, discovery_score_fns, sample_size=sample_size)
             
             worker = partial(explore_groups_worker, group_filter=self.group_filter,
                                                     max_features=self.max_features,
@@ -511,8 +566,8 @@ class SamplingSliceFinder:
             if self.progress_fn is not None: bar = self._progress_fn_emitter(bar, len(sample_rows))
             for results in bar:
                 for fn_name in discovery_score_fns:
-                    best_groups = RankedList(self.num_candidates, [(s, s.score_values[fn_name]) for s in results])
-                    slices_to_score |= set(best_groups.items)
+                    for s in results:
+                        best_groups[fn_name].add(s, s.score_values[fn_name])
 
             pool.close()
             pool.join()
@@ -540,24 +595,39 @@ class SamplingSliceFinder:
                                                     max_weight=self.max_weight,
                                                     device=self.device)
                 for fn_name in discovery_score_fns:
-                    best_groups = RankedList(self.num_candidates, [(s, s.score_values[fn_name]) for s in sample_results])
-                    slices_to_score |= set(best_groups.items)
+                    for s in sample_results:
+                        best_groups[fn_name].add(s, s.score_values[fn_name])
+        slices_to_score = set()
+        for ranking in best_groups.values():
+            slices_to_score |= set(ranking.items)
                 
-        print("Scoring collected slices", len(slices_to_score))
-        univariate_masks = {}
-        for new_slice in slices_to_score:
-            # we've already scored this slice (in parallel mode only)
-            if self.n_workers > 1 and new_slice in self.seen_slices: continue
-            mask = new_slice.make_mask(discovery_inputs, univariate_masks=univariate_masks).to(self.device)
-            if mask.sum() < self.min_items:
-                self.seen_slices[new_slice] = None
-                continue
-            itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
-            for key, scorer in discovery_score_fns.items():
-                new_slice.score_values[key] = scorer.calculate_score(new_slice, mask, itemized_masks)
-            self.all_scores.append(new_slice)
-            self.seen_slices[new_slice] = new_slice.score_values
-               
+        if sample_size < 1.0:
+            print("Scoring collected slices", len(slices_to_score))
+            univariate_masks = {}
+            rescored_slices = score_slices_batch(slices_to_score,
+                                                 discovery_inputs,
+                                                 discovery_score_fns,
+                                                 self.max_features,
+                                                 min_items=self.min_items,
+                                                 device=self.device,
+                                                 univariate_masks=univariate_masks)
+            
+            for old_slice, new_slice in rescored_slices.items():
+                if new_slice is not None:
+                    self.all_scores.append(new_slice)
+                    if old_slice in self.seen_slices:
+                        del self.seen_slices[old_slice]
+                    self.seen_slices[new_slice] = new_slice.score_values
+                else:
+                    self.seen_slices[old_slice] = None
+        else:
+            # Scores are reliable
+            for new_slice in slices_to_score:
+                if self.n_workers > 1 and new_slice in self.seen_slices: continue
+                self.all_scores.append(new_slice)
+                self.seen_slices[new_slice] = new_slice.score_values
+            
+            
         print(len(self.all_scores), [type(x) for x in self.all_scores[100:200]], len(set(self.all_scores)))
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
@@ -565,7 +635,8 @@ class SamplingSliceFinder:
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
                             min_weight=self.min_weight,
                             max_weight=self.max_weight,
-                            similarity_threshold=self.similarity_threshold)
+                            similarity_threshold=self.similarity_threshold,
+                            device=self.device)
         return self.results, sample_idxs
     
 def find_slices_by_sampling(inputs, 

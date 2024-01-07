@@ -8,6 +8,17 @@ class SliceFilterBase:
     def __call__(self, slice_obj):
         return True
     
+    def replace(self, replacer):
+        """
+        replacer: A function that takes a filter object and returns either a 
+            new filter object or None. If it returns None, the filter object
+            will be recursed through and the replacer called on any of its
+            children; otherwise it will be kept as-is.
+        """
+        if (new_val := replacer(self)) is not None:
+            return new_val
+        return self
+    
 class ExcludeIfAny(SliceFilterBase):
     """
     Excludes a slice if any of the given child filters returns false.
@@ -18,6 +29,11 @@ class ExcludeIfAny(SliceFilterBase):
         
     def __call__(self, slice_obj):
         return all(child(slice_obj) for child in self.children)
+    
+    def replace(self, replacer):
+        if (new_val := replacer(self)) is not None:
+            return new_val
+        return ExcludeIfAny([c.replace(replacer) for c in self.children])
     
 class ExcludeIfAll(SliceFilterBase):
     """
@@ -30,6 +46,11 @@ class ExcludeIfAll(SliceFilterBase):
     def __call__(self, slice_obj):
         return any(child(slice_obj) for child in self.children)
 
+    def replace(self, replacer):
+        if (new_val := replacer(self)) is not None:
+            return new_val
+        return ExcludeIfAny([c.replace(replacer) for c in self.children])
+        
 class ExcludeFeatureValue(SliceFilterBase):
     """
     Excludes a slice if one of its feature value pairs is equal to the one
@@ -61,7 +82,7 @@ class ExcludeFeatureValueSet(SliceFilterBase):
             if feature.feature_name in self.features and set(feature.allowed_values) & set(self.values):
                 return False
         return True
-        
+    
 class IncludeOnlyFeatureValue(SliceFilterBase):
     """
     Excludes a slice if it does not contain the given feature value.
@@ -76,7 +97,7 @@ class IncludeOnlyFeatureValue(SliceFilterBase):
             if feature.feature_name == self.feature and self.value in feature.allowed_values:
                 return True
         return False
-        
+            
 class IncludeOnlyFeatureValueSet(SliceFilterBase):
     """
     Excludes a slice if it does not contain the given feature value.

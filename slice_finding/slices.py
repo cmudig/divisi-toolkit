@@ -242,6 +242,13 @@ class Slice:
         assert isinstance(feature, SliceFeatureBase)
         self.feature = feature
         self.score_values = score_values or {}
+        
+    def to_dict(self):
+        return {"feature": self.feature.to_dict(), "score_values": self.score_values}
+    
+    @staticmethod
+    def from_dict(d):
+        return Slice(SliceFeatureBase.from_dict(d["feature"]), score_values=d["score_values"])        
                 
     def __hash__(self):
         return hash(self.feature)
@@ -350,7 +357,40 @@ class IntersectionSlice(Slice):
         """
         return IntersectionSlice(self.base_features, new_scores)
 
+def score_slices_batch(slices_to_score, inputs, score_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
+    univariate_masks = univariate_masks if univariate_masks is not None else {}
+    scored_slices = {}
     
+    for num_features in range(1, max_features + 1):
+        combined_masks = []
+        itemized_masks = [[] for _ in range(num_features)]
+        matched_slices = []
+        for new_slice in slices_to_score:
+            if len(new_slice.univariate_features()) != num_features: continue
+            
+            mask = new_slice.make_mask(inputs, univariate_masks=univariate_masks, device=device)
+            if min_items is not None and mask.sum() < min_items:
+                scored_slices[new_slice] = None
+                continue
+            
+            combined_masks.append(mask)
+            for i, feature in enumerate(new_slice.univariate_features()):
+                itemized_masks[i].append(feature.make_mask(inputs, univariate_masks=univariate_masks, device=device))
+            matched_slices.append(new_slice)
+            
+        if combined_masks:
+            combined_masks = torch.stack(combined_masks, 1)
+            itemized_masks = [torch.stack(m, 1) for m in itemized_masks]
+            
+            computed_scores = torch.zeros((len(score_fns), combined_masks.shape[1])).to(device)
+            for i, (key, scorer) in enumerate(score_fns.items()):
+                computed_scores[i] = scorer.calculate_score(new_slice, combined_masks, itemized_masks)
+            
+            for i, new_slice in enumerate(matched_slices):
+                scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
+                scored_slices[new_slice] = scored_slice
+    return scored_slices
+
 class RankedSliceList:
     """
     A type that manages a list of slices and associated scores. When the
@@ -401,6 +441,7 @@ class RankedSliceList:
         self.similarity_threshold = similarity_threshold
         
         self.univariate_masks = {}
+        self.score_cache = None # if the user sets this, we will cache eval scores
 
     def _rank_weighted_indexes(self, score_df, weights, k=None):
         """
@@ -426,10 +467,16 @@ class RankedSliceList:
             return Slice(feature_set)
         
     def score_slice(self, slice_obj, return_mask=False):
-        mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device)
-        itemized_masks = [self.univariate_masks[f] for f in slice_obj.univariate_features()]
-        group_scores = {key: item.calculate_score(slice_obj, mask, itemized_masks)
-                        for key, item in self.score_functions.items()}
+        if self.score_cache is not None and slice_obj in self.score_cache:
+            group_scores, mask = self.score_cache[slice_obj]
+        else:
+            mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device)
+            itemized_masks = [self.univariate_masks[f] for f in slice_obj.univariate_features()]
+            group_scores = {key: item.calculate_score(slice_obj, mask, itemized_masks).item()
+                            for key, item in self.score_functions.items()}
+            if self.score_cache is not None:
+                self.score_cache[slice_obj] = (group_scores, mask)
+            
         if return_mask:
             return group_scores, mask
         return group_scores
@@ -524,7 +571,7 @@ class RankedSliceList:
         """
         return slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks)
         
-    def generate_slice_description(self, slice_obj, metrics=None, metrics_mask=None):
+    def generate_slice_description(self, slice_obj, metrics=None, metrics_mask=None, return_slice_mask=False):
         """
         Creates JSON-serializable slice descriptions for a slice.
         
@@ -538,7 +585,7 @@ class RankedSliceList:
             calculated
         :return: A dictionary containing metadata and user-readable
             descriptions for the slice.
-        """
+        """            
         slice_desc = {
             "scoreValues": slice_obj.score_values, 
             "rawFeature": slice_obj.feature.to_dict(),
@@ -550,7 +597,10 @@ class RankedSliceList:
             slice_desc["feature"] = slice_obj.feature.to_dict()
             
         slice_metrics = {}
-        slice_mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device).numpy()
+        if self.score_cache is not None and slice_obj in self.score_cache:
+            slice_mask = self.score_cache[slice_obj][1]
+        else:
+            slice_mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device).cpu().numpy()
         if metrics_mask is not None:
             slice_mask &= metrics_mask
         mask = np.arange(self.df.shape[0])[self.eval_mask][slice_mask]
@@ -586,8 +636,8 @@ class RankedSliceList:
                     else:
                         # Calculate the range of the data and choose an appropriate
                         # scale for the bin size
-                        min_val = data.min()
-                        max_val = data.max()
+                        min_val = np.nanmin(data)
+                        max_val = np.nanmax(data)
                         data_range = max_val - min_val
                         bin_scale = np.floor(np.log10(data_range))
                         if data_range / (10 ** bin_scale) < 2.5:
@@ -602,4 +652,7 @@ class RankedSliceList:
                                                   "mean": np.nanmean(data[mask])}
         slice_desc["metrics"] = slice_metrics
             
-        return convert_to_native_types(slice_desc)
+        result = convert_to_native_types(slice_desc)
+        if return_slice_mask:
+            return result, mask
+        return result

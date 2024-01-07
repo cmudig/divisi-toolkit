@@ -26,6 +26,13 @@ class DiscretizedData:
         for enc_key, (dec_key, dec_values) in value_names_iter:
             self.inverse_value_mapping[dec_key] = (enc_key, {v: k for k, v in dec_values.items()})
         
+    def __contains__(self, col_name):
+        return col_name in self.inverse_value_mapping
+    
+    def filter(self, mask):
+        """Returns a new DiscretizedData with only the rows matching the given mask."""
+        return DiscretizedData(self.df[mask], self.value_names)
+    
     def describe_slice(self, slice_obj):
         """
         Returns a dictionary representing the structure of the given slice with
@@ -55,6 +62,45 @@ class DiscretizedData:
             return SliceFeature(enc_key, [enc_mapping[dec_value] for dec_value in feature.allowed_values])
         
         return Slice(described_slice.transform_features(invert))
+    
+    def encode_filter(self, filter_obj):
+        """
+        Converts the given slice filter object to use feature and value names
+        in the discretized numerical representation.
+        """
+        
+        from .filters import (ExcludeIfAny, 
+                              ExcludeIfAll,
+                              ExcludeFeatureValue, 
+                              ExcludeFeatureValueSet, 
+                              IncludeOnlyFeatureValue, 
+                              IncludeOnlyFeatureValueSet)
+        
+        def replacer(f):
+            if isinstance(f, (ExcludeFeatureValue, IncludeOnlyFeatureValue)):
+                feature_name = f.feature
+                enc_key, enc_values = self.inverse_value_mapping[feature_name]
+                return type(f)(enc_key, enc_values[f.value])
+            elif isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
+                features = f.features
+                allowed_values = f.values
+                encoded_allowed = {}
+                for feature in features:
+                    enc_key, enc_values = self.inverse_value_mapping[feature]
+                    f_allowed_vals = tuple(sorted(enc_values[v] for v in allowed_values if v in enc_values))
+                    if f_allowed_vals not in encoded_allowed:
+                        encoded_allowed[f_allowed_vals] = type(f)([enc_key], f_allowed_vals)
+                    else:
+                        existing_filter = encoded_allowed[f_allowed_vals]
+                        encoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, enc_key], f_allowed_vals)
+                if len(encoded_allowed) == 1:
+                    return list(encoded_allowed.values())[0]
+                elif isinstance(f, ExcludeFeatureValueSet):
+                    return ExcludeIfAny(list(encoded_allowed.values()))
+                elif isinstance(f, IncludeOnlyFeatureValueSet):
+                    return ExcludeIfAll(list(encoded_allowed.values()))
+                
+        return filter_obj.replace(replacer)
     
 def _represent_bin(bins, i, quantile=False):
     if quantile:
@@ -98,31 +144,44 @@ def discretize_data(df, spec):
     discrete_columns = np.zeros((len(df), len(spec)), dtype=np.uint8)
     column_descriptions = {}
     for col_idx, (col, col_spec) in enumerate(spec.items()):
-        if callable(col_spec["method"]):
-            discrete_columns[:,col_idx], desc = col_spec["method"](df[col], col)
-            column_descriptions[col_idx] = (col, desc)
-        elif col_spec["method"] == "keep":
-            discrete_columns[:,col_idx] = df[col].values
-            column_descriptions[col_idx] = (col, {v: v for v in df[col].unique()})
-        elif col_spec["method"] == "bin":
-            if "bins" in col_spec:
-                bins = np.array(col_spec["bins"])                
-            elif "quantiles" in col_spec:
-                bins = np.quantile(df[col], col_spec["quantiles"])
-            else:
-                raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
-            discrete_columns[:,col_idx] = np.digitize(df[col], bins)
-            if "names" in col_spec: 
-                assert len(col_spec["names"]) == len(bins) + 1, f"Length of names for col {col} must be 1 + num bins"
-                col_names = {i: col_spec["names"][i] for i in range(len(bins) + 1)}
-            else:
-                col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
-                                              for i in range(len(bins) + 1)}
-            column_descriptions[col_idx] = (col, col_names)
-        elif col_spec["method"] == "unique":
-            unique_vals = sorted(df[col].unique().tolist())
-            discrete_columns[:,col_idx] = df[col].replace({u: i for i, u in enumerate(unique_vals)})
-            column_descriptions[col_idx] = (col, {i: v for i, v in enumerate(unique_vals)})
+        try:
+            if callable(col_spec["method"]):
+                discrete_columns[:,col_idx], desc = col_spec["method"](df[col], col)
+                column_descriptions[col_idx] = (col, desc)
+            elif col_spec["method"] == "keep":
+                discrete_columns[:,col_idx] = df[col].values
+                column_descriptions[col_idx] = (col, {v: v for v in df[col].unique()})
+            elif col_spec["method"] == "bin":
+                if "bins" in col_spec:
+                    bins = np.array(col_spec["bins"])                
+                elif "quantiles" in col_spec:
+                    bins = np.quantile(df[col], col_spec["quantiles"])
+                else:
+                    raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
+                discrete_columns[:,col_idx] = np.digitize(df[col], bins)
+                if "names" in col_spec: 
+                    assert len(col_spec["names"]) == len(bins) + 1, f"Length of names for col {col} must be 1 + num bins"
+                    col_names = {i: col_spec["names"][i] for i in range(len(bins) + 1)}
+                else:
+                    col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
+                                                for i in range(len(bins) + 1)}
+                if "nan_name" in col_spec:
+                    # Set the nan value to the max plus one
+                    discrete_columns[pd.isna(df[col]), col_idx] = len(bins) + 1
+                    col_names[len(bins) + 1] = col_spec["nan_name"]
+                    
+                column_descriptions[col_idx] = (col, col_names)
+            elif col_spec["method"] == "unique":
+                unique_vals = sorted(df[col].astype(str).unique().tolist())
+                discrete_columns[:,col_idx] = df[col].replace({u: i for i, u in enumerate(unique_vals)})
+                column_descriptions[col_idx] = (col, {i: v for i, v in enumerate(unique_vals)})
+                
+                if "nan_name" in col_spec:
+                    # Set the nan value to the max plus one
+                    discrete_columns[pd.isna(df[col]), col_idx] = len(unique_vals)
+                    col_names[len(unique_vals)] = col_spec["nan_name"]
+        except Exception as e:
+            raise ValueError(f"Error discretizing column '{col}': {e}")
     return DiscretizedData(discrete_columns,
                            column_descriptions)
 

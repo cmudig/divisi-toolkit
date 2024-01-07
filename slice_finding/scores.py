@@ -130,6 +130,16 @@ class EntropyScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return EntropyScore(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
     
+def _nanvar(tensor, dim=None, keepdim=False):
+    tensor_mean = tensor.nanmean(dim=dim, keepdim=True)
+    output = (tensor - tensor_mean).square().nanmean(dim=dim, keepdim=keepdim)
+    return output
+
+def _nanstd(tensor, dim=None, keepdim=False):
+    output = _nanvar(tensor, dim=dim, keepdim=keepdim)
+    output = output.sqrt()
+    return output
+
 class MeanDifferenceScore(ScoreFunctionBase):
     """
     A score function that returns higher values when the absolute difference in
@@ -139,11 +149,11 @@ class MeanDifferenceScore(ScoreFunctionBase):
     def __init__(self, data):
         super().__init__("mean", data)
         self.data = self.data.float()
-        self._std = self.data.std()
-        self._mean = self.data.mean()
+        self._std = _nanstd(self.data)
+        self._mean = torch.nanmean(self.data)
         
     def calculate_score(self, slice, mask, univariate_masks):
-        return torch.abs((self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1)).mean(0) - self._mean) / self._std
+        return torch.abs((self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1)).nanmean(0) - self._mean) / self._std
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         return np.abs(slice_sum / slice_count - self._mean) / self._std
@@ -285,7 +295,7 @@ class OutcomeShareScore(ScoreFunctionBase):
         """
         super().__init__("outcome_share", data)
         self.data = self.data.float()
-        self._sum = self.data.sum()
+        self._sum = torch.nansum(self.data)
         
     def calculate_score(self, slice, mask, univariate_masks):
         return torch.nansum(self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1), 0) / self._sum
@@ -304,6 +314,34 @@ class OutcomeShareScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return OutcomeShareScore(data)
     
+ 
+# map from # features to matrix where rows are mask indexes and columns are 
+# positions in the return mask matrix where each mask should be applied. for
+# example, for 3 features:
+# [[ 1 0 0 1 1 0 ]
+#  [ 0 1 0 1 0 1 ]
+#  [ 0 0 1 0 1 1 ]]
+
+MASK_POSITIONS = {} 
+    
+def _build_superslice_mask(masks): 
+    """Builds a mask matrix where each column is a combination of subsets of
+    masks in the provided list. The last column of the mask matrix corresponds
+    to the full intersection of all the masks."""   
+    if len(masks) not in MASK_POSITIONS:
+        # Cache mask positions so we can easily construct the superslice mask
+        pset = list(powerset(np.arange(len(masks))))
+        MASK_POSITIONS[len(masks)] = np.array([
+            [i in x for x in pset if len(x) > 0]
+            for i in range(len(masks))
+        ])
+        
+    mask_pos = MASK_POSITIONS[len(masks)]
+    mask_mat = torch.ones((*masks[0].shape, 2 ** len(masks) - 1), dtype=torch.bool)
+    for i, m in enumerate(masks):
+        mask_mat[...,mask_pos[i]] &= m.unsqueeze(-1)
+    return mask_mat
+
 class InteractionEffectScore(ScoreFunctionBase):
     """
     A score function that calculates the ratio between the outcome rate score
@@ -315,22 +353,36 @@ class InteractionEffectScore(ScoreFunctionBase):
     def __init__(self, data, eps=1e-6):
         super().__init__("interaction_effect", data)
         self.data = self.data.float()
-        self._mean = np.nanmean(self.data)
+        self._mean = torch.nanmean(self.data)
         self.eps = eps
         
     def _superslice_score(self, masks):
         overall_mask = None
         for m in masks:
-            if overall_mask is None: overall_mask = m.copy()
-            else: overall_mask &= m
-        return (self.eps + np.nanmean(self.data[overall_mask])) / (self.eps + self._mean)
+            if overall_mask is None: overall_mask = m
+            else: overall_mask = torch.logical_and(overall_mask, m)
+        return (self.eps + torch.nansum(self.data.unsqueeze(-1) * overall_mask.view(overall_mask.shape[0], -1), 0) / overall_mask.sum(0)) / (self.eps + self._mean)
 
     def calculate_score(self, slice, mask, univariate_masks):
-        if len(univariate_masks) <= 1: return 1.0
-        overall_effect = max(0, ((self.eps + np.nanmean(self.data[mask])) / (self.eps + self._mean)))
-        itemized_effect = max(self._superslice_score(ms)
-                    for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks))
-        return max(0, overall_effect / itemized_effect)
+        # if len(univariate_masks) <= 1: return torch.ones(mask.view(mask.shape[0], -1).shape[1]).to(self.device)
+        # mask_mat = _build_superslice_mask(univariate_masks)
+        # if len(mask_mat.shape) == 3:
+        #     itemized_effects = torch.maximum(torch.tensor(0).to(self.device), 
+        #                                 ((self.eps + torch.nansum(self.data.unsqueeze(-1).unsqueeze(-1) * mask_mat, 0) / mask_mat.sum(0)) / 
+        #                                  (self.eps + self._mean)))
+        #     overall_effect = itemized_effects[:,-1]
+        # else:
+        #     itemized_effects = torch.maximum(torch.tensor(0).to(self.device), 
+        #                                 ((self.eps + torch.nansum(self.data.unsqueeze(-1) * mask_mat, 0) / mask_mat.sum(0)) / 
+        #                                  (self.eps + self._mean)))
+        #     overall_effect = itemized_effects[-1]
+        # return torch.maximum(torch.tensor(0).to(self.device), overall_effect / itemized_effects.max(-1).values)        
+        if len(univariate_masks) <= 1: return torch.ones(mask.view(mask.shape[0], -1).shape[1]).to(self.device)
+        overall_effect = torch.maximum(torch.tensor(0).to(self.device), 
+                                       ((self.eps + torch.nansum(self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1), 0) / mask.sum(0)) / (self.eps + self._mean)))
+        itemized_effect = torch.stack([self._superslice_score(ms)
+                    for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks)]).max(0).values
+        return torch.maximum(torch.tensor(0).to(self.device), overall_effect / itemized_effect)
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         if len(univariate_masks) <= 1: return 1.0
