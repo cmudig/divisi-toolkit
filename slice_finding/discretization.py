@@ -225,13 +225,14 @@ def discretize_data(df, spec):
                     
                 column_descriptions[col_idx] = (col, col_names)
             elif col_spec["method"] == "unique":
+                codes, uniques = pd.factorize(df[col].astype(str), sort=True)
                 unique_vals = sorted(df[col].astype(str).unique().tolist())
-                discrete_columns[:,col_idx] = df[col].replace({u: i for i, u in enumerate(unique_vals)})
-                column_descriptions[col_idx] = (col, {i: v for i, v in enumerate(unique_vals)})
+                discrete_columns[:,col_idx] = np.where(pd.isna(df[col]), np.nan, codes)
+                column_descriptions[col_idx] = (col, {i: v for i, v in enumerate(uniques)})
                 
                 if "nan_name" in col_spec:
                     # Set the nan value to the max plus one
-                    discrete_columns[pd.isna(df[col]), col_idx] = len(unique_vals)
+                    discrete_columns[pd.isna(df[col]), col_idx] = len(uniques)
                     col_names[len(unique_vals)] = col_spec["nan_name"]
         except Exception as e:
             raise ValueError(f"Error discretizing column '{col}': {e}")

@@ -18,6 +18,7 @@
   import SliceSearchView from './slice_table/SliceSearchView.svelte';
   import { areObjectsEqual, areSetsEqual } from './utils/utils';
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
+  import ResizablePanel from './utils/ResizablePanel.svelte';
 
   export let model;
 
@@ -75,6 +76,7 @@
   }
 
   let metricNames: Array<string> = [];
+  let binaryMetrics: Array<string> = [];
   $: {
     let testSlice = $slices.find((s) => !s.isEmpty);
 
@@ -83,7 +85,11 @@
       if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
         metricNames = newMetricNames;
         metricNames.sort();
-        overlapPlotMetric = metricNames.find((m) => m.toLowerCase() != 'count');
+        binaryMetrics = metricNames.filter(
+          (m) => testSlice.metrics[m].type == 'binary'
+        );
+        if (binaryMetrics.length > 0) overlapPlotMetric = binaryMetrics[0];
+        else overlapPlotMetric = null;
       }
     }
     console.log('overlap metric:', overlapPlotMetric);
@@ -274,30 +280,37 @@
     </div>
 
     {#if $sliceIntersectionCounts.length > 0}
-      <div
-        class="w-1/3 h-full border-x border-b border-slate-500 relative"
-        class:rounded-b={!isFullScreen}
+      <ResizablePanel
+        leftResizable
+        minWidth={20}
+        maxWidth="50%"
+        height="100%"
+        class="border-x border-b border-slate-500 {!isFullScreen
+          ? 'rounded-b'
+          : ''}"
       >
-        <div class="absolute top-0 left-0 bottom-0 right-0">
-          {#if overlapPlotMetric != null}
-            <SliceOverlapPlot
-              errorKey={overlapPlotMetric}
-              colorBySlice={true}
-              intersectionCounts={$sliceIntersectionCounts}
-              labels={$sliceIntersectionLabels}
-            />
+        <div class="w-full h-full relative">
+          <div class="absolute top-0 left-0 bottom-0 right-0">
+            {#if overlapPlotMetric != null}
+              <SliceOverlapPlot
+                errorKey={overlapPlotMetric}
+                colorBySlice={true}
+                intersectionCounts={$sliceIntersectionCounts}
+                labels={$sliceIntersectionLabels}
+              />
+            {/if}
+          </div>
+          {#if metricNames.length > 0}
+            <div class="absolute top-0 left-0 mt-4 ml-4">
+              <select bind:value={overlapPlotMetric}>
+                {#each binaryMetrics as metric}
+                  <option value={metric}>{metric}</option>
+                {/each}
+              </select>
+            </div>
           {/if}
         </div>
-        {#if metricNames.length > 0}
-          <div class="absolute top-0 left-0 mt-4 ml-4">
-            <select bind:value={overlapPlotMetric}>
-              {#each metricNames as metric}
-                <option value={metric}>{metric}</option>
-              {/each}
-            </select>
-          </div>
-        {/if}
-      </div>
+      </ResizablePanel>
     {/if}
   </div>
 </main>

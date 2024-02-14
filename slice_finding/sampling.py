@@ -209,7 +209,7 @@ def explore_groups_beam_search(inputs,
     univariate_masks = {}
     
     # Keep track of how many times each row has been used as part of a slice
-    row_use_counts = torch.zeros(mat_for_masks.shape[0], dtype=torch.long)
+    row_use_counts = torch.zeros(mat_for_masks.shape[0], dtype=torch.long, device=device)
     
     # Iterate over the columns max_features times
     for col_size in range(max_features):

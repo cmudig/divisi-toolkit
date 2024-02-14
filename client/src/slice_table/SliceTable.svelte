@@ -131,7 +131,7 @@
     if (selected) selectedSlices = [...selectedSlices, slice];
     else {
       let idx = selectedSlices.findIndex((s) =>
-        areObjectsEqual(s, slice.feature)
+        areObjectsEqual(s.feature, slice.feature)
       );
       if (idx >= 0)
         selectedSlices = [
