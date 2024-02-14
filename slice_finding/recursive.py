@@ -1,6 +1,6 @@
 import itertools
 from .slices import Slice
-from .utils import make_mask, RankedList
+from .utils import RankedList
 
 
 # function to assign values and generate combinations for selected features of a slice
@@ -39,7 +39,7 @@ def calculate_scores(discrete_df, score_functions, weights, feature_set, combina
     num_scored = 0
     for combination in combinations:
         current_slice = Slice(dict(zip(feature_set, combination)))
-        mask = make_mask(discrete_df, current_slice)
+        mask = current_slice.make_mask(discrete_df)
         num_scored += 1
 
         if min_items is None or mask.sum() >= min_items:

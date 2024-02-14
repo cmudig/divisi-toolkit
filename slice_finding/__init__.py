@@ -1,6 +1,13 @@
+import importlib.metadata
+
+__version__ = importlib.metadata.version("slice_finding")
+
+from .widget import SliceFinderWidget
 from .sampling import find_slices_by_sampling
 from .recursive import find_slices_recursive
 from .scores import *
+from .filters import *
+from .discretization import DiscretizedData
 from scipy import sparse as sps
 import numpy as np
 
@@ -33,16 +40,20 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
     import pandas as pd
     import numpy as np
     
+    if isinstance(df, DiscretizedData):
+        df_to_run = df.df
+    else:
+        df_to_run = df
     # Check inputs
-    if isinstance(df, pd.DataFrame):
-        for col in df.columns:
-            if np.issubdtype(df[col].dtype, np.floating):
+    if isinstance(df_to_run, pd.DataFrame):
+        for col in df_to_run.columns:
+            if np.issubdtype(df_to_run[col].dtype, np.floating):
                 raise ValueError(f"Dataframe column '{col}' has floating point dtype which is unsupported")
-    elif isinstance(df, np.ndarray):
-        if np.issubdtype(df.dtype, np.floating):
+    elif isinstance(df_to_run, np.ndarray):
+        if np.issubdtype(df_to_run.dtype, np.floating):
             raise ValueError(f"Input array has floating point dtype which is unsupported")
-    elif isinstance(df, sps.csr_matrix):
-        if df.max() > 1:
+    elif isinstance(df_to_run, sps.csr_matrix):
+        if df_to_run.max() > 1:
             raise ValueError("Sparse matrices must be binary")
     else:
         raise ValueError("Unsupported type for df, must be dataframe or csr_matrix")
@@ -52,7 +63,7 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
         n_slices = kwargs['n_slices']
         del kwargs['n_slices']
         return find_slices_recursive(
-            df,
+            df_to_run,
             score_functions,
             max_features,
             n_slices,

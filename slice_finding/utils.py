@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy import sparse as sps
+from itertools import chain, combinations
 
 class RankedList:
     """
@@ -14,12 +15,11 @@ class RankedList:
             that should populate the ranked list.
         """
         self.k = k
+        self.items = []
+        self.scores = []
         if initial_items is not None:
-            self.items = [x[0] for x in initial_items]
-            self.scores = [x[1] for x in initial_items]
-        else:
-            self.items = []
-            self.scores = []
+            for x in initial_items:
+                self.add(x[0], x[1])
         
     def add(self, item, score):
         added = False
@@ -62,31 +62,41 @@ def pairwise_jaccard_similarities(mat):
     np.true_divide(intersection.todense(), union, out=result)
     return result
 
-def make_mask(inputs, slice_obj, existing_mask=None):
+def detect_data_type(arr):
     """
-    Creates a binary mask representing membership in the given slice.
-    
-    :param inputs: a dataframe containing data points to check for membership
-        in the slice
-    :param slice_obj: a `Slice` object
-    :param existing_mask: if provided, a binary mask that will be intersected
-        with the mask for the given slice
-        
-    :return: a binary array where 1 indicates that a row is part of the
-        slice
+    :param arr: An array to check the type of
+    :return: 'binary' if the data is 0/1, 'categorical' if contains a small number
+        of unique values or is non-numeric, or 'continuous' if contains a large
+        number of numerical values
     """
-    mask = existing_mask.copy() if existing_mask is not None else existing_mask
-    for col, val in slice_obj.feature_values.items():
-        if isinstance(inputs, (sps.csc_matrix, sps.csc_array)):
-            if mask is None:
-                mask = (inputs[:,col] == val).toarray().flatten()
-            else:
-                mask &= (inputs[:,col] == val).toarray().flatten()
-        else:
-            if mask is None:
-                mask = inputs[col] == val
-            else:
-                mask &= inputs[col] == val
-    if isinstance(mask, pd.Series): mask = mask.values
-    return mask
+    if arr.dtype == np.dtype('object'):
+        return 'categorical'
+    uniques = np.unique(arr)
+    uniques = uniques[~np.isnan(uniques)]
+    if len(uniques) == 2 and np.allclose(uniques, np.arange(2)):
+        return 'binary'
     
+    if len(uniques) < 5:
+        return 'categorical'
+    
+    return 'continuous'
+
+def convert_to_native_types(o):
+    if isinstance(o, dict):
+        return {convert_to_native_types(k): convert_to_native_types(v) for k, v in o.items()}
+    elif isinstance(o, (list, tuple, np.ndarray)):
+        return [convert_to_native_types(v) for v in o]
+    elif isinstance(o, (float, int)) and np.isnan(o):
+        return None
+    elif isinstance(o, float):
+        return round(o, 6)
+    elif isinstance(o, np.generic):
+        v = o.item()
+        if isinstance(v, float): return round(v, 6)
+        return v
+    return o
+
+def powerset(iterable):
+    "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
+    s = list(iterable)
+    return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
