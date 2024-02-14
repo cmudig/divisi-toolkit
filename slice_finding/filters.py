@@ -19,6 +19,29 @@ class SliceFilterBase:
             return new_val
         return self
     
+    def to_dict(self):
+        return {"type": "base"}
+    
+    @classmethod
+    def from_dict(cls, data):
+        assert "type" in data, "Slice filter dict must contain a 'type' key"
+        f_type = data["type"]
+        if f_type == "base":
+            return SliceFilterBase()
+        elif f_type == "ExcludeIfAny":
+            return ExcludeIfAny.from_dict(data)
+        elif f_type == "ExcludeIfAll":
+            return ExcludeIfAll.from_dict(data)
+        elif f_type == "ExcludeFeatureValue":
+            return ExcludeFeatureValue.from_dict(data)
+        elif f_type == "ExcludeFeatureValueSet":
+            return ExcludeFeatureValueSet.from_dict(data)
+        elif f_type == "IncludeOnlyFeatureValue":
+            return IncludeOnlyFeatureValue.from_dict(data)
+        elif f_type == "IncludeOnlyFeatureValueSet":
+            return IncludeOnlyFeatureValueSet.from_dict(data)
+        raise ValueError(f"Unrecognized slice filter type '{f_type}'")
+    
 class ExcludeIfAny(SliceFilterBase):
     """
     Excludes a slice if any of the given child filters returns false.
@@ -35,6 +58,13 @@ class ExcludeIfAny(SliceFilterBase):
             return new_val
         return ExcludeIfAny([c.replace(replacer) for c in self.children])
     
+    def to_dict(self):
+        return {"type": type(self).__name__, "children": [c.to_dict() for c in self.children]}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls([SliceFilterBase.from_dict(c) for c in data["children"]])
+    
 class ExcludeIfAll(SliceFilterBase):
     """
     Excludes a slice if all of the given child filters return false.
@@ -50,7 +80,14 @@ class ExcludeIfAll(SliceFilterBase):
         if (new_val := replacer(self)) is not None:
             return new_val
         return ExcludeIfAny([c.replace(replacer) for c in self.children])
-        
+       
+    def to_dict(self):
+        return {"type": type(self).__name__, "children": [c.to_dict() for c in self.children]}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls([SliceFilterBase.from_dict(c) for c in data["children"]])
+ 
 class ExcludeFeatureValue(SliceFilterBase):
     """
     Excludes a slice if one of its feature value pairs is equal to the one
@@ -67,6 +104,13 @@ class ExcludeFeatureValue(SliceFilterBase):
                 return False
         return True
 
+    def to_dict(self):
+        return {"type": type(self).__name__, "feature": self.feature, "value": self.value}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["feature"], data["value"])
+
 class ExcludeFeatureValueSet(SliceFilterBase):
     """
     Excludes a slice if one of its feature value pairs has a feature contained in the
@@ -74,7 +118,7 @@ class ExcludeFeatureValueSet(SliceFilterBase):
     """
     def __init__(self, features, values):
         super().__init__()
-        self.features = features
+        self.features = set(features)
         self.values = set(values)
         
     def __call__(self, slice_obj):
@@ -83,6 +127,13 @@ class ExcludeFeatureValueSet(SliceFilterBase):
                 return False
         return True
     
+    def to_dict(self):
+        return {"type": type(self).__name__, "features": list(self.features), "values": list(self.values)}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["features"], data["values"])
+
 class IncludeOnlyFeatureValue(SliceFilterBase):
     """
     Excludes a slice if it does not contain the given feature value.
@@ -97,6 +148,13 @@ class IncludeOnlyFeatureValue(SliceFilterBase):
             if feature.feature_name == self.feature and self.value in feature.allowed_values:
                 return True
         return False
+
+    def to_dict(self):
+        return {"type": type(self).__name__, "feature": self.feature, "value": self.value}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["feature"], data["value"])
             
 class IncludeOnlyFeatureValueSet(SliceFilterBase):
     """
@@ -104,7 +162,7 @@ class IncludeOnlyFeatureValueSet(SliceFilterBase):
     """
     def __init__(self, features, values):
         super().__init__()
-        self.features = features
+        self.features = set(features)
         self.values = set(values)
         
     def __call__(self, slice_obj):
@@ -112,3 +170,10 @@ class IncludeOnlyFeatureValueSet(SliceFilterBase):
             if feature.feature_name in self.features and set(feature.allowed_values) & set(self.values):
                 return True
         return False
+
+    def to_dict(self):
+        return {"type": type(self).__name__, "features": list(self.features), "values": list(self.values)}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["features"], data["values"])

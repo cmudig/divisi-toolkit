@@ -379,16 +379,19 @@ def score_slices_batch(slices_to_score, inputs, score_fns, max_features, min_ite
             matched_slices.append(new_slice)
             
         if combined_masks:
-            combined_masks = torch.stack(combined_masks, 1)
-            itemized_masks = [torch.stack(m, 1) for m in itemized_masks]
-            
-            computed_scores = torch.zeros((len(score_fns), combined_masks.shape[1])).to(device)
-            for i, (key, scorer) in enumerate(score_fns.items()):
-                computed_scores[i] = scorer.calculate_score(new_slice, combined_masks, itemized_masks)
-            
-            for i, new_slice in enumerate(matched_slices):
-                scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
-                scored_slices[new_slice] = scored_slice
+            batch_size = 64
+            for start_idx in range(0, len(combined_masks), batch_size):
+                end_idx = min(len(combined_masks), start_idx + batch_size)
+                combined_masks_batch = torch.stack(combined_masks[start_idx:end_idx], 1)
+                itemized_masks_batch = [torch.stack(m[start_idx:end_idx], 1) for m in itemized_masks]
+                
+                computed_scores = torch.zeros((len(score_fns), combined_masks_batch.shape[1])).to(device)
+                for i, (key, scorer) in enumerate(score_fns.items()):
+                    computed_scores[i] = scorer.calculate_score(new_slice, combined_masks_batch, itemized_masks_batch)
+                
+                for i, new_slice in enumerate(matched_slices[start_idx:end_idx]):
+                    scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
+                    scored_slices[new_slice] = scored_slice
     return scored_slices
 
 class RankedSliceList:

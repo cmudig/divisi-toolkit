@@ -29,6 +29,9 @@ class DiscretizedData:
     def __contains__(self, col_name):
         return col_name in self.inverse_value_mapping
     
+    def column_names(self):
+        return list(self.inverse_value_mapping.keys())
+    
     def filter(self, mask):
         """Returns a new DiscretizedData with only the rows matching the given mask."""
         return DiscretizedData(self.df[mask], self.value_names)
@@ -46,7 +49,12 @@ class DiscretizedData:
 
         def transform(feature):
             col_values = self.value_names[feature.feature_name]
-            return SliceFeature(col_values[0], [col_values[1][val] for val in feature.allowed_values])
+            transformed_values = []
+            for val in feature.allowed_values:
+                if val not in col_values[1]:
+                    raise KeyError(f"{val} not in value map for {col_values[0]} ({feature.feature_name}): {col_values[1]}")
+                transformed_values.append(col_values[1][val])
+            return SliceFeature(col_values[0], transformed_values)
         return slice_obj.feature.transform_features(transform).to_dict()
     
     def encode_slice(self, decoded_feature_values):
@@ -74,11 +82,14 @@ class DiscretizedData:
                               ExcludeFeatureValue, 
                               ExcludeFeatureValueSet, 
                               IncludeOnlyFeatureValue, 
-                              IncludeOnlyFeatureValueSet)
+                              IncludeOnlyFeatureValueSet,
+                              SliceFilterBase)
         
         def replacer(f):
             if isinstance(f, (ExcludeFeatureValue, IncludeOnlyFeatureValue)):
                 feature_name = f.feature
+                if feature_name not in self.inverse_value_mapping:
+                    return SliceFilterBase()
                 enc_key, enc_values = self.inverse_value_mapping[feature_name]
                 return type(f)(enc_key, enc_values[f.value])
             elif isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
@@ -86,6 +97,7 @@ class DiscretizedData:
                 allowed_values = f.values
                 encoded_allowed = {}
                 for feature in features:
+                    if feature not in self.inverse_value_mapping: continue
                     enc_key, enc_values = self.inverse_value_mapping[feature]
                     f_allowed_vals = tuple(sorted(enc_values[v] for v in allowed_values if v in enc_values))
                     if f_allowed_vals not in encoded_allowed:
@@ -93,12 +105,53 @@ class DiscretizedData:
                     else:
                         existing_filter = encoded_allowed[f_allowed_vals]
                         encoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, enc_key], f_allowed_vals)
-                if len(encoded_allowed) == 1:
+                if len(encoded_allowed) == 0:
+                    return SliceFilterBase()
+                elif len(encoded_allowed) == 1:
                     return list(encoded_allowed.values())[0]
                 elif isinstance(f, ExcludeFeatureValueSet):
                     return ExcludeIfAny(list(encoded_allowed.values()))
                 elif isinstance(f, IncludeOnlyFeatureValueSet):
                     return ExcludeIfAll(list(encoded_allowed.values()))
+                
+        return filter_obj.replace(replacer)
+    
+    def decode_filter(self, filter_obj):
+        """
+        Converts the given slice filter object to use feature and value names
+        in the original non-numerical representation.
+        """
+        
+        from .filters import (ExcludeIfAny, 
+                              ExcludeIfAll,
+                              ExcludeFeatureValue, 
+                              ExcludeFeatureValueSet, 
+                              IncludeOnlyFeatureValue, 
+                              IncludeOnlyFeatureValueSet)
+        
+        def replacer(f):
+            if isinstance(f, (ExcludeFeatureValue, IncludeOnlyFeatureValue)):
+                feature_name = f.feature
+                dec_key, dec_values = self.value_names[feature_name]
+                return type(f)(dec_key, dec_values[f.value])
+            elif isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
+                features = f.features
+                allowed_values = f.values
+                decoded_allowed = {}
+                for feature in features:
+                    dec_key, dec_values = self.value_names[feature]
+                    f_allowed_vals = tuple(sorted(dec_values[v] for v in allowed_values if v in dec_values))
+                    if f_allowed_vals not in decoded_allowed:
+                        decoded_allowed[f_allowed_vals] = type(f)([dec_key], f_allowed_vals)
+                    else:
+                        existing_filter = decoded_allowed[f_allowed_vals]
+                        decoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, dec_key], f_allowed_vals)
+                if len(decoded_allowed) == 1:
+                    return list(decoded_allowed.values())[0]
+                elif isinstance(f, ExcludeFeatureValueSet):
+                    return ExcludeIfAny(list(decoded_allowed.values()))
+                elif isinstance(f, IncludeOnlyFeatureValueSet):
+                    return ExcludeIfAll(list(decoded_allowed.values()))
                 
         return filter_obj.replace(replacer)
     

@@ -16,7 +16,7 @@
   import SliceUpsetPlot from './overlap_views/SliceUpsetPlot.svelte';
   import SliceRow from './slice_table/SliceRow.svelte';
   import SliceSearchView from './slice_table/SliceSearchView.svelte';
-  import { areObjectsEqual } from './utils/utils';
+  import { areObjectsEqual, areSetsEqual } from './utils/utils';
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
 
   export let model;
@@ -73,6 +73,22 @@
     scoreNames = Object.keys($scoreWeights);
     scoreNames.sort();
   }
+
+  let metricNames: Array<string> = [];
+  $: {
+    let testSlice = $slices.find((s) => !s.isEmpty);
+
+    if (!!testSlice && !!testSlice.metrics) {
+      let newMetricNames = Object.keys(testSlice.metrics);
+      if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
+        metricNames = newMetricNames;
+        metricNames.sort();
+        overlapPlotMetric = metricNames.find((m) => m.toLowerCase() != 'count');
+      }
+    }
+    console.log('overlap metric:', overlapPlotMetric);
+  }
+  let overlapPlotMetric: string | null = null;
 
   let parentElement: Element;
   let isFullScreen = false;
@@ -201,7 +217,7 @@
       {#if viewingTab == 0}
         <SliceSearchView
           runningSampler={$runningSampler}
-          numSamples={$numSamples}
+          bind:numSamples={$numSamples}
           positiveOnly={$positiveOnly}
           bind:shouldCancel={$shouldCancel}
           bind:scoreWeights={$scoreWeights}
@@ -256,25 +272,33 @@
         />
       {/if}
     </div>
-    <!-- <div class="h-full overflow-y-scroll mr-4 shrink-0" style="width: 280px;">
-        <div class="p-4 bg-slate-200 rounded w-full min-h-full">
-          <ScoreWeightMenu bind:weights={$scoreWeights} {scoreNames} />
-        </div>
-      </div> -->
 
-    <div
-      class="w-1/3 h-full border-x border-b border-slate-500"
-      class:rounded-b={!isFullScreen}
-    >
-      {#if $sliceIntersectionCounts.length > 0}
-        <SliceOverlapPlot
-          errorKey="Error Rate"
-          colorBySlice={true}
-          intersectionCounts={$sliceIntersectionCounts}
-          labels={$sliceIntersectionLabels}
-        />
-      {/if}
-    </div>
+    {#if $sliceIntersectionCounts.length > 0}
+      <div
+        class="w-1/3 h-full border-x border-b border-slate-500 relative"
+        class:rounded-b={!isFullScreen}
+      >
+        <div class="absolute top-0 left-0 bottom-0 right-0">
+          {#if overlapPlotMetric != null}
+            <SliceOverlapPlot
+              errorKey={overlapPlotMetric}
+              colorBySlice={true}
+              intersectionCounts={$sliceIntersectionCounts}
+              labels={$sliceIntersectionLabels}
+            />
+          {/if}
+        </div>
+        {#if metricNames.length > 0}
+          <div class="absolute top-0 left-0 mt-4 ml-4">
+            <select bind:value={overlapPlotMetric}>
+              {#each metricNames as metric}
+                <option value={metric}>{metric}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 </main>
 

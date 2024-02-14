@@ -208,14 +208,17 @@ def explore_groups_beam_search(inputs,
     
     univariate_masks = {}
     
+    # Keep track of how many times each row has been used as part of a slice
+    row_use_counts = torch.zeros(mat_for_masks.shape[0], dtype=torch.long)
+    
     # Iterate over the columns max_features times
     for col_size in range(max_features):
         if num_candidates is not None:
             saved_groups = set([g for _, gset in best_groups.items() for g in gset.items])
         else:
             saved_groups = set(g for g in best_groups)
+        num_evaluated = 0
         for base_slice in saved_groups:
-            a = time.time()
             base_mask = base_slice.make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
             
             prescored_slices = []
@@ -263,14 +266,18 @@ def explore_groups_beam_search(inputs,
             combined_masks = combined_masks[:,mask_sums >= min_items]
             itemized_masks = [m[:,mask_sums >= min_items] for m in itemized_masks]
             mask_width = (mask_sums >= min_items).sum()
+            for i, s in enumerate(new_scored_slices):
+                if mask_sums[i] < min_items:
+                    seen_slices[s] = None
 
             if mask_width > 0:
+                num_evaluated += 1
                 batch_size = 64
+                row_use_counts += combined_masks.long().sum(1)
                 for start_idx in range(0, len(new_scored_slices), batch_size):
                     end_idx = min(len(new_scored_slices), start_idx + batch_size)
                     
                     computed_scores = torch.zeros((len(score_fns), end_idx - start_idx)).to(device)
-                    print(combined_masks[:,start_idx:end_idx].shape)
                     for i, (key, scorer) in enumerate(score_fns.items()):
                         computed_scores[i] = scorer.calculate_score(new_slice, 
                                                                     combined_masks[:,start_idx:end_idx], 
@@ -292,8 +299,8 @@ def explore_groups_beam_search(inputs,
                         best_groups[fn_name].add(new_slice, score)
                 else:
                     best_groups.add(new_slice)
-
-    return list(scored_slices)
+        
+    return list(scored_slices), row_use_counts.cpu().numpy()
 
 class SamplingSliceFinder:
     """
@@ -309,6 +316,7 @@ class SamplingSliceFinder:
                  max_features=3, 
                  min_items=100, 
                  num_candidates=20,
+                 final_num_candidates=100,
                  positive_only=None,
                  holdout_fraction=0.0,
                  min_weight=0.0,
@@ -329,6 +337,7 @@ class SamplingSliceFinder:
         self.max_features = max_features
         self.min_items = min_items
         self.num_candidates = num_candidates
+        self.final_num_candidates = final_num_candidates
         self.holdout_fraction = holdout_fraction
         self.min_weight = min_weight
         self.max_weight = max_weight
@@ -376,6 +385,7 @@ class SamplingSliceFinder:
             max_features=kwargs.get("max_features", self.max_features), 
             min_items=kwargs.get("min_items", self.min_items), 
             num_candidates=kwargs.get("num_candidates", self.num_candidates),
+            final_num_candidates=kwargs.get("final_num_candidates", self.final_num_candidates),
             positive_only=kwargs.get("positive_only", self.positive_only),
             holdout_fraction=kwargs.get("holdout_fraction", self.holdout_fraction),
             min_weight=kwargs.get("min_weight", self.min_weight),
@@ -385,6 +395,7 @@ class SamplingSliceFinder:
             progress_fn=kwargs.get("progress_fn", self.progress_fn),
             n_workers=kwargs.get("n_workers", self.n_workers),
             initial_slice=kwargs.get("initial_slice", self.initial_slice),
+            scoring_fraction=kwargs.get("scoring_fraction", self.scoring_fraction),
             discovery_mask=kwargs.get("discovery_mask", self.discovery_mask)
         )
         
@@ -537,7 +548,7 @@ class SamplingSliceFinder:
         sample_rows = [self.raw_inputs.iloc[sample_idx] 
                 if isinstance(self.raw_inputs, pd.DataFrame) else self.raw_inputs[sample_idx]
                 for sample_idx in sample_idxs]
-
+            
         if str(self.scoring_fraction).lower() == 'auto':
             sample_size = min(10000 / discovery_inputs.shape[0], 1 / self.n_workers) # number of rows in which to evaluate each slice
         elif self.scoring_fraction is None:
@@ -545,8 +556,8 @@ class SamplingSliceFinder:
         else:
             sample_size = self.scoring_fraction
         
-        best_groups = {fn_name: RankedList(self.num_candidates) 
-                        for fn_name in discovery_score_fns}
+        best_groups = {fn_name: RankedList(self.final_num_candidates)
+                       for fn_name in discovery_score_fns}
         if self.n_workers > 1:
             worker_inputs = discovery_inputs.cpu().numpy() if isinstance(discovery_inputs, torch.Tensor) else discovery_inputs
             init_fn, init_args = self._create_worker_initializer(worker_inputs, discovery_score_fns, sample_size=sample_size)
@@ -564,7 +575,7 @@ class SamplingSliceFinder:
             bar = pool.imap_unordered(worker, sample_rows)
             if self.show_progress: bar = tqdm.tqdm(bar, total=len(sample_rows))
             if self.progress_fn is not None: bar = self._progress_fn_emitter(bar, len(sample_rows))
-            for results in bar:
+            for results, _ in bar:
                 for fn_name in discovery_score_fns:
                     for s in results:
                         best_groups[fn_name].add(s, s.score_values[fn_name])
@@ -582,7 +593,7 @@ class SamplingSliceFinder:
                 worker_inputs = discovery_inputs[worker_sample]
                 worker_score_fns = {k: v.subslice(worker_sample) for k, v in discovery_score_fns.items()}
                 
-                sample_results = self.explore_fn(worker_inputs,
+                sample_results, use_counts = self.explore_fn(worker_inputs,
                                                     worker_score_fns,
                                                     source_row,
                                                     seen_slices=self.seen_slices,
@@ -597,6 +608,8 @@ class SamplingSliceFinder:
                 for fn_name in discovery_score_fns:
                     for s in sample_results:
                         best_groups[fn_name].add(s, s.score_values[fn_name])
+                    if sample_size == 1.0:
+                        self.seen_slices[s] = s.score_values
         slices_to_score = set()
         for ranking in best_groups.values():
             slices_to_score |= set(ranking.items)
@@ -628,7 +641,6 @@ class SamplingSliceFinder:
                 self.seen_slices[new_slice] = new_slice.score_values
             
             
-        print(len(self.all_scores), [type(x) for x in self.all_scores[100:200]], len(set(self.all_scores)))
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
                             self.score_fns,

@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import anywidget from 'anywidget/vite';
+import anywidget from '@anywidget/vite';
 import postcss from './postcss.config.js';
 
 // https://vitejs.dev/config/
