@@ -5,6 +5,7 @@ import pandas as pd
 from .utils import pairwise_jaccard_similarities, detect_data_type, convert_to_native_types, powerset
 from .discretization import DiscretizedData
 import torch
+import collections
 
 class SliceFeatureBase:
     def __init__(self):
@@ -631,8 +632,12 @@ class RankedSliceList:
                                                   "mean": np.nanmean(data[mask]), 
                                                   "share": np.nansum(data[mask]) / np.nansum(data[base_mask])}
                 elif data_type == "categorical":
+                    if np.issubdtype(data.dtype, np.number):
+                        counts = dict(zip(*np.unique(data[mask], return_counts=True)))
+                    else:
+                        counts = {v: count for v, count in collections.Counter(data[mask]).items() if v not in {None, np.nan, pd.NA}}
                     slice_metrics[metric_name] = {"type": data_type, 
-                                                  "counts": dict(zip(*np.unique(data[mask], return_counts=True)))}
+                                                  "counts": counts}
                 else:
                     if "bins" in options:
                         hist_bins = options["bins"]

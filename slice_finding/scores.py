@@ -254,10 +254,11 @@ class OutcomeRateScore(ScoreFunctionBase):
         self.inverse = inverse
         self.eps = eps
         self._mean = torch.nanmean(self.data)
+        self._present_mask = ~torch.isnan(self.data)
         
     def calculate_score(self, slice, mask, univariate_masks):
         mask = mask.view(mask.shape[0], -1)
-        mask_mean = torch.nansum(self.data.unsqueeze(-1) * mask, 0) / mask.sum(0)
+        mask_mean = torch.nansum(self.data.unsqueeze(-1) * mask, 0) / torch.logical_and(mask, self._present_mask.unsqueeze(-1)).sum(0)
         if self.inverse: 
             return (self.eps + self._mean) / (self.eps + mask_mean)
         return (self.eps + mask_mean) / (self.eps + self._mean)
@@ -355,13 +356,15 @@ class InteractionEffectScore(ScoreFunctionBase):
         self.data = self.data.float()
         self._mean = torch.nanmean(self.data)
         self.eps = eps
+        self._present_mask = ~torch.isnan(self.data)
         
     def _superslice_score(self, masks):
         overall_mask = None
         for m in masks:
-            if overall_mask is None: overall_mask = m
-            else: overall_mask = torch.logical_and(overall_mask, m)
-        return (self.eps + torch.nansum(self.data.unsqueeze(-1) * overall_mask.view(overall_mask.shape[0], -1), 0) / overall_mask.sum(0)) / (self.eps + self._mean)
+            if overall_mask is None: overall_mask = m.view(m.shape[0], -1)
+            else: overall_mask = torch.logical_and(overall_mask, m.view(m.shape[0], -1))
+        return (self.eps + torch.nansum(self.data.unsqueeze(-1) * overall_mask.view(overall_mask.shape[0], -1), 0) / 
+                torch.logical_and(overall_mask, self._present_mask.unsqueeze(-1)).sum(0)) / (self.eps + self._mean)
 
     def calculate_score(self, slice, mask, univariate_masks):
         # if len(univariate_masks) <= 1: return torch.ones(mask.view(mask.shape[0], -1).shape[1]).to(self.device)
@@ -378,8 +381,9 @@ class InteractionEffectScore(ScoreFunctionBase):
         #     overall_effect = itemized_effects[-1]
         # return torch.maximum(torch.tensor(0).to(self.device), overall_effect / itemized_effects.max(-1).values)        
         if len(univariate_masks) <= 1: return torch.ones(mask.view(mask.shape[0], -1).shape[1]).to(self.device)
+        mask = mask.view(mask.shape[0], -1)
         overall_effect = torch.maximum(torch.tensor(0).to(self.device), 
-                                       ((self.eps + torch.nansum(self.data.unsqueeze(-1) * mask.view(mask.shape[0], -1), 0) / mask.sum(0)) / (self.eps + self._mean)))
+                                       ((self.eps + torch.nansum(self.data.unsqueeze(-1) * mask, 0) / torch.logical_and(mask, self._present_mask.unsqueeze(-1)).sum(0)) / (self.eps + self._mean)))
         itemized_effect = torch.stack([self._superslice_score(ms)
                     for ms in powerset(univariate_masks) if len(ms) > 0 and len(ms) < len(univariate_masks)]).max(0).values
         return torch.maximum(torch.tensor(0).to(self.device), overall_effect / itemized_effect)
