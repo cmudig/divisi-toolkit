@@ -38,11 +38,12 @@
 
   $: if ($data.length > 0) {
     cleanUp();
-    console.log('force data', $data);
-    initSimulation($data, $width, $height);
+    initSimulation($data);
   } else {
     cleanUp();
   }
+
+  $: $width, $height, delayInitSimulation();
 
   function cleanUp() {
     if (!!simulation) simulation.stop();
@@ -94,7 +95,18 @@
     });
   }
 
-  function initSimulation(ds, w, h) {
+  let simulationInitTimeout = null;
+  function delayInitSimulation() {
+    if (!!simulationInitTimeout) clearTimeout(simulationInitTimeout);
+    simulationInitTimeout = setTimeout(() => initSimulation($data), 1000);
+  }
+
+  function initSimulation(ds) {
+    setTimeout(() => {
+      if (!!simulationInitTimeout) clearTimeout(simulationInitTimeout);
+    });
+    let w = $width;
+    let h = $height;
     resetNodePositions(ds, w, h);
 
     let counts = Array.apply(null, Array(ds[0].slices.length)).map(() => 0);

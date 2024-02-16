@@ -482,7 +482,7 @@ class RankedSliceList:
                 self.score_cache[slice_obj] = (group_scores, mask)
             
         if return_mask:
-            return group_scores, mask
+            return group_scores, mask.cpu().numpy()
         return group_scores
         
     def rescore(self, result_indexes, return_masks=False):
