@@ -42,6 +42,8 @@ class SliceFilterBase:
             return IncludeOnlyFeatureValueSet.from_dict(data)
         raise ValueError(f"Unrecognized slice filter type '{f_type}'")
     
+    def __str__(self): return "<SliceFilterBase>"
+    
 class ExcludeIfAny(SliceFilterBase):
     """
     Excludes a slice if any of the given child filters returns false.
@@ -65,6 +67,8 @@ class ExcludeIfAny(SliceFilterBase):
     def from_dict(cls, data):
         return cls([SliceFilterBase.from_dict(c) for c in data["children"]])
     
+    def __str__(self): return f"<Exclude If Any: {', '.join(str(c) for c in self.children)}>"
+    
 class ExcludeIfAll(SliceFilterBase):
     """
     Excludes a slice if all of the given child filters return false.
@@ -87,6 +91,8 @@ class ExcludeIfAll(SliceFilterBase):
     @classmethod
     def from_dict(cls, data):
         return cls([SliceFilterBase.from_dict(c) for c in data["children"]])
+    
+    def __str__(self): return f"<Exclude If All: {', '.join(str(c) for c in self.children)}>"
  
 class ExcludeFeatureValue(SliceFilterBase):
     """
@@ -110,6 +116,8 @@ class ExcludeFeatureValue(SliceFilterBase):
     @classmethod
     def from_dict(cls, data):
         return cls(data["feature"], data["value"])
+    
+    def __str__(self): return f"<Exclude: {self.feature} = {self.value}>"
 
 class ExcludeFeatureValueSet(SliceFilterBase):
     """
@@ -133,6 +141,8 @@ class ExcludeFeatureValueSet(SliceFilterBase):
     @classmethod
     def from_dict(cls, data):
         return cls(data["features"], data["values"])
+    
+    def __str__(self): return f"<Exclude: {', '.join(str(x) for x in self.features)} = {', '.join(str(x) for x in self.values)}>"
 
 class IncludeOnlyFeatureValue(SliceFilterBase):
     """
@@ -155,6 +165,8 @@ class IncludeOnlyFeatureValue(SliceFilterBase):
     @classmethod
     def from_dict(cls, data):
         return cls(data["feature"], data["value"])
+    
+    def __str__(self): return f"<Include: {self.feature} = {self.value}>"
             
 class IncludeOnlyFeatureValueSet(SliceFilterBase):
     """
@@ -177,3 +189,5 @@ class IncludeOnlyFeatureValueSet(SliceFilterBase):
     @classmethod
     def from_dict(cls, data):
         return cls(data["features"], data["values"])
+    
+    def __str__(self): return f"<Include: {', '.join(str(x) for x in self.features)} = {', '.join(str(x) for x in self.values)}>"

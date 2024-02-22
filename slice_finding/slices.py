@@ -452,13 +452,16 @@ class RankedSliceList:
         Computes the top indexes of a given score dataframe using the
         given dictionary of weights.
         """
+        original_score_indexes = np.arange(len(score_df), dtype=np.uint32)
         weighted_score = np.zeros(len(score_df))
         for w_name, w in weights.items():
             weighted_score += w * score_df[w_name]
+        original_score_indexes = original_score_indexes[~np.isnan(weighted_score)]
+        weighted_score = weighted_score[~np.isnan(weighted_score)]
         results = np.flip(np.argsort(weighted_score.values))
         if k is not None:
             results = results[:k]
-        return results
+        return original_score_indexes[results]
     
     def encode_slice(self, feature_set):
         """

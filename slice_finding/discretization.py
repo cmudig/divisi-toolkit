@@ -168,6 +168,45 @@ def _represent_bin(bins, i, quantile=False):
         return f"> {bins[-1]:.2g}"
     return f"{bins[i - 1]:.2g} - {bins[i]:.2g}"
 
+def discretize_column(column_name, column_data, col_spec):
+    if callable(col_spec["method"]):
+        result, desc = col_spec["method"](column_data, column_name)
+        column_desc = (column_name, desc)
+    elif col_spec["method"] == "keep":
+        result = column_data.values
+        column_desc = (column_name, {v: v for v in column_data.unique()})
+    elif col_spec["method"] == "bin":
+        if "bins" in col_spec:
+            bins = np.array(col_spec["bins"])                
+        elif "quantiles" in col_spec:
+            bins = np.quantile(column_data, col_spec["quantiles"])
+        else:
+            raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
+        result = np.digitize(column_data, bins)
+        if "names" in col_spec: 
+            assert len(col_spec["names"]) == len(bins) + 1, f"Length of names for col {column_name} must be 1 + num bins"
+            col_names = {i: col_spec["names"][i] for i in range(len(bins) + 1)}
+        else:
+            col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
+                                        for i in range(len(bins) + 1)}
+        if "nan_name" in col_spec:
+            # Set the nan value to the max plus one
+            result[pd.isna(column_data)] = len(bins) + 1
+            col_names[len(bins) + 1] = col_spec["nan_name"]
+            
+        column_desc = (column_name, col_names)
+    elif col_spec["method"] == "unique":
+        codes, uniques = pd.factorize(column_data.astype(str), sort=True)
+        unique_vals = sorted(uniques)
+        result = np.where(pd.isna(column_data), np.nan, codes)
+        column_desc = (column_name, {i: v for i, v in enumerate(uniques)})
+        
+        if "nan_name" in col_spec:
+            # Set the nan value to the max plus one
+            result[pd.isna(column_data)] = len(uniques)
+            col_names[len(unique_vals)] = col_spec["nan_name"]
+    
+    return result, column_desc
     
 def discretize_data(df, spec):
     """
@@ -198,42 +237,7 @@ def discretize_data(df, spec):
     column_descriptions = {}
     for col_idx, (col, col_spec) in enumerate(spec.items()):
         try:
-            if callable(col_spec["method"]):
-                discrete_columns[:,col_idx], desc = col_spec["method"](df[col], col)
-                column_descriptions[col_idx] = (col, desc)
-            elif col_spec["method"] == "keep":
-                discrete_columns[:,col_idx] = df[col].values
-                column_descriptions[col_idx] = (col, {v: v for v in df[col].unique()})
-            elif col_spec["method"] == "bin":
-                if "bins" in col_spec:
-                    bins = np.array(col_spec["bins"])                
-                elif "quantiles" in col_spec:
-                    bins = np.quantile(df[col], col_spec["quantiles"])
-                else:
-                    raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
-                discrete_columns[:,col_idx] = np.digitize(df[col], bins)
-                if "names" in col_spec: 
-                    assert len(col_spec["names"]) == len(bins) + 1, f"Length of names for col {col} must be 1 + num bins"
-                    col_names = {i: col_spec["names"][i] for i in range(len(bins) + 1)}
-                else:
-                    col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
-                                                for i in range(len(bins) + 1)}
-                if "nan_name" in col_spec:
-                    # Set the nan value to the max plus one
-                    discrete_columns[pd.isna(df[col]), col_idx] = len(bins) + 1
-                    col_names[len(bins) + 1] = col_spec["nan_name"]
-                    
-                column_descriptions[col_idx] = (col, col_names)
-            elif col_spec["method"] == "unique":
-                codes, uniques = pd.factorize(df[col].astype(str), sort=True)
-                unique_vals = sorted(df[col].astype(str).unique().tolist())
-                discrete_columns[:,col_idx] = np.where(pd.isna(df[col]), np.nan, codes)
-                column_descriptions[col_idx] = (col, {i: v for i, v in enumerate(uniques)})
-                
-                if "nan_name" in col_spec:
-                    # Set the nan value to the max plus one
-                    discrete_columns[pd.isna(df[col]), col_idx] = len(uniques)
-                    col_names[len(unique_vals)] = col_spec["nan_name"]
+            discrete_columns[:,col_idx], column_descriptions[col_idx] = discretize_column(col, df[col], col_spec)
         except Exception as e:
             raise ValueError(f"Error discretizing column '{col}': {e}")
     return DiscretizedData(discrete_columns,

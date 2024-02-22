@@ -20,6 +20,8 @@ dependencies = [
     "numpy",
     "ipywidgets",
     "anywidget",
+    "torch",
+    "tqdm",
     'importlib-metadata; python_version<"3.8"',
 ]
 version = "0.1.0"
