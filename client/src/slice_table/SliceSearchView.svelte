@@ -53,8 +53,8 @@
   export let similarToSlice: any = {};
   export let subsliceOfSlice: any = {};
 
-  export let selectedSlices = [];
-  export let savedSlices = [];
+  export let selectedSlices: Slice[] = [];
+  export let savedSlices: Slice[] = [];
 
   const SliceControlStrings = {
     containsSlice: 'Contains',
@@ -226,17 +226,65 @@
     else if (control == 'subsliceOfSlice') subsliceOfSlice = feature;
     controlFeatures[control] = feature;
   }
+
+  let savedSliceRequests: { [key: string]: any } = {};
+  let savedSliceRequestResults: { [key: string]: Slice } = {};
+
+  $: {
+    sliceRequests = Object.assign(
+      Object.fromEntries(
+        Object.entries(sliceRequests).filter(
+          ([k, v]) => !k.startsWith('saved:')
+        )
+      ),
+      Object.fromEntries(
+        Object.entries(savedSliceRequests).map(([k, v]) => ['saved:' + k, v])
+      )
+    );
+    console.log('updated slice requests:', sliceRequests);
+  }
+
+  $: savedSliceRequestResults = Object.fromEntries(
+    Object.entries(sliceRequestResults)
+      .filter(([k, v]) => k.startsWith('saved:'))
+      .map(([k, v]) => [k.slice('saved:'.length), v])
+  );
 </script>
 
-<div class="search-view-parent h-full min-w-full overflow-auto">
-  <div class="search-view-header bg-white" bind:this={searchViewHeader}>
+<div class="flex-auto min-h-0 h-full min-w-full overflow-auto relative">
+  {#if !!baseSlice}
+    <div class="bg-white sticky top-0 z-10" bind:this={searchViewHeader}>
+      <SliceTable
+        slices={[]}
+        {savedSlices}
+        bind:selectedSlices
+        {baseSlice}
+        bind:sliceRequests
+        bind:sliceRequestResults
+        {positiveOnly}
+        {valueNames}
+        {allowedValues}
+        bind:metricInfo
+        bind:metricNames
+        bind:scoreNames
+        bind:scoreWidthScalers
+        bind:showScores
+        on:newsearch={(e) => {
+          updateEditingControl(e.detail.type, e.detail.base_slice);
+          toggleSliceControl(SliceControlEnableNames[e.detail.type], true);
+        }}
+        on:saveslice
+      />
+    </div>
+  {/if}
+  {#if Object.keys(savedSlices).length > 0}
     <SliceTable
-      slices={[]}
+      slices={savedSlices}
       {savedSlices}
       bind:selectedSlices
-      {baseSlice}
-      bind:sliceRequests
-      bind:sliceRequestResults
+      showHeader={false}
+      bind:sliceRequests={savedSliceRequests}
+      bind:sliceRequestResults={savedSliceRequestResults}
       {positiveOnly}
       {valueNames}
       {allowedValues}
@@ -244,14 +292,13 @@
       bind:metricNames
       bind:scoreNames
       bind:scoreWidthScalers
-      bind:showScores
       on:newsearch={(e) => {
         updateEditingControl(e.detail.type, e.detail.base_slice);
-        toggleSliceControl(SliceControlEnableNames[e.detail.type], true);
+        toggleSliceControl(e.detail.type, true);
       }}
       on:saveslice
     />
-  </div>
+  {/if}
   <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
     <div
       class="mx-2 rounded transition-colors duration-300 bg-slate-200 text-gray-700 border-slate-200 border-2 box-border"

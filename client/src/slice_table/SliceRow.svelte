@@ -180,7 +180,7 @@
             <button
               class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
               title="Add a new custom slice"
-              on:click={() => dispatch('saveslice', sliceToShow)}
+              on:click={() => dispatch('saveslice', slice)}
               ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
             >
           {/if}

@@ -185,28 +185,10 @@
   bind:this={parentElement}
 >
   <div
-    class="h-12 bg-slate-500 text-white flex items-center px-2"
+    class="h-12 bg-slate-500 text-white flex items-center px-4"
     class:rounded-t={!isFullScreen}
   >
-    <button
-      class="mr-1 px-3 py-2 rounded {viewingTab == 0
-        ? 'bg-slate-600'
-        : 'bg-transparent hover:opacity-60'} text-white font-bold"
-      disabled={viewingTab == 0}
-      on:click={() => (viewingTab = 0)}
-    >
-      <Fa icon={faSearch} class="inline mr-1" /> Search
-    </button>
-    <button
-      class="px-3 py-2 rounded {viewingTab == 1
-        ? 'bg-slate-600'
-        : 'bg-transparent hover:opacity-60'} text-white font-bold"
-      class:bg-slate-600={viewingTab == 1}
-      disabled={viewingTab == 1}
-      on:click={() => (viewingTab = 1)}
-    >
-      <Fa icon={faHeart} class="inline mr-1" /> Curate
-    </button>
+    <div class="font-bold text-lg">Slice Widget</div>
 
     <div class="flex-1" />
     <button
@@ -285,6 +267,7 @@
         minWidth={20}
         maxWidth="50%"
         height="100%"
+        width={500}
         class="border-x border-b border-slate-500 {!isFullScreen
           ? 'rounded-b'
           : ''}"

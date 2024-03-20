@@ -145,6 +145,13 @@
     `table with ${slices.length} slices has selected slices:`,
     selectedSlices
   );
+
+  function saveSlice(slice: Slice) {
+    // if unsaving, remove any customizations
+    if (!!savedSlices.find((s) => areObjectsEqual(s.feature, slice.feature)))
+      resetSlice(slice);
+    dispatch('saveslice', slice);
+  }
 </script>
 
 <div class="relative">
@@ -246,16 +253,10 @@
       {valueNames}
       {allowedValues}
       isSaved={!!savedSlices.find((s) =>
-        areObjectsEqual(
-          s.feature,
-          (sliceRequestResults[baseSlice.stringRep] || baseSlice).feature
-        )
+        areObjectsEqual(s.feature, baseSlice.feature)
       )}
       isSelected={!!selectedSlices.find((s) =>
-        areObjectsEqual(
-          s.feature,
-          (sliceRequestResults[baseSlice.stringRep] || baseSlice).feature
-        )
+        areObjectsEqual(s.feature, baseSlice.feature)
       )}
       temporarySlice={tempRevertedSlice == baseSlice.stringRep
         ? baseSlice
@@ -270,7 +271,7 @@
       on:temprevert={(e) =>
         (tempRevertedSlice = e.detail ? baseSlice.stringRep : null)}
       on:newsearch
-      on:saveslice
+      on:saveslice={(e) => saveSlice(e.detail)}
       on:select={(e) =>
         selectSlice(
           sliceRequestResults[baseSlice.stringRep] || baseSlice,
@@ -297,10 +298,10 @@
         ? 'bg-indigo-100 hover:bg-indigo-200'
         : 'hover:bg-slate-100'}
       isSaved={!!savedSlices.find((s) =>
-        areObjectsEqual(s.feature, sliceToShow.feature)
+        areObjectsEqual(s.feature, slice.feature)
       )}
       isSelected={!!selectedSlices.find((s) =>
-        areObjectsEqual(s.feature, sliceToShow.feature)
+        areObjectsEqual(s.feature, slice.feature)
       )}
       temporarySlice={tempRevertedSlice == slice.stringRep
         ? slice
@@ -314,7 +315,7 @@
       on:temprevert={(e) =>
         (tempRevertedSlice = e.detail ? slice.stringRep : null)}
       on:newsearch
-      on:saveslice
+      on:saveslice={(e) => saveSlice(e.detail)}
       on:select={(e) => selectSlice(sliceToShow, e.detail)}
     />
   {/each}

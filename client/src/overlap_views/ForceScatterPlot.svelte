@@ -3,6 +3,7 @@
   import * as d3 from 'd3';
   import { scaleCanvas } from 'layercake';
   import forceMagnetic from 'd3-force-magnetic';
+  import { createWebWorker } from '../utils/utils';
 
   const { data, width, height } = getContext('LayerCake');
 
@@ -45,19 +46,23 @@
 
   $: $width, $height, delayInitSimulation();
 
+  $: if (nodeData.length == 0 && !!$data) setupNodeData($data);
+
   function cleanUp() {
     if (!!simulation) simulation.stop();
+    if (!!worker) worker.terminate();
     nodeData = [];
     nodePositions = [];
     simulation = null;
   }
 
-  function resetNodePositions(ds, w, h) {
+  function setupNodeData(ds) {
     showConvexHulls = false;
 
     nodeData = ds.map((d) => ({
       numSlices: d.slices.reduce((prev, curr) => prev + curr, 0),
     }));
+    console.log('node data:', nodeData);
     maxNumSlices = nodeData.reduce(
       (prev, curr) => Math.max(prev, curr.numSlices),
       1
@@ -73,26 +78,7 @@
       });
     });
 
-    nodePositions = nodeData.map((n, i) => {
-      if (n.numSlices > 0) {
-        let leastCommonSlice = ds[i].slices.reduce(
-          (prev, curr, idx) => (counts[idx] < counts[prev] ? idx : prev),
-          0
-        );
-        if (!!slicePositions[leastCommonSlice])
-          return Object.assign({}, slicePositions[leastCommonSlice]);
-        let newPos = {
-          x: w / 2 + Math.random() * 50 - 25,
-          y: h / 2 + Math.random() * 50 - 25,
-        };
-        slicePositions[leastCommonSlice] = newPos;
-        return newPos;
-      }
-      return {
-        x: Math.random() * 800 - 400 + w / 2,
-        y: Math.random() * 800 - 400 + h / 2,
-      };
-    });
+    nodePositions = nodeData.map((n, i) => ({ x: 0, y: 0 }));
   }
 
   let simulationInitTimeout = null;
@@ -101,11 +87,39 @@
     simulationInitTimeout = setTimeout(() => initSimulation($data), 1000);
   }
 
+  let worker = null;
+
+  async function getWorker() {
+    if (!!worker) worker.terminate();
+
+    let workerURL = new URL('./force_layout_worker.js', import.meta.url);
+
+    worker = await createWebWorker(workerURL);
+
+    worker.onmessage = (e) => {
+      console.log('received progress:', e.data);
+      nodePositions = e.data.positions;
+      updatePositions();
+    };
+    return worker;
+  }
+
   function initSimulation(ds) {
     setTimeout(() => {
       if (!!simulationInitTimeout) clearTimeout(simulationInitTimeout);
     });
-    let w = $width;
+    if (!!simulation) cleanUp();
+
+    getWorker().then((w) => {
+      w.postMessage({
+        w: $width,
+        h: $height,
+        data: $data,
+        pointRadius,
+      });
+    });
+
+    /*let w = $width;
     let h = $height;
     resetNodePositions(ds, w, h);
 
@@ -125,21 +139,22 @@
         let countEqual = n1.slices
           .map(
             (s1, k) =>
-              (s1 && n2.slices[k]) * Math.log10(0.1 + maxCount / counts[k])
+              (s1 && n2.slices[k]) * Math.log10(1 + maxCount / counts[k])
           )
           .reduce((prev, curr) => prev + curr, 0);
         let sum1 = n1.slices.reduce((prev, curr, k) => prev + curr, 0);
         let sum2 = n2.slices.reduce((prev, curr, k) => prev + curr, 0);
         if (sum1 == 0 && sum2 == 0) {
+          if (n1.error && n2.error) repulsions.push({ source: i, target: j });
           return; // links.push({ source: i, target: j, strength: 1.0 });
-        } else if ((sum1 == 0 || sum2 == 0) && !(n1.error && n2.error))
+        } else if (sum1 == 0 || (sum2 == 0 && !(n1.error && n2.error)))
           return; // links.push({ source: i, target: j, strength: 0.8, repel: true });
         else if (countEqual == 0) repulsions.push({ source: i, target: j });
         else {
           links.push({
             source: i,
             target: j,
-            strength: countEqual / ((sum1 + sum2) * 0.5),
+            strength: countEqual * 5,
           });
         }
       });
@@ -152,7 +167,7 @@
 
     let magnetForce = forceMagnetic()
       .links(repulsions)
-      .strength(2)
+      .strength(1)
       .polarity(false);
 
     simulation = d3
@@ -171,39 +186,42 @@
       .force('y', d3.forceY(h * centerYRatio).strength(0.1));
 
     let alphaResetInterval = 200;
-    let initialAlpha = 0.1;
+    let initialAlpha = 1.0;
     let finalAlpha = 0.001;
     let numTicks = 0;
     let totalTicks = 0;
-    let numTicksBeforeAnimation = alphaResetInterval * 7;
 
     simulation
-      .alpha(0.1)
+      .alpha(initialAlpha)
       .alphaDecay(0.005)
-      .alphaMin(1e-6)
+      .alphaMin(1e-5)
       .on('tick', () => {
-        // if (totalTicks > numTicksBeforeAnimation) {
-        updatePositions();
-        if (totalTicks > numTicksBeforeAnimation) {
-          showConvexHulls = true;
-        }
-        // simulationProgress = 0.0;
-        // } else if (totalTicks % 20 == 0)
-        //   simulationProgress = totalTicks / numTicksBeforeAnimation;
+        if (!simulation) return;
+
         let f = simulation.force('collide');
         f.strength(Math.min(1.0, f.strength() * 1.005));
         if (numTicks >= alphaResetInterval && initialAlpha > finalAlpha) {
           numTicks = 0;
-          initialAlpha *= 0.4;
+          initialAlpha *= 0.1;
           simulation.alpha(initialAlpha).restart();
-          f.strength(0.1);
+          f.strength(-Math.log10(initialAlpha) / 6);
         }
         numTicks += 1;
         totalTicks += 1;
-      });
+
+        if (numTicks % 100 == 0) updatePositions();
+      })
+      .on('end', () => {
+        console.log('ended');
+        updatePositions();
+      });*/
   }
 
   function updatePositions(colorF, hovered) {
+    console.log(nodeData, nodePositions);
+    if (!nodeData || !nodePositions || nodeData.length != nodePositions.length)
+      return;
+
     colorF = colorF || colorFn;
 
     scaleCanvas($ctx, $width, $height);

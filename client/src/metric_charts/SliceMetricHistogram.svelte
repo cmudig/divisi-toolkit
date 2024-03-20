@@ -6,6 +6,7 @@
   import { scaleBand, scaleLog, scaleLinear } from 'd3-scale';
   import BarTooltip from './BarTooltip.svelte';
   import type { Histogram } from '../utils/slice.type';
+  import { onMount } from 'svelte';
 
   export let width = 100;
 
@@ -27,6 +28,9 @@
     histBins = [];
   }
 
+  let loaded = false;
+  onMount(() => setTimeout(() => (loaded = true), 0));
+
   let hoveredBin: number;
 
   let binFormat = format('.3g');
@@ -46,26 +50,29 @@
 </script>
 
 <div style="width: {width}px; height: 22px;">
-  <LayerCake
-    padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
-    x="bin"
-    y="count"
-    xScale={scaleBand().round(true)}
-    xDomain={histBins}
-    yScale={scaleLinear()}
-    yDomain={[0, null]}
-    {data}
-    custom={{
-      hoveredGet: (d) => d.bin == hoveredBin,
-    }}
-  >
-    <Svg>
-      <Column
-        fill="#3b82f6"
-        on:hover={(e) => (hoveredBin = e.detail != null ? e.detail.bin : null)}
-      />
-    </Svg>
-  </LayerCake>
+  {#if loaded && histBins.length > 0}
+    <LayerCake
+      padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+      x="bin"
+      y="count"
+      xScale={scaleBand().round(true)}
+      xDomain={histBins}
+      yScale={scaleLinear()}
+      yDomain={[0, null]}
+      {data}
+      custom={{
+        hoveredGet: (d) => d.bin == hoveredBin,
+      }}
+    >
+      <Svg>
+        <Column
+          fill="#3b82f6"
+          on:hover={(e) =>
+            (hoveredBin = e.detail != null ? e.detail.bin : null)}
+        />
+      </Svg>
+    </LayerCake>
+  {/if}
 </div>
 <div class="mt-1 text-xs text-slate-800 truncate">
   {#if !$$slots.caption}
