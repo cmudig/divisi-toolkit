@@ -8,9 +8,15 @@
     faChevronDown,
     faChevronUp,
   } from '@fortawesome/free-solid-svg-icons';
+  import { createEventDispatcher } from 'svelte';
+
+  const dispatch = createEventDispatcher();
 
   export let weights: { [key: string]: number } = {};
   export let scoreNames: string[] = [];
+
+  export let collapsible = true;
+  export let showApplyButton: boolean = false;
 
   let expanded = false;
 
@@ -65,22 +71,9 @@
 
   function initializeWeight(name: string) {
     let newScoreWeights = Object.assign({}, weights);
-    if (totalWeight == 0.0) {
-      newScoreWeights[name] = 1.0;
-      weights = newScoreWeights;
-      return;
-    }
-    let averageWeight =
-      totalWeight / Object.values(weights).filter((w) => w > 0.0).length;
-    let newTotalWeight = totalWeight + averageWeight;
-
-    Object.keys(newScoreWeights).forEach(
-      (n) =>
-        (newScoreWeights[n] =
-          (newScoreWeights[n] * totalWeight) / newTotalWeight)
-    );
-    newScoreWeights[name] = (averageWeight * totalWeight) / newTotalWeight;
+    newScoreWeights[name] = 1.0;
     weights = newScoreWeights;
+    return;
   }
 
   // updates all weights within the same set of
@@ -103,23 +96,31 @@
   }
 </script>
 
-<div class="w-full">
-  <ScoreWeightSlider
-    segments={scoreNames
-      .map((n, i) => ({
-        name: n,
-        color_tailwind: scoreColors[i],
-      }))
-      .filter((n) => weights[n.name] > 0.0)}
-    widths={scoreNames.filter((n) => weights[n] > 0.0).map(getWeightFraction)}
-    on:change={(e) => updateWeightSubset(e.detail)}
-  />
-  {#if expanded}
+<div class="w-full px-3">
+  <div class="pt-3 bg-white {collapsible ? '' : 'sticky top-0 z-10'}">
+    <div class="mb-1 text-xs text-slate-500 w-full">
+      Adjust the weights for each score function to determine how to rank
+      slices.
+    </div>
+    <ScoreWeightSlider
+      segments={scoreNames
+        .map((n, i) => ({
+          name: n,
+          color_tailwind: scoreColors[i % scoreColors.length],
+        }))
+        .filter((n) => weights[n.name] > 0.0)}
+      widths={scoreNames.filter((n) => weights[n] > 0.0).map(getWeightFraction)}
+      on:change={(e) => updateWeightSubset(e.detail)}
+    />
+  </div>
+  {#if expanded || !collapsible}
     <div class="mt-2">
       {#each scoreNames as score, i}
         <div class="mb-2 flex flex-wrap items-center text-sm">
           <Checkbox
-            colorClass={weights[score] > 0.0 ? 'bg-' + scoreColors[i] : null}
+            colorClass={weights[score] > 0.0
+              ? 'bg-' + scoreColors[i % scoreColors.length]
+              : null}
             checked={weights[score] > 0.0}
             on:change={(e) => {
               if (!e.detail) {
@@ -133,10 +134,10 @@
             {score}
           </div>
           <div class="text-xs mr-2">
-            {format('.1f')(weights[score])}
+            {format('.1f')(weights[score] ?? 0)}
           </div>
           <IncrementButtons
-            value={weights[score]}
+            value={weights[score] ?? 0}
             on:change={(e) => updateScoreWeight(score, e.detail)}
             min={0}
             max={5}
@@ -146,12 +147,26 @@
       {/each}
     </div>
   {/if}
-  <div class="flex items-center justify-center mt-1">
-    <button
-      class="bg-transparent hover:opacity-60 text-slate-600 px-1"
-      title="Show/hide granular controls"
-      on:click={() => (expanded = !expanded)}
-      ><Fa icon={expanded ? faChevronUp : faChevronDown} /></button
+  {#if showApplyButton}
+    <div
+      class="py-2 flex items-center justify-end gap-3 sticky bottom-0 bg-white z-10"
     >
-  </div>
+      <button class="btn btn-slate" on:click={() => dispatch('cancel')}>
+        Cancel
+      </button>
+      <button class="btn btn-blue" on:click={() => dispatch('apply', weights)}>
+        Apply
+      </button>
+    </div>
+  {/if}
+  {#if collapsible}
+    <div class="flex items-center justify-center mt-1">
+      <button
+        class="bg-transparent hover:opacity-60 text-slate-600 px-1"
+        title="Show/hide granular controls"
+        on:click={() => (expanded = !expanded)}
+        ><Fa icon={expanded ? faChevronUp : faChevronDown} /></button
+      >
+    </div>
+  {/if}
 </div>

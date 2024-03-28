@@ -50,8 +50,6 @@
     setTimeout(() => (loaded = true), 100);
   });
 
-  $: console.log('COLUMN DIMS:', $width, $height);
-
   let loaded = false;
 </script>
 

@@ -1,17 +1,22 @@
-<script>
+<script lang="ts">
   import { getContext, onDestroy } from 'svelte';
   import * as d3 from 'd3';
   import { scaleCanvas } from 'layercake';
-  import forceMagnetic from 'd3-force-magnetic';
   import { createWebWorker } from '../utils/utils';
+  import {
+    Attribute,
+    Mark,
+    MarkRenderGroup,
+    Scales,
+    Ticker,
+    markBox,
+  } from 'counterpoint-vis';
 
   const { data, width, height } = getContext('LayerCake');
 
   export let pointRadius = 7; // 4;
   export let colorFn = null;
   export let hoveredSlices = null;
-  export let centerYRatio = 0.5;
-  export let centerXRatio = 0.5;
 
   export let hoveredMousePosition = null;
   export let hoveredPointIndex = null;
@@ -23,13 +28,55 @@
 
   const { ctx } = getContext('canvas');
 
-  let nodePositions = [];
+  const layoutWidth = 800;
+  const layoutHeight = 800;
 
-  let nodeData = [];
+  let scales = new Scales({ animationDuration: 500 })
+    .xDomain([-layoutWidth * 0.5, layoutWidth * 0.5])
+    .yDomain([-layoutHeight * 0.5, layoutHeight * 0.5])
+    .onUpdate(() => {
+      // When the scales update, we also need to let the d3 zoom object know that
+      // the zoom transform has changed. Otherwise performing a zoom gesture after
+      // a programmatic update will result in an abrupt transform change
+      let sel = d3.select($ctx.canvas as Element);
+      let currentT = d3.zoomTransform($ctx.canvas);
+      let t = scales.transform();
+      if (t.k != currentT.k || t.x != currentT.x || t.y != currentT.y) {
+        sel.call(zoom.transform, new d3.ZoomTransform(t.k, t.x, t.y));
+      }
+    });
+  let markSet = new MarkRenderGroup(makeMark);
+
+  function makeMark(id: any) {
+    return new Mark(id, {
+      x: new Attribute({ value: $width * 0.5, transform: scales.xScale }),
+      y: new Attribute({ value: $height * 0.5, transform: scales.yScale }),
+      radius: new Attribute({
+        value: pointRadius,
+        transform: (v) => Math.min(Math.max(v * scales.transform().k, 3), 12),
+      }),
+      slices: new Attribute({ value: [] }),
+      numSlices: new Attribute(0),
+      outcome: new Attribute(false),
+      alpha: new Attribute(0.0),
+    });
+  }
+
+  let ticker = new Ticker([markSet, scales]).onChange(draw);
+
+  // We use a d3 zoom object to simplify the gesture handling, but supply the
+  // output transform to our Scales instance
+  let zoom = d3
+    .zoom()
+    .scaleExtent([0.1, 10])
+    .on('zoom', (e) => {
+      // important to make sure the source event exists, filtering out our
+      // programmatic changes
+      console.log('zoom');
+      if (e.sourceEvent != null) scales.transform(e.transform);
+    });
 
   export let simulationProgress = 0;
-
-  let maxNumSlices;
 
   let simulation;
 
@@ -44,47 +91,25 @@
     cleanUp();
   }
 
-  $: $width, $height, delayInitSimulation();
+  $: $width,
+    $height,
+    (() => {
+      scales
+        .xRange([0, $width])
+        .yRange([0, $height])
+        .makeSquareAspect()
+        .reset();
+    })();
 
-  $: if (nodeData.length == 0 && !!$data) setupNodeData($data);
+  $: if (!!$ctx) {
+    // set up the d3 zoom object
+    d3.select($ctx.canvas as Element).call(zoom);
+  }
 
   function cleanUp() {
     if (!!simulation) simulation.stop();
     if (!!worker) worker.terminate();
-    nodeData = [];
-    nodePositions = [];
     simulation = null;
-  }
-
-  function setupNodeData(ds) {
-    showConvexHulls = false;
-
-    nodeData = ds.map((d) => ({
-      numSlices: d.slices.reduce((prev, curr) => prev + curr, 0),
-    }));
-    console.log('node data:', nodeData);
-    maxNumSlices = nodeData.reduce(
-      (prev, curr) => Math.max(prev, curr.numSlices),
-      1
-    );
-
-    // TODO try using UMAP as an initialization
-
-    let slicePositions = {}; // put nodes with the same least-common slice in the same coordinates
-    let counts = Array.apply(null, Array(ds[0].slices.length)).map(() => 0);
-    ds.forEach((d) => {
-      d.slices.forEach((x, i) => {
-        if (x) counts[i] += 1;
-      });
-    });
-
-    nodePositions = nodeData.map((n, i) => ({ x: 0, y: 0 }));
-  }
-
-  let simulationInitTimeout = null;
-  function delayInitSimulation() {
-    if (!!simulationInitTimeout) clearTimeout(simulationInitTimeout);
-    simulationInitTimeout = setTimeout(() => initSimulation($data), 1000);
   }
 
   let worker = null;
@@ -97,131 +122,56 @@
     worker = await createWebWorker(workerURL);
 
     worker.onmessage = (e) => {
-      console.log('received progress:', e.data);
-      nodePositions = e.data.positions;
-      updatePositions();
+      if (e.data.positions.length != markSet.count()) {
+        console.warn('Wrong number of positions in worker-returned layout');
+        worker.terminate();
+        return;
+      }
+      markSet
+        .animateTo('x', (m, i) => e.data.positions[i].x)
+        .animateTo('y', (m, i) => e.data.positions[i].y)
+        .animateTo('alpha', 1.0);
+
+      if (e.data.tick == e.data.totalTicks) {
+        simulationProgress = null;
+      } else {
+        simulationProgress = e.data.tick / e.data.totalTicks;
+      }
     };
     return worker;
   }
 
   function initSimulation(ds) {
-    setTimeout(() => {
-      if (!!simulationInitTimeout) clearTimeout(simulationInitTimeout);
-    });
     if (!!simulation) cleanUp();
+
+    markSet.forEach((m) => {
+      if (m.id >= ds.length) markSet.removeMark(m);
+    });
+
+    ds.forEach((d, i) =>
+      markSet.showID(i, (mark) =>
+        mark
+          .setAttr('slices', d.slices)
+          .setAttr(
+            'numSlices',
+            d.slices.reduce((prev, curr) => prev + curr, 0)
+          )
+          .setAttr('outcome', d.outcome)
+          .setAttr('alpha', 0.0)
+      )
+    );
 
     getWorker().then((w) => {
       w.postMessage({
-        w: $width,
-        h: $height,
+        w: layoutWidth,
+        h: layoutHeight,
         data: $data,
         pointRadius,
       });
     });
-
-    /*let w = $width;
-    let h = $height;
-    resetNodePositions(ds, w, h);
-
-    let counts = Array.apply(null, Array(ds[0].slices.length)).map(() => 0);
-    ds.forEach((d) => {
-      d.slices.forEach((x, i) => {
-        if (x) counts[i] += 1;
-      });
-    });
-    let maxCount = counts.reduce((prev, curr) => Math.max(prev, curr), 0);
-
-    let links = [];
-    let repulsions = [];
-    $data.forEach((n1, i) => {
-      $data.forEach((n2, j) => {
-        if (i <= j) return;
-        let countEqual = n1.slices
-          .map(
-            (s1, k) =>
-              (s1 && n2.slices[k]) * Math.log10(1 + maxCount / counts[k])
-          )
-          .reduce((prev, curr) => prev + curr, 0);
-        let sum1 = n1.slices.reduce((prev, curr, k) => prev + curr, 0);
-        let sum2 = n2.slices.reduce((prev, curr, k) => prev + curr, 0);
-        if (sum1 == 0 && sum2 == 0) {
-          if (n1.error && n2.error) repulsions.push({ source: i, target: j });
-          return; // links.push({ source: i, target: j, strength: 1.0 });
-        } else if (sum1 == 0 || (sum2 == 0 && !(n1.error && n2.error)))
-          return; // links.push({ source: i, target: j, strength: 0.8, repel: true });
-        else if (countEqual == 0) repulsions.push({ source: i, target: j });
-        else {
-          links.push({
-            source: i,
-            target: j,
-            strength: countEqual * 5,
-          });
-        }
-      });
-    });
-
-    let linkForce = d3
-      .forceLink(links)
-      .distance(pointRadius * 0.5)
-      .strength((l) => l.strength);
-
-    let magnetForce = forceMagnetic()
-      .links(repulsions)
-      .strength(1)
-      .polarity(false);
-
-    simulation = d3
-      .forceSimulation(nodePositions)
-      .force('center', d3.forceCenter(w * centerXRatio, h * centerYRatio))
-      .force('link', linkForce)
-      .force('magnet', magnetForce)
-      .force(
-        'collide',
-        d3
-          .forceCollide()
-          .radius(pointRadius * 1.2)
-          .strength(0.1)
-      )
-      .force('x', d3.forceX(w * centerXRatio).strength(0.1))
-      .force('y', d3.forceY(h * centerYRatio).strength(0.1));
-
-    let alphaResetInterval = 200;
-    let initialAlpha = 1.0;
-    let finalAlpha = 0.001;
-    let numTicks = 0;
-    let totalTicks = 0;
-
-    simulation
-      .alpha(initialAlpha)
-      .alphaDecay(0.005)
-      .alphaMin(1e-5)
-      .on('tick', () => {
-        if (!simulation) return;
-
-        let f = simulation.force('collide');
-        f.strength(Math.min(1.0, f.strength() * 1.005));
-        if (numTicks >= alphaResetInterval && initialAlpha > finalAlpha) {
-          numTicks = 0;
-          initialAlpha *= 0.1;
-          simulation.alpha(initialAlpha).restart();
-          f.strength(-Math.log10(initialAlpha) / 6);
-        }
-        numTicks += 1;
-        totalTicks += 1;
-
-        if (numTicks % 100 == 0) updatePositions();
-      })
-      .on('end', () => {
-        console.log('ended');
-        updatePositions();
-      });*/
   }
 
-  function updatePositions(colorF, hovered) {
-    console.log(nodeData, nodePositions);
-    if (!nodeData || !nodePositions || nodeData.length != nodePositions.length)
-      return;
-
+  function draw(colorF) {
     colorF = colorF || colorFn;
 
     scaleCanvas($ctx, $width, $height);
@@ -230,29 +180,33 @@
     /* --------------------------------------------
      * Draw our scatterplot
      */
-    nodePositions.forEach((d, i) => {
-      let radius = pointRadius;
-      if (hovered != null && i == hoveredPointIndex) radius *= 1.5;
+    markSet.forEach((mark, i) => {
+      let itemSlices = mark.attr('slices');
+      let x = mark.attr('x');
+      let y = mark.attr('y');
+      let alpha = mark.attr('alpha');
+      let radius = mark.attr('radius');
+      let outcome = mark.attr('outcome');
+      // if (hovered != null && i == hoveredPointIndex) radius *= 1.5;
 
-      let numSlices = nodeData[i].numSlices;
+      let numSlices = mark.attr('numSlices');
 
-      $ctx.globalAlpha = 1.0;
+      $ctx.globalAlpha = alpha;
 
       if (colorBySlice) {
         $ctx.beginPath();
-        let itemSlices = $data[i].slices;
-        let color = colorFn != null ? colorFn($data[i]) : null;
+        let color =
+          colorFn != null ? colorFn({ slices: itemSlices, outcome }) : null;
         // if (!$data[i].error) radius *= 0.7;
-        $ctx.globalAlpha = !!color ? 1.0 : 0.4;
         $ctx.strokeStyle = '#94a3b8';
         $ctx.lineWidth = 1;
-        $ctx.arc(d.x, d.y, radius - 3, 0, 2 * Math.PI, false);
+        $ctx.arc(x, y, radius - 3, 0, 2 * Math.PI, false);
         $ctx.stroke();
-        if ($data[i].error) {
+        if (outcome) {
           $ctx.fillStyle = '#94a3b8';
           $ctx.fill();
         }
-        let lw = 4; // $data[i].error ? 4 : 2;
+        let lw = 4; // outcome ? 4 : 2;
         $ctx.lineWidth = lw;
         // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
@@ -261,9 +215,9 @@
             $ctx.beginPath();
             $ctx.strokeStyle = sliceColorScale(j);
             $ctx.arc(
-              d.x,
-              d.y,
-              radius - 1, // (numSlices > 0 ? radius : radius * 0.5) + ($data[i].error ? 1 : 0),
+              x,
+              y,
+              radius - 1, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
               -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
               -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
               false
@@ -274,45 +228,47 @@
       } else if (colorByError) {
         $ctx.beginPath();
         let itemSlices = $data[i].slices;
-        let color = colorFn != null ? colorFn($data[i]) : 'steelblue';
+        let color =
+          colorFn != null
+            ? colorFn({ slices: itemSlices, outcome })
+            : 'steelblue';
         radius = numSlices > 0 ? radius : radius * 0.5;
-        $ctx.arc(d.x, d.y, radius, 0, 2 * Math.PI, false);
+        $ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
         $ctx.strokeStyle = color;
         $ctx.stroke();
         // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
           $ctx.beginPath();
-          $ctx.moveTo(d.x, d.y);
+          $ctx.moveTo(x, y);
           itemSlices.forEach((s, j) => {
             if (!s) return;
             $ctx.arc(
-              d.x,
-              d.y,
-              radius, // (numSlices > 0 ? radius : radius * 0.5) + ($data[i].error ? 1 : 0),
+              x,
+              y,
+              radius, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
               -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
               -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
               false
             );
-            $ctx.lineTo(d.x, d.y);
+            $ctx.lineTo(x, y);
           });
           $ctx.fillStyle = color;
           $ctx.fill();
         }
       } else {
         $ctx.beginPath();
-        $ctx.arc(
-          d.x,
-          d.y,
-          radius + ($data[i].error ? 1 : 0),
-          0,
-          2 * Math.PI,
-          false
-        );
-        if ($data[i].error) {
-          $ctx.fillStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+        $ctx.arc(x, y, radius + (outcome ? 1 : 0), 0, 2 * Math.PI, false);
+        if (outcome) {
+          $ctx.fillStyle =
+            colorFn != null
+              ? colorFn({ slices: itemSlices, outcome })
+              : 'steelblue';
           $ctx.fill();
         } else {
-          $ctx.strokeStyle = colorFn != null ? colorFn($data[i]) : 'steelblue';
+          $ctx.strokeStyle =
+            colorFn != null
+              ? colorFn({ slices: itemSlices, outcome })
+              : 'steelblue';
           $ctx.stroke();
         }
       }
@@ -343,20 +299,6 @@
     });
     $ctx.globalAlpha = 1.0;
   }*/
-
-  $: if (!!$ctx && !!simulation) {
-    updatePositions(colorFn, hoveredPointIndex);
-  }
-
-  $: if (!!$ctx) {
-    let canvas = d3.select($ctx.canvas);
-    console.log('canvas:', canvas);
-    canvas.call(
-      d3.zoom().on('zoom', (e) => {
-        console.log('zooming');
-      })
-    );
-  }
 
   $: if (!!hoveredMousePosition && !!simulation) {
     let closest = simulation.find(

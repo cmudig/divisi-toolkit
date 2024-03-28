@@ -7,8 +7,6 @@
   export let labels = [];
   export let numPoints = 500;
   export let selectedIndexes = null;
-  export let centerYRatio = 0.5;
-  export let centerXRatio = 0.5;
 
   export let colorByError = false;
   export let colorBySlice = true;
@@ -21,7 +19,7 @@
 
   let sliceCount = 0;
 
-  let simulationProgress = 0.0;
+  let simulationProgress: number | null = null;
 
   let pointData = [];
 
@@ -54,11 +52,11 @@
         return [
           ...Array.apply(null, Array(noErrors)).map((_) => ({
             slices: item.slices,
-            error: false,
+            outcome: false,
           })),
           ...Array.apply(null, Array(errors)).map((_) => ({
             slices: item.slices,
-            error: true,
+            outcome: true,
           })),
         ];
       })
@@ -140,8 +138,6 @@
         <ForceScatterPlot
           bind:simulationProgress
           bind:hoveredSlices
-          {centerYRatio}
-          {centerXRatio}
           {colorByError}
           {colorBySlice}
           {hoveredMousePosition}
@@ -155,17 +151,15 @@
       </Canvas>
     </LayerCake>
     <div
-      class="absolute top-0 left-0 bottom-0 right-0 z-1 pointer-events-auto"
-      on:mouseenter={handleMousePosition}
-      on:mousemove={handleMousePosition}
-      on:mouseleave={() => (hoveredMousePosition = null)}
+      class="absolute top-0 left-0 bottom-0 right-0 z-1 pointer-events-none"
     />
 
-    {#if simulationProgress > 0.0}
-      <div class="absolute bg-white/90 top-0 left-0 right-0 bottom-0">
-        <div class="text-sm">Calculating layout...</div>
+    {#if simulationProgress != null}
+      <div
+        class="absolute bg-white/50 flex flex-col items-center justify-center top-0 left-0 right-0 bottom-0 pointer-events-none"
+      >
         <div
-          class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
+          class="w-1/2 bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
         >
           <div
             class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
