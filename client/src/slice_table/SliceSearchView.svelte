@@ -331,9 +331,7 @@
           </div>
         </div>
       {:else}
-        <div
-          class="flex pl-3 items-center overflow-x-auto whitespace-nowrap gap-3"
-        >
+        <div class="flex pl-3 items-center whitespace-nowrap gap-3">
           <button
             class="my-3 ml-1 btn btn-blue disabled:opacity-50"
             disabled={runningSampler}
