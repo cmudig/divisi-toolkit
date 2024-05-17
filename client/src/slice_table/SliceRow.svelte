@@ -23,6 +23,7 @@
   import SliceFeatureEditor from './SliceFeatureEditor.svelte';
   import { featureToString, parseFeature } from '../utils/slice_parsing';
   import Checkbox from '../utils/Checkbox.svelte';
+  import { ColorWheel } from '../utils/colorwheel';
 
   const dispatch = createEventDispatcher();
 
@@ -50,11 +51,12 @@
   export let isSaved = false;
   export let isSelected = false;
   export let isEditing = false;
-  let showButtons = false;
+  let hovering = false;
 
   const indentAmount = 24;
 
   export let showCreateSliceButton = false;
+  export let showFavoriteButton = true;
 
   /*let featureOrder = [];
   $: {
@@ -114,24 +116,26 @@
 
 {#if !!sliceToShow}
   <div
-    class="slice-row {rowClass
+    class="slice-row w-full {rowClass
       ? rowClass
       : 'bg-white'} inline-flex items-center"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
-    on:mouseenter={() => (showButtons = true)}
-    on:mouseleave={() => (showButtons = false)}
+    on:mouseenter={() => (hovering = true)}
+    on:mouseleave={() => (hovering = false)}
   >
-    <div class="p-2" style="width: {TableWidths.Checkbox}px;">
-      <Checkbox
-        checked={isSelected}
-        on:change={(e) => dispatch('select', !isSelected)}
-      />
+    <div class="p-2 grow-0 shrink-0" style="width: {TableWidths.Checkbox}px;">
+      {#if showFavoriteButton}
+        <button
+          class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+          title="Add a new custom slice"
+          on:click={() => dispatch('saveslice', slice)}
+          ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
+        >
+      {/if}
     </div>
     <div
-      class="py-2 text-xs"
+      class="py-2 text-xs flex-auto overflow-x-auto"
       class:opacity-50={revertedScores}
-      style="width: {TableWidths.FeatureList -
-        indentAmount * (maxIndent - indent)}px;"
     >
       {#if isEditing}
         <SliceFeatureEditor
@@ -158,33 +162,19 @@
           }}
         />
       {:else}
-        <div class="flex pt-1 items-center h-full whitespace-nowrap">
-          <div style="flex: 0 1 auto;" class="overflow-x-auto">
-            <SliceFeature
-              feature={featuresHaveSameTree(
-                slice.feature,
-                sliceToShow.feature
-              ) && slice.feature.type != 'base'
-                ? slice.feature
-                : sliceToShow.feature}
-              currentFeature={sliceToShow.feature}
-              canToggle={featuresHaveSameTree(
-                slice.feature,
-                sliceToShow.feature
-              )}
-              {positiveOnly}
-              on:toggle
-            />
-          </div>
-          {#if showButtons || isSaved}
-            <button
-              class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
-              title="Add a new custom slice"
-              on:click={() => dispatch('saveslice', slice)}
-              ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
-            >
-          {/if}
-          {#if showButtons}
+        <div class="whitespace-nowrap">
+          <SliceFeature
+            feature={featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
+            slice.feature.type != 'base'
+              ? slice.feature
+              : sliceToShow.feature}
+            currentFeature={sliceToShow.feature}
+            canToggle={featuresHaveSameTree(slice.feature, sliceToShow.feature)}
+            {positiveOnly}
+            on:toggle
+          />
+        </div>
+        <!-- {#if hovering}
             {#if showCreateSliceButton}
               <button
                 class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
@@ -252,8 +242,7 @@
                 >
               </div>
             </ActionMenuButton>
-          {/if}
-        </div>
+          {/if} -->
       {/if}
       <!-- {#each featureOrder as col, i}
         {@const featureDisabled =
@@ -322,80 +311,83 @@
         {/if}
       {/each} -->
     </div>
-    {#each metricNames as name}
-      {@const metric = sliceForScores.metrics[name]}
-      <div
-        class="p-2 pt-3"
-        style="width: {!!metricInfo[name] && metricInfo[name].visible
-          ? TableWidths.Metric
-          : TableWidths.CollapsedMetric}px;"
-      >
-        {#if sliceForScores.isEmpty}
-          <span class="text-slate-600">Empty</span>
-        {:else if !!metricInfo[name] && metricInfo[name].visible}
-          {#if metric.type == 'binary'}
-            <SliceMetricBar
-              value={metric.mean}
-              scale={metricInfo[name].scale}
-              width={scoreCellWidth}
-            >
-              <span slot="caption">
-                <strong>{format('.1%')(metric.mean)}</strong>
-                {#if metric.hasOwnProperty('share')}
-                  <br />
-                  <span style="font-size: 0.7rem;" class="italic text-gray-700"
-                    >({format('.1%')(metric.share)} of total)</span
-                  >
-                {/if}
-              </span>
-            </SliceMetricBar>
-          {:else if metric.type == 'count'}
-            <SliceMetricBar value={metric.share} width={scoreCellWidth}>
-              <span slot="caption">
-                <strong>{format(',')(metric.count)}</strong><br /><span
-                  style="font-size: 0.7rem;"
-                  class="italic text-gray-700"
-                  >({format('.1%')(metric.share)})</span
-                >
-              </span>
-            </SliceMetricBar>
-          {:else if metric.type == 'continuous'}
-            <SliceMetricHistogram
-              mean={metric.mean}
-              histValues={metric.hist}
-              width={scoreCellWidth}
-            />
-          {:else if metric.type == 'categorical'}
-            <SliceMetricCategoryBar
-              order={metricInfo[name].order}
-              counts={metric.counts}
-              width={scoreCellWidth}
-            />
+    <div
+      class="p-2 pt-3 whitespace-nowrap shrink-0"
+      style="width: {TableWidths.AllMetrics}px;"
+    >
+      {#if sliceForScores.isEmpty}
+        <span class="text-slate-600">Empty</span>
+      {:else}
+        {#each metricNames as name, i}
+          {@const metric = sliceForScores.metrics[name]}
+
+          {#if !!metricInfo[name] && metricInfo[name].visible}
+            {#if metric.type == 'binary'}
+              <SliceMetricBar
+                title={name}
+                value={metric.mean}
+                color={ColorWheel[i]}
+                width={scoreCellWidth}
+                showFullBar
+                horizontalLayout
+              >
+                <span slot="caption">
+                  <strong>{format('.1%')(metric.mean)}</strong>
+                  {#if hovering && metric.hasOwnProperty('share')}
+                    &nbsp;
+                    <span
+                      style="font-size: 0.7rem;"
+                      class="italic text-gray-700"
+                      >({format('.1%')(metric.share)} of total)</span
+                    >
+                  {/if}
+                </span>
+              </SliceMetricBar>
+            {:else if metric.type == 'count'}
+              <SliceMetricBar
+                title={name}
+                value={metric.share}
+                width={scoreCellWidth}
+                color={ColorWheel[i]}
+                showFullBar
+                horizontalLayout
+              >
+                <span slot="caption">
+                  <strong>{format(',')(metric.count)}</strong
+                  >&nbsp;{#if hovering}<span
+                      style="font-size: 0.7rem;"
+                      class="italic text-gray-700"
+                      >({format('.1%')(metric.share)})</span
+                    >{/if}
+                </span>
+              </SliceMetricBar>
+            {:else if metric.type == 'continuous'}
+              <SliceMetricHistogram
+                title={name}
+                horizontalLayout
+                mean={metric.mean}
+                color={ColorWheel[i]}
+                histValues={metric.hist}
+                width={scoreCellWidth}
+              />
+            {:else if metric.type == 'categorical'}
+              <SliceMetricCategoryBar
+                title={name}
+                horizontalLayout
+                order={metricInfo[name].order}
+                counts={metric.counts}
+                width={scoreCellWidth}
+              />
+            {/if}
           {/if}
-        {/if}
-      </div>
-    {/each}
-    {#if showScores}
-      {#each scoreNames as scoreName}
-        <div class="p-2 pt-3" style="width: {TableWidths.Score}px;">
-          <SliceMetricBar
-            value={sliceForScores.scoreValues[scoreName]}
-            scale={scoreWidthScalers[scoreName] || ((v) => v)}
-            width={TableWidths.Score - 24}
-          />
-        </div>
-      {/each}
-    {:else}
-      <div />
-    {/if}
+        {/each}
+      {/if}
+    </div>
   </div>
 {/if}
 
 <style>
   .slice-row {
     min-width: 100%;
-  }
-  .slice-row > * {
-    flex: 0 0 auto;
   }
 </style>

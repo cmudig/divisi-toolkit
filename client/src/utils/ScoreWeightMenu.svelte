@@ -9,6 +9,7 @@
     faChevronUp,
   } from '@fortawesome/free-solid-svg-icons';
   import { createEventDispatcher } from 'svelte';
+  import { ColorWheelTailwind } from './colorwheel';
 
   const dispatch = createEventDispatcher();
 
@@ -21,34 +22,7 @@
   let expanded = false;
 
   // these have to be specifically included in build for tailwind to import them
-  const scoreColors = [
-    'blue-400',
-    'amber-400',
-    'emerald-400',
-    'lime-600',
-    'fuchsia-800',
-    'violet-600',
-    'lime-800',
-    'amber-800',
-    'cyan-400',
-    'red-600',
-    'cyan-600',
-    'emerald-800',
-    'red-800',
-    'emerald-800',
-    'red-400',
-    'cyan-800',
-    'emerald-400',
-    'blue-600',
-    'violet-800',
-    'lime-400',
-    'fuchsia-400',
-    'violet-400',
-    'blue-800',
-    'emerald-600',
-    'amber-600',
-    'fuchsia-600',
-  ];
+  const scoreColors = ColorWheelTailwind;
 
   function updateScoreWeight(scoreName: string, value: number) {
     let newScoreWeights = Object.assign({}, weights);

@@ -157,86 +157,16 @@
 <div class="relative">
   {#if showHeader}
     <div
-      class="text-left inline-flex align-top font-bold slice-header whitespace-nowrap bg-slate-100 rounded-t border-b border-slate-600"
+      class="w-full text-left inline-flex align-top font-bold slice-header whitespace-nowrap bg-slate-100 border-b border-slate-600"
     >
       <div style="width: {TableWidths.Checkbox}px;">
         <div class="p-2 w-full h-full" />
       </div>
-      <div style="width: {TableWidths.FeatureList}px;">
+      <div class="flex-auto">
         <div class="p-2">Slice</div>
       </div>
-      {#each metricNames as name}
-        <div
-          class="bg-slate-100 hover:bg-slate-200"
-          style="width: {metricInfo[name].visible
-            ? TableWidths.Metric
-            : TableWidths.CollapsedMetric}px;"
-          class:opacity-30={draggingColumn == name}
-          draggable={clickingColumn == name}
-          on:dragstart={(e) => metricDragStart(e, name)}
-          on:dragend={(e) => metricDragEnd(e, name)}
-          on:dragover|preventDefault={() => false}
-          on:dragenter={(e) => metricDragEnter(e, name)}
-          on:dragleave={(e) => metricDragLeave(e, name)}
-          on:drop|preventDefault|stopPropagation={(e) => metricDrop(e, name)}
-        >
-          <Hoverable class="potential-drop-zone p-2 " let:hovering>
-            {#if metricInfo[name].visible}
-              <div class="flex items-center">
-                <div>{name}</div>
-                <div class="flex-1" />
-                <button
-                  class="bg-transparent hover:opacity-60"
-                  class:opacity-0={!hovering}
-                  class:disabled={!hovering}
-                  on:click={(e) => {
-                    let mi = Object.assign({}, metricInfo);
-                    mi[name].visible = !mi[name].visible;
-                    metricInfo = mi;
-                  }}><Fa icon={faEye} /></button
-                >
-                <button
-                  class="ml-2 bg-transparent text-slate-400 cursor-move"
-                  on:mousedown={() => (clickingColumn = name)}
-                  on:mouseup={() => (clickingColumn = null)}
-                  class:opacity-0={!hovering}
-                  class:disabled={!hovering}
-                  ><Fa icon={faGripLinesVertical} /></button
-                >
-              </div>
-            {:else}
-              <button
-                class="bg-transparent opacity-30 hover:opacity-60"
-                on:click={(e) => {
-                  let mi = Object.assign({}, metricInfo);
-                  mi[name].visible = !mi[name].visible;
-                  metricInfo = mi;
-                }}><Fa icon={faEyeSlash} /></button
-              >
-            {/if}
-          </Hoverable>
-        </div>
-      {/each}
-      {#if showScores}
-        {#each scoreNames as score, i}
-          <div class="bg-slate-100" style="width: {TableWidths.Score}px;">
-            <div class="p-2">
-              {score}
-            </div>
-          </div>
-        {/each}
-      {/if}
-      <div
-        class="bg-slate-100 hover:bg-slate-200"
-        on:click={() => (showScores = !showScores)}
-      >
-        <div class="w-full h-full px-4 flex justify-center items-center">
-          {#if showScores}
-            <Fa icon={faAngleLeft} />
-          {:else}
-            <Fa icon={faAngleRight} />
-          {/if}
-        </div>
+      <div style="width: {TableWidths.AllMetrics}px;">
+        <div class="p-2">Metrics</div>
       </div>
     </div>
   {/if}
@@ -252,6 +182,7 @@
       {metricInfo}
       {valueNames}
       {allowedValues}
+      showFavoriteButton={false}
       isSaved={!!savedSlices.find((s) =>
         areObjectsEqual(s.feature, baseSlice.feature)
       )}
@@ -324,8 +255,5 @@
 <style>
   .slice-header {
     min-width: 100%;
-  }
-  .slice-header > * {
-    flex: 0 0 auto;
   }
 </style>

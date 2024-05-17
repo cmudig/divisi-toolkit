@@ -102,8 +102,8 @@
     $height,
     (() => {
       scales
-        .xDomain([-layoutWidth * 0.5, layoutWidth * 0.5])
-        .yDomain([-layoutHeight * 0.5, layoutHeight * 0.5])
+        .xDomain([-layoutWidth * 0.6, layoutWidth * 0.6])
+        .yDomain([-layoutHeight * 0.6, layoutHeight * 0.6])
         .xRange([0, $width])
         .yRange([0, $height])
         .makeSquareAspect()

@@ -9,6 +9,8 @@
   import BarSegment from './BarSegment.svelte';
 
   export let width = 100;
+  export let title: string | null = null;
+  export let horizontalLayout = false;
 
   export let counts: { [key: string]: number } = null;
 
@@ -51,39 +53,46 @@
   }
 </script>
 
-<div
-  style="width: {width}px; height: 6px;"
-  class="inline-block rounded overflow-hidden"
->
-  <LayerCake
-    padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
-    x="start"
-    y="index"
-    z="end"
-    xScale={scaleLinear()}
-    xDomain={[0, 1]}
-    xRange={[0, width]}
-    yScale={scaleOrdinal()}
-    yDomain={range(counts.length)}
-    yRange={schemeTableau10}
-    {data}
-    custom={{
-      hoveredGet: (d) => d.index == hoveredIndex,
-    }}
-  >
-    <Html>
-      <BarSegment
-        on:hover={(e) => (hoveredIndex = e.detail ? e.detail.index : null)}
-      />
-    </Html>
-  </LayerCake>
-</div>
-<div class="text-xs text-slate-800">
-  {#if $$slots.caption}
-    <slot name="caption" />
-  {:else if hoveredIndex != null}
-    {makeTooltipText(data[hoveredIndex])}
-  {:else}
-    &nbsp;
+<div class:flex={horizontalLayout} class="gap-1 items-center">
+  {#if !!title}
+    <div class="font-bold text-xs truncate text-right" style="width: 84px;">
+      {title}
+    </div>
   {/if}
+  <div
+    style="width: {width}px; height: 6px;"
+    class="inline-block rounded overflow-hidden"
+  >
+    <LayerCake
+      padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+      x="start"
+      y="index"
+      z="end"
+      xScale={scaleLinear()}
+      xDomain={[0, 1]}
+      xRange={[0, width]}
+      yScale={scaleOrdinal()}
+      yDomain={range(counts.length)}
+      yRange={schemeTableau10}
+      {data}
+      custom={{
+        hoveredGet: (d) => d.index == hoveredIndex,
+      }}
+    >
+      <Html>
+        <BarSegment
+          on:hover={(e) => (hoveredIndex = e.detail ? e.detail.index : null)}
+        />
+      </Html>
+    </LayerCake>
+  </div>
+  <div class="text-xs text-slate-800">
+    {#if $$slots.caption}
+      <slot name="caption" />
+    {:else if hoveredIndex != null}
+      {makeTooltipText(data[hoveredIndex])}
+    {:else}
+      &nbsp;
+    {/if}
+  </div>
 </div>

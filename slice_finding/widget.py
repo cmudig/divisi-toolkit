@@ -98,6 +98,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                                 for col in range(self.slice_finder.inputs.shape[1])}
         
         self.original_slice_finder = self.slice_finder
+        self.update_saved_slices()
         
     def get_slice_description(self, slice_obj, metrics=None):
         """
@@ -390,9 +391,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
     #     self.rerank_results()
     #     # self.should_rerun = True
         
-    @traitlets.observe("selected_slices")
-    def update_selected_slices(self, change=None):
-        selected = change.new if change is not None else self.selected_slices
+    @traitlets.observe("saved_slices")
+    def update_saved_slices(self, change=None):
+        selected = change.new if change is not None else self.saved_slices
         
         slice_masks = {}
         
@@ -404,9 +405,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             # for feature in slice_obj.feature_values.keys():
             #     univ_slice = Slice({feature: slice_obj.feature_values[feature]})
             #     slice_masks[univ_slice] = manager.slice_mask(univ_slice)
-            
-        print({s: m.sum() for s, m in slice_masks.items()})
-        
+                    
         slice_order = list(slice_masks.keys())
         self.slice_intersection_labels = [self.get_slice_description(s) for s in slice_order]
         
