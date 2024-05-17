@@ -188,7 +188,7 @@
     class="h-12 bg-slate-500 text-white flex items-center px-4"
     class:rounded-t={!isFullScreen}
   >
-    <div class="font-bold text-lg">Slice Widget</div>
+    <div class="font-bold text-lg">DIVISI</div>
 
     <div class="flex-1" />
     <button
@@ -201,6 +201,26 @@
     </button>
   </div>
   <div class="flex flex-1 w-full min-h-0">
+    <ResizablePanel
+      rightResizable
+      minWidth={240}
+      maxWidth="50%"
+      width={400}
+      height="100%"
+      class="border-x border-b border-slate-500 {!isFullScreen
+        ? 'rounded-b'
+        : ''}"
+    >
+      <div class="overflow-x-auto overflow-y-auto w-full h-full">
+        <div style="min-width: 300px;">
+          <ScoreWeightMenu
+            collapsible={false}
+            bind:weights={$scoreWeights}
+            {scoreNames}
+          />
+        </div>
+      </div>
+    </ResizablePanel>
     <div class="flex-1 h-full overflow-auto" class:p-2={isFullScreen}>
       {#if viewingTab == 0}
         <SliceSearchView
@@ -261,40 +281,38 @@
       {/if}
     </div>
 
-    {#if $sliceIntersectionCounts.length > 0}
-      <ResizablePanel
-        leftResizable
-        minWidth={20}
-        maxWidth="50%"
-        height="100%"
-        width={500}
-        class="border-x border-b border-slate-500 {!isFullScreen
-          ? 'rounded-b'
-          : ''}"
-      >
-        <div class="w-full h-full relative">
-          <div class="absolute top-0 left-0 bottom-0 right-0">
-            {#if overlapPlotMetric != null}
-              <SliceOverlapPlot
-                errorKey={overlapPlotMetric}
-                colorBySlice={true}
-                intersectionCounts={$sliceIntersectionCounts}
-                labels={$sliceIntersectionLabels}
-              />
-            {/if}
-          </div>
-          {#if metricNames.length > 0}
-            <div class="absolute top-0 left-0 mt-4 ml-4">
-              <select bind:value={overlapPlotMetric}>
-                {#each binaryMetrics as metric}
-                  <option value={metric}>{metric}</option>
-                {/each}
-              </select>
-            </div>
+    <ResizablePanel
+      leftResizable
+      minWidth={240}
+      maxWidth="50%"
+      height="100%"
+      width={300}
+      class="border-x border-b border-slate-500 {!isFullScreen
+        ? 'rounded-b'
+        : ''}"
+    >
+      <div class="w-full h-full relative">
+        <div class="absolute top-0 left-0 bottom-0 right-0">
+          {#if overlapPlotMetric != null}
+            <SliceOverlapPlot
+              errorKey={overlapPlotMetric}
+              colorBySlice={true}
+              intersectionCounts={$sliceIntersectionCounts}
+              labels={$sliceIntersectionLabels}
+            />
           {/if}
         </div>
-      </ResizablePanel>
-    {/if}
+        {#if metricNames.length > 0}
+          <div class="absolute top-0 left-0 mt-4 ml-4">
+            <select bind:value={overlapPlotMetric}>
+              {#each binaryMetrics as metric}
+                <option value={metric}>{metric}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+      </div>
+    </ResizablePanel>
   </div>
 </main>
 

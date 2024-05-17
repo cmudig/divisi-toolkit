@@ -213,8 +213,9 @@ class ForceLayout {
 onmessage = (e) => {
   let task = e.data;
   let layout = new ForceLayout(task.w ?? 400, task.h ?? 400, task.data);
+  let id = task.id;
   layout.compute({
-    callback: (result) => postMessage(result),
+    callback: (result) => postMessage({ ...result, id }),
     updateInterval: task.updateInterval,
     pointRadius: task.pointRadius,
   });

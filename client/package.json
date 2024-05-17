@@ -21,7 +21,7 @@
     "tailwindcss": "^3.2.7",
     "tslib": "^2.5.0",
     "typescript": "^5.4.2",
-    "vite": "^4.5.2"
+    "vite": "^4.5.3"
   },
   "dependencies": {
     "@fortawesome/free-regular-svg-icons": "^6.3.0",

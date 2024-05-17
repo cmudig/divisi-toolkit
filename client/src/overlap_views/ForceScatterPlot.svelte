@@ -53,7 +53,14 @@
       y: new Attribute({ value: $height * 0.5, transform: scales.yScale }),
       radius: new Attribute({
         value: pointRadius,
-        transform: (v) => Math.min(Math.max(v * scales.transform().k, 3), 12),
+        transform: (v) =>
+          Math.min(
+            Math.max(
+              (v * scales.transform().k * Math.min($width, $height)) / 400,
+              3
+            ),
+            12
+          ),
       }),
       slices: new Attribute({ value: [] }),
       numSlices: new Attribute(0),
@@ -115,15 +122,24 @@
   }
 
   let worker = null;
+  let currentWorkerID = null;
 
   async function getWorker() {
     if (!!worker) worker.terminate();
 
-    let workerURL = new URL('./force_layout_worker.js', import.meta.url);
+    let workerURL = new URL(
+      import.meta.url.substring(0, import.meta.url.lastIndexOf('/')) +
+        '/force_layout_worker.js'
+    );
 
     worker = await createWebWorker(workerURL);
 
     worker.onmessage = (e) => {
+      console.log(e.data.id, currentWorkerID);
+      if (e.data.id != currentWorkerID) {
+        worker.terminate();
+        return;
+      }
       if (e.data.positions.length != markSet.count()) {
         console.warn('Wrong number of positions in worker-returned layout');
         worker.terminate();
@@ -163,8 +179,10 @@
       )
     );
 
+    currentWorkerID = (+new Date()).toString(36).slice(-10);
     getWorker().then((w) => {
       w.postMessage({
+        id: currentWorkerID,
         w: layoutWidth,
         h: layoutHeight,
         data: $data,
@@ -202,13 +220,13 @@
         // if (!$data[i].error) radius *= 0.7;
         $ctx.strokeStyle = '#94a3b8';
         $ctx.lineWidth = 1;
-        $ctx.arc(x, y, radius - 3, 0, 2 * Math.PI, false);
+        $ctx.arc(x, y, radius * 0.5, 0, 2 * Math.PI, false);
         $ctx.stroke();
         if (outcome) {
           $ctx.fillStyle = '#94a3b8';
           $ctx.fill();
         }
-        let lw = 4; // outcome ? 4 : 2;
+        let lw = radius * 0.5; // outcome ? 4 : 2;
         $ctx.lineWidth = lw;
         // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
@@ -219,7 +237,7 @@
             $ctx.arc(
               x,
               y,
-              radius - 1, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
+              radius * 0.75, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
               -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
               -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
               false

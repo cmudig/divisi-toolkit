@@ -200,12 +200,21 @@
 
   let searchViewHeader;
   let samplerPanel;
+  let sizeObserver: ResizeObserver;
 
   $: if (!!searchViewHeader && !!samplerPanel) {
     samplerPanel.style.top = `${searchViewHeader.clientHeight}px`;
-    searchViewHeader.addEventListener('resize', () => {
+    if (!!sizeObserver) sizeObserver.unobserve(samplerPanel);
+
+    sizeObserver = new ResizeObserver(() => {
+      if (
+        !samplerPanel ||
+        samplerPanel.style.top == `${searchViewHeader.clientHeight}px`
+      )
+        return;
       samplerPanel.style.top = `${searchViewHeader.clientHeight}px`;
     });
+    sizeObserver.observe(samplerPanel);
   }
 
   function toggleSliceControl(field, value = null) {
@@ -372,52 +381,6 @@
               {/each}
             </div>
           </ActionMenuButton>
-
-          <ActionMenuButton
-            buttonClass="btn btn-slate"
-            buttonTitle="Adjust weights for how slices are ranked"
-            disabled={runningSampler}
-            menuWidth={400}
-            singleClick={false}
-          >
-            <span slot="button-content"
-              ><Fa icon={faScaleBalanced} class="inline mr-1" />
-              Sort</span
-            >
-            <div
-              slot="options"
-              let:dismiss
-              class="overflow-y-auto relative whitespace-normal"
-              style="max-height: 400px;"
-            >
-              <ScoreWeightMenu
-                collapsible={false}
-                showApplyButton
-                weights={scoreWeights}
-                {scoreNames}
-                on:apply={(e) => {
-                  scoreWeights = e.detail;
-                  dismiss();
-                }}
-                on:cancel={dismiss}
-              />
-            </div>
-          </ActionMenuButton>
-          {#if !!scoreWeights}
-            {@const sortedNames = Object.keys(scoreWeights)
-              .filter((n) => scoreWeights[n] > 0)
-              .sort((a, b) => scoreWeights[b] - scoreWeights[a])}
-            <div
-              class="text-xs text-wrap whitespace-normal shrink-0"
-              style="width: 240px;"
-            >
-              Sorting by <strong>{sortedNames.slice(0, 2).join(', ')}</strong>
-              {#if sortedNames.length > 2}
-                and {sortedNames.length - 2} other{sortedNames.length - 2 > 1
-                  ? 's'
-                  : ''}{/if}
-            </div>
-          {/if}
         </div>
         {#each Object.keys(SliceControlEnableNames) as control}
           {#if enabledSliceControls[SliceControlEnableNames[control]]}

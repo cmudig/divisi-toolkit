@@ -158,15 +158,15 @@ class DiscretizedData:
 def _represent_bin(bins, i, quantile=False):
     if quantile:
         if i == 0:
-            return f"< {bins[0] * 100:.2g}%"
+            return f"< {bins[0] * 100:.5g}%"
         elif i == len(bins):
-            return f"> {bins[-1] * 100:.2g}%"
-        return f"{bins[i - 1] * 100:.2g}% - {bins[i] * 100:.2g}%"
+            return f"> {bins[-1] * 100:.5g}%"
+        return f"{bins[i - 1] * 100:.5g}% - {bins[i] * 100:.5g}%"
     if i == 0:
-        return f"< {bins[0]:.2g}"
+        return f"< {bins[0]:.5g}"
     elif i == len(bins):
-        return f"> {bins[-1]:.2g}"
-    return f"{bins[i - 1]:.2g} - {bins[i]:.2g}"
+        return f"> {bins[-1]:.5g}"
+    return f"{bins[i - 1]:.5g} - {bins[i]:.5g}"
 
 def discretize_column(column_name, column_data, col_spec):
     if callable(col_spec["method"]):
@@ -199,12 +199,13 @@ def discretize_column(column_name, column_data, col_spec):
         codes, uniques = pd.factorize(column_data.astype(str), sort=True)
         unique_vals = sorted(uniques)
         result = np.where(pd.isna(column_data), np.nan, codes)
-        column_desc = (column_name, {i: v for i, v in enumerate(uniques)})
+        col_names = {i: v for i, v in enumerate(uniques)}
         
         if "nan_name" in col_spec:
             # Set the nan value to the max plus one
             result[pd.isna(column_data)] = len(uniques)
             col_names[len(unique_vals)] = col_spec["nan_name"]
+        column_desc = (column_name, col_names)
     
     return result, column_desc
     
@@ -304,3 +305,18 @@ def discretize_token_sets(token_sets, token_idx_mapping=None, n_top_columns=None
     }
     
     return DiscretizedData(bow_mat, value_mapping)
+
+def concat_discrete_dfs(dfs):
+    """
+    Creates a new discrete dataframe containing the columns from all of the given
+    discrete dataframes. Sparse matrix representations will be converted to dense.
+    """
+    mats = []
+    value_names = {}
+    for df in dfs:
+        if isinstance(df.df, sps.csr_matrix):
+            mats.append(np.array(df.df.toarray(), dtype=np.uint8))
+        else:
+            mats.append(df.df)
+        value_names.update({i + len(value_names): v for i, v in df.value_names.items()})
+    return DiscretizedData(np.hstack(mats), value_names)
