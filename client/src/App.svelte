@@ -19,6 +19,7 @@
   import { areObjectsEqual, areSetsEqual } from './utils/utils';
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
   import ResizablePanel from './utils/ResizablePanel.svelte';
+  import ConfigurationView from './configuration/ConfigurationView.svelte';
 
   export let model;
 
@@ -47,6 +48,19 @@
 
   let valueNames = traitlet(model, 'value_names', {});
 
+  let metricInfo = traitlet(model, 'metric_info', {});
+  let derivedMetricConfigs = traitlet(model, 'derived_metric_config', {});
+  let scoreFunctionConfigs = traitlet(model, 'score_function_config', {});
+  let metricExpressionRequest = traitlet(
+    model,
+    'metric_expression_request',
+    null
+  );
+  let metricExpressionResponse = traitlet(
+    model,
+    'metric_expression_response',
+    null
+  );
   let scoreWeights = traitlet(model, 'score_weights', {});
 
   let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
@@ -102,6 +116,7 @@
     console.log('overlap metric:', overlapPlotMetric);
   }
   let overlapPlotMetric: string | null = null;
+  let hiddenMetrics: string[] = [];
 
   let parentElement: Element;
   let isFullScreen = false;
@@ -222,6 +237,7 @@
           savedSlices={$savedSlices}
           {valueNames}
           baseSlice={$baseSlice}
+          bind:hiddenMetrics
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           bind:enabledSliceControls={$enabledSliceControls}
@@ -291,12 +307,16 @@
         </div>
 
         {#if currentView == View.configuration}
-          <div class="overflow-x-auto overflow-y-auto w-full h-full">
-            <div style="min-width: 300px;">
-              <ScoreWeightMenu
-                collapsible={false}
-                bind:weights={$scoreWeights}
-                {scoreNames}
+          <div class="overflow-x-auto overflow-y-auto w-full min-h-0">
+            <div style="min-width: 300px;" class="w-full">
+              <ConfigurationView
+                metricInfo={$metricInfo}
+                bind:derivedMetricConfigs={$derivedMetricConfigs}
+                bind:hiddenMetrics
+                bind:scoreFunctionConfigs={$scoreFunctionConfigs}
+                bind:scoreWeights={$scoreWeights}
+                bind:metricExpressionRequest={$metricExpressionRequest}
+                bind:metricExpressionResponse={$metricExpressionResponse}
               />
             </div>
           </div>
@@ -317,7 +337,7 @@
           </div>
           {#if metricNames.length > 0}
             <div class="absolute top-0 left-0 mt-4 ml-4">
-              <select bind:value={overlapPlotMetric}>
+              <select class="flat-select" bind:value={overlapPlotMetric}>
                 {#each binaryMetrics as metric}
                   <option value={metric}>{metric}</option>
                 {/each}

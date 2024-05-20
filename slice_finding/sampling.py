@@ -505,14 +505,47 @@ class SamplingSliceFinder:
             self.progress_fn(i, total)
             yield item
         self.progress_fn(total, total)
-    
-    def sample(self, num_samples):
-        """
-        Runs the sampling slice finder for a set number of samples.
         
-        :param num_samples: The number of samples to draw from the dataset
-        :return: All slices found so far in a RankedSliceList object
+    def rescore(self, new_score_fns):
         """
+        Updates the set of score functions, re-evaluates the slice scores, and 
+        returns the new RankedSliceList. Also sets the score_fns property to the 
+        provided value.
+        """
+        _, discovery_inputs, _ = self.make_discovery_inputs()
+        discovery_score_fns = {fn_name: fn.subslice(self.discovery_mask)
+                            for fn_name, fn in new_score_fns.items()}
+        univariate_masks = {}
+        rescored_slices = score_slices_batch(self.all_scores,
+                                                discovery_inputs,
+                                                discovery_score_fns,
+                                                self.max_features,
+                                                min_items=self.min_items,
+                                                device=self.device,
+                                                univariate_masks=univariate_masks)
+        
+        self.seen_slices = {}
+        self.all_scores = []
+        for old_slice, new_slice in rescored_slices.items():
+            if new_slice is not None:
+                self.all_scores.append(new_slice)
+                self.seen_slices[new_slice] = new_slice.score_values
+            else:
+                self.seen_slices[old_slice] = None
+        print(self.all_scores[0])
+                
+        self.score_fns = new_score_fns
+        self.results = RankedSliceList(list(set(self.all_scores)),
+                            self.inputs,
+                            self.score_fns,
+                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
+                            min_weight=self.min_weight,
+                            max_weight=self.max_weight,
+                            similarity_threshold=self.similarity_threshold,
+                            device=self.device)
+        return self.results
+        
+    def make_discovery_inputs(self):
         if self.source_mask is not None:
             source_mask = (self.source_mask.values if isinstance(self.source_mask, pd.Series) else self.source_mask).copy()
             source_mask &= self.discovery_mask
@@ -538,6 +571,16 @@ class SamplingSliceFinder:
             source_mask &= initial_slice_mask
             if source_mask.sum() == 0:
                 raise ValueError("No samples can be taken from the intersection of the provided source mask and the initial slice")
+        return source_mask, discovery_inputs, discovery_score_fns
+
+    def sample(self, num_samples):
+        """
+        Runs the sampling slice finder for a set number of samples.
+        
+        :param num_samples: The number of samples to draw from the dataset
+        :return: All slices found so far in a RankedSliceList object
+        """
+        source_mask, discovery_inputs, discovery_score_fns = self.make_discovery_inputs()
         
         allowed_indexes = np.argwhere(source_mask).flatten()
         sample_idxs = np.random.choice(allowed_indexes, 

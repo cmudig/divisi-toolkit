@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import time
 from .slices import Slice, SliceFeatureBase
+from .sampling import SamplingSliceFinder
 from .filters import *
 from .scores import *
 from .discretization import DiscretizedData
@@ -36,9 +37,23 @@ class SliceFinderWidget(anywidget.AnyWidget):
     running_sampler = traitlets.Bool(False).tag(sync=True)
     num_samples_drawn = traitlets.Int(0).tag(sync=True)
     sampler_run_progress = traitlets.Float(0.0).tag(sync=True)
+    score_functions = traitlets.Dict({})
+    score_function_config = traitlets.Dict({}).tag(sync=True)
     score_weights = traitlets.Dict({}).tag(sync=True)
     metrics = traitlets.Dict({})
+    metric_info = traitlets.Dict({}).tag(sync=True)
+    derived_metrics = traitlets.Dict({})
+    derived_metric_config = traitlets.Dict({}).tag(sync=True)
+    
     positive_only = traitlets.Bool(False).tag(sync=True)
+    
+    source_mask_expr = traitlets.Unicode("").tag(sync=True)
+    min_items_fraction = traitlets.Float(0.01).tag(sync=True)
+    max_features = traitlets.Int(3).tag(sync=True)
+    
+    metric_expression_request = traitlets.Dict(None).tag(sync=True)
+    # Keys: error (string), success (boolean)
+    metric_expression_response = traitlets.Dict(None).tag(sync=True)
     
     slices = traitlets.List([]).tag(sync=True)
     custom_slices = traitlets.List([]).tag(sync=True)
@@ -70,20 +85,78 @@ class SliceFinderWidget(anywidget.AnyWidget):
     similar_to_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
     subslice_of_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
     
-    def __init__(self, slice_finder, *args, **kwargs):
+    def __init__(self, discrete_data, *args, **kwargs):
         try:
             self._esm = DEV_ESM_URL if kwargs.get('dev', False) else (BUNDLE_DIR / "widget-main.js").read_text()
             self._css = DEV_CSS_URL if kwargs.get('dev', False) else (BUNDLE_DIR / "style.css").read_text()
         except FileNotFoundError:
             raise ValueError("No built widget source found, and dev is set to False. To resolve, run npx vite build from the client directory.")
-        self.slice_finder = slice_finder
+        
+        self.slice_finder = None
+        
+        metric_info = {}
+        for name, data in kwargs.get("metrics", {}).items():
+            if isinstance(data, dict):
+                # User-specified options
+                options = data
+                data = options["data"]
+            else:
+                options = {}
+            dtype = options.get("type", detect_data_type(data))
+            metric_info[name] = {
+                "type": dtype
+            }
+            if dtype == "categorical":
+                metric_info[name]["values"] = [str(v) for v in np.unique(data)]
+        self.metric_info = metric_info
+                
+        # Generate score functions automatically if needed
+        score_fn_configs = {}
+        score_weights = kwargs.get("score_weights", {})
+        provided_score_weights = len(score_weights) > 0
+        for name, fn in kwargs.get("score_functions", {}).items():
+            if isinstance(fn, ScoreFunctionBase):
+                score_fn_configs[name] = {"type": type(fn).__name__, "editable": False}
+            else:
+                score_fn_configs[name] = fn
+            if not provided_score_weights:
+                score_weights[name] = 1.0
+        if not score_fn_configs:
+            score_fn_configs["Large Slice"] = {"type": "SliceSizeScore", "ideal_fraction": 0.2, "spread": 0.1}
+            score_weights["Large Slice"] = 0.5
+            score_fn_configs["Simple Rule"] = {"type": "NumFeaturesScore"}
+            score_weights["Simple Rule"] = 0.5
+            
+            for name, info in self.metric_info.items():
+                if info["type"] == "binary":
+                    score_fn_configs[f"{name} High"] = {"type": "OutcomeRateScore", "metric": f"{{{name}}}", "inverse": False}
+                    score_fn_configs[f"{name} Low"] = {"type": "OutcomeRateScore", "metric": f"{{{name}}}", "inverse": True}
+                    score_weights[f"{name} High"] = 1.0
+                    score_weights[f"{name} Low"] = 0.0
+                elif info["type"] == "continuous":
+                    score_fn_configs[f"{name} Different"] = {"type": "MeanDifferenceScore", "metric": f"{{{name}}}"}
+                    score_weights[f"{name} Different"] = 1.0
+                
+        self.metrics = kwargs.get("metrics", {})
+        self.derived_metrics = {**self.metrics}
+        self.derived_metric_config = {k: { "expression": f"{{{k}}}" } for k in self.metrics}
+        self.score_functions = kwargs.get("score_functions", {})
+        self.score_function_config = score_fn_configs
         self._slice_description_cache = {}
+
+        self.slice_finder = SamplingSliceFinder(
+            discrete_data,
+            self.score_functions,
+            source_mask=parse_metric_expression(self.source_mask_expr, self.derived_metrics) if self.source_mask_expr else None,
+            min_items=len(data) * 0.5 * self.min_items_fraction,
+            max_features=self.max_features,
+            positive_only=self.positive_only,
+            similarity_threshold=0.9
+        )
+        
+        self.score_weights = score_weights
+        
         super().__init__(*args, **kwargs)
-        if len(self.score_weights) == 0:
-            self.score_weights = {s: 1.0 for s in self.slice_finder.score_fns}
-        else:
-            self.score_weights = {**self.score_weights,
-                                  **{n: 0.0 for n in self.slice_finder.score_fns if n not in self.score_weights}}
         self.positive_only = self.slice_finder.positive_only
         if isinstance(self.slice_finder.inputs, DiscretizedData):
             if isinstance(self.slice_finder.inputs.value_names, dict):
@@ -108,7 +181,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if not self.slice_finder or not self.slice_finder.results: return
         if slice_obj not in self._slice_description_cache:
             slice_obj = slice_obj.rescore(self.slice_finder.results.score_slice(slice_obj))
-            self._slice_description_cache[slice_obj] = self.slice_finder.results.generate_slice_description(slice_obj, metrics=metrics or self.metrics)
+            self._slice_description_cache[slice_obj] = self.slice_finder.results.generate_slice_description(slice_obj, metrics=metrics or self.derived_metrics)
         return self._slice_description_cache[slice_obj]
         
     @traitlets.observe("num_slices")
@@ -117,16 +190,18 @@ class SliceFinderWidget(anywidget.AnyWidget):
         ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=change.new)
         self.update_slices(ranked_results)
         
-    @traitlets.observe("metrics")
-    def metrics_changed(self, change):
-        for m_name, m in change.new.items():
+    @traitlets.observe("derived_metrics")
+    def metrics_changed(self, change=None):
+        mets = change.new if change is not None else self.derived_metrics
+        for m_name, m in mets.items():
             data = m["data"] if isinstance(m, dict) else m
             assert isinstance(data, np.ndarray) and len(data.shape) == 1, f"Metric data '{m_name}' must be 1D ndarray"
         if not self.slice_finder or not self.slice_finder.results: return
         self._slice_description_cache = {}
         self.slices = []
         ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
-        self.update_slices(ranked_results, metrics=change.new)
+        self.update_slices(ranked_results, metrics=mets)
+        self.update_saved_slices()
             
     @traitlets.observe("should_rerun")
     def rerun_flag_changed(self, change):
@@ -174,7 +249,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
 
     @traitlets.observe("score_weights")
     def rerank_results(self, change=None):
+        print("Reranking")
         if not self.slice_finder or not self.slice_finder.results: return
+        print("Still reranking")
         weights = change.new if change is not None else self.score_weights
         ranked_results = self.slice_finder.results.rank(weights, n_slices=self.num_slices)
         self.update_slices(ranked_results)
@@ -182,16 +259,16 @@ class SliceFinderWidget(anywidget.AnyWidget):
     def update_slices(self, ranked_results, metrics=None):
         self.update_custom_slices()
         self.slices = [
-            self.get_slice_description(slice_obj, metrics=metrics or self.metrics)
+            self.get_slice_description(slice_obj, metrics=metrics or self.derived_metrics)
             for slice_obj in ranked_results
         ]
-        self.base_slice = self.get_slice_description(Slice(SliceFeatureBase()), metrics=metrics or self.metrics)
+        self.base_slice = self.get_slice_description(Slice(SliceFeatureBase()), metrics=metrics or self.derived_metrics)
         
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):
         encoded_slices = [self.slice_finder.results.encode_slice(s) 
                           for s in (change.new if change is not None else self.custom_slices)]
-        self.custom_slice_results = [self.get_slice_description(s, metrics=self.metrics)
+        self.custom_slice_results = [self.get_slice_description(s, metrics=self.derived_metrics)
                                      for s in encoded_slices]
 
     @traitlets.observe("slice_score_requests")
@@ -303,6 +380,44 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self._slice_description_cache = {}
         self.rerank_results()
 
+    @traitlets.observe("score_function_config")
+    def update_score_functions(self, change=None):
+        configs = change.new if change is not None else self.score_function_config
+        
+        self.score_functions = {
+            n: ScoreFunctionBase.from_configuration(config, self.derived_metrics) 
+            if config.get("editable", True) else self.score_functions.get("n", None)
+            for n, config in configs.items()
+        }
+        if self.slice_finder is not None:
+            self.slice_finder.rescore(self.score_functions)
+            print(self.slice_finder.results.results, self.score_functions, self.score_weights)
+            self.rerank_results()
+
+    @traitlets.observe("derived_metric_config")
+    def update_derived_metrics(self, change=None):
+        configs = change.new if change is not None else self.derived_metric_config
+        
+        self.derived_metrics = {
+            n: {
+                **(self.metrics[n] if isinstance(self.metrics.get(n, None), dict) else {}),
+                "data": parse_metric_expression(config["expression"], self.metrics),
+            }
+            for n, config in configs.items()
+        }
+        
+    @traitlets.observe("metric_expression_request")
+    def test_metric_expression(self, change):
+        request = change.new
+        if not request:
+            self.metric_expression_response = None
+            return
+        try:
+            parse_metric_expression(request["expression"], {k: self.derived_metrics[k] for k in request.get("metrics", self.metrics)})
+        except Exception as e:
+            self.metric_expression_response = {"success": False, "error": str(e)}
+        else:
+            self.metric_expression_response = {"success": True}
         
     # @traitlets.observe("search_spec_stack")
     # def search_spec_stack_changed(self, change=None):
@@ -418,7 +533,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             if len(prefix) == len(slice_order):
                 info = {"slices": prefix, 
                                          "count": count}
-                for metric_name, data in self.metrics.items():
+                for metric_name, data in self.derived_metrics.items():
                     if isinstance(data, dict):
                         # User-specified options
                         options = data

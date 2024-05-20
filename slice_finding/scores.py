@@ -68,6 +68,24 @@ class ScoreFunctionBase:
                 setattr(self, attr, value.to(device))
         return self
     
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        """"Builds a score function object from the given configuration object and dictionary of metrics."""        
+        score_type = meta_dict["type"]
+        return globals()[score_type].from_configuration(meta_dict, metrics)
+    
+def parse_metric_expression(expr, metrics):
+    """Creates a data object representing the result of the given expression by
+    replacing angle-bracket-enclosed metric names with the metric values and
+    evaluating the expression."""
+    local_vars = {}
+    for name, data in metrics.items():
+        if isinstance(data, dict): data = data["data"]
+        random_id = 'var_' + str(np.random.randint(0, 1e15))        
+        local_vars[random_id] = data
+        expr = expr.replace(f"{{{name}}}", random_id)
+    return eval(expr.replace("!", "~"), {}, local_vars)
+    
 class EntropyScore(ScoreFunctionBase):
     """
     A score function that compares the entropy of an outcome within the slice to
@@ -130,6 +148,11 @@ class EntropyScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return EntropyScore(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
     
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        metric = parse_metric_expression(meta_dict["metric"], metrics)
+        return EntropyScore(metric, priority=meta_dict.get("priority", None), eps=meta_dict.get("eps", 1e-6))
+    
 def _nanvar(tensor, dim=None, keepdim=False):
     tensor_mean = tensor.nanmean(dim=dim, keepdim=True)
     output = (tensor - tensor_mean).square().nanmean(dim=dim, keepdim=keepdim)
@@ -168,6 +191,11 @@ class MeanDifferenceScore(ScoreFunctionBase):
     @classmethod
     def from_dict(cls, meta_dict, data):
         return MeanDifferenceScore(data)
+    
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        metric = parse_metric_expression(meta_dict["metric"], metrics)
+        return MeanDifferenceScore(metric)
     
 class SliceSizeScore(ScoreFunctionBase):
     """
@@ -208,6 +236,9 @@ class SliceSizeScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return SliceSizeScore(ideal_fraction=meta_dict["ideal_fraction"], spread=meta_dict["spread"])
     
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        return SliceSizeScore(ideal_fraction=meta_dict.get("ideal_fraction", 0.25), spread=meta_dict.get("spread", 0.2))
 
 class NumFeaturesScore(ScoreFunctionBase):
     """
@@ -233,6 +264,10 @@ class NumFeaturesScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
+        return NumFeaturesScore()
+    
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
         return NumFeaturesScore()
     
 class OutcomeRateScore(ScoreFunctionBase):
@@ -281,6 +316,10 @@ class OutcomeRateScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return OutcomeRateScore(data, inverse=meta_dict["inverse"], eps=meta_dict["eps"])
     
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        metric = parse_metric_expression(meta_dict["metric"], metrics)
+        return OutcomeRateScore(metric, inverse=meta_dict.get("inverse", False), eps=meta_dict.get("eps", 1e-6))
 
 class OutcomeShareScore(ScoreFunctionBase):
     """
@@ -315,7 +354,11 @@ class OutcomeShareScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return OutcomeShareScore(data)
     
- 
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        metric = parse_metric_expression(meta_dict["metric"], metrics)
+        return OutcomeShareScore(metric)
+
 # map from # features to matrix where rows are mask indexes and columns are 
 # positions in the return mask matrix where each mask should be applied. for
 # example, for 3 features:
@@ -408,6 +451,11 @@ class InteractionEffectScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return InteractionEffectScore(data, eps=meta_dict["eps"])
     
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        metric = parse_metric_expression(meta_dict["metric"], metrics)
+        return InteractionEffectScore(metric, eps=meta_dict.get("eps", 1e-6))
+
 
 class SliceSimilarityScore(ScoreFunctionBase):
     """
@@ -453,3 +501,7 @@ class SliceSimilarityScore(ScoreFunctionBase):
     def from_dict(cls, meta_dict, data):
         return SliceSimilarityScore(data, metric=meta_dict["metric"])
     
+    @classmethod
+    def from_configuration(cls, meta_dict, metrics):
+        metric = parse_metric_expression(meta_dict["mask"], metrics)
+        return SliceSimilarityScore(metric, metric=meta_dict.get("similarity_type", 'jaccard'))

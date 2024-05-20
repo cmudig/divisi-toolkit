@@ -14,9 +14,9 @@
   null
     ? colorClass
     : checked
-    ? 'bg-blue-400'
-    : 'bg-slate-300 hover:bg-slate-400'}"
-  on:click={(e) => {
+      ? 'bg-blue-400'
+      : 'bg-slate-300 hover:bg-slate-400'}"
+  on:click|stopPropagation={(e) => {
     checked = !checked;
     dispatch('change', checked);
   }}

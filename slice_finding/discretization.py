@@ -29,6 +29,9 @@ class DiscretizedData:
     def __contains__(self, col_name):
         return col_name in self.inverse_value_mapping
     
+    def __len__(self):
+        return len(self.df)
+    
     def column_names(self):
         return list(self.inverse_value_mapping.keys())
     

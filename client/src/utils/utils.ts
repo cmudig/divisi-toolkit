@@ -162,3 +162,14 @@ export async function createWebWorker(url: URL): Promise<Worker> {
     return new Worker(window.URL.createObjectURL(blob), { type: 'module' });
   }
 }
+
+const prefixMetrics = ['count'];
+
+export function sortMetrics(a: string, b: string): number {
+  if (prefixMetrics.includes(a.toLocaleLowerCase())) {
+    if (prefixMetrics.includes(b.toLocaleLowerCase()))
+      return a.localeCompare(b);
+    else return -1;
+  } else if (prefixMetrics.includes(b.toLocaleLowerCase())) return 1;
+  return a.localeCompare(b);
+}

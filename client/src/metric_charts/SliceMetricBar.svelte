@@ -28,7 +28,7 @@
 
 <div class:flex={horizontalLayout} class="gap-1 items-center">
   {#if !!title}
-    <div class="font-bold text-xs truncate text-right" style="width: 84px;">
+    <div class="font-bold text-xs truncate text-right" style="width: 96px;">
       {title}
     </div>
   {/if}

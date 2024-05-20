@@ -15,7 +15,7 @@
     faScaleBalanced,
     faSearch,
   } from '@fortawesome/free-solid-svg-icons';
-  import { areObjectsEqual, areSetsEqual } from '../utils/utils';
+  import { areObjectsEqual, areSetsEqual, sortMetrics } from '../utils/utils';
   import { TableWidths } from './tablewidths';
   import { createEventDispatcher } from 'svelte';
   import SliceTable from './SliceTable.svelte';
@@ -57,6 +57,8 @@
   export let selectedSlices: Slice[] = [];
   export let savedSlices: Slice[] = [];
 
+  export let hiddenMetrics: string[] = [];
+
   const SliceControlStrings = {
     containsSlice: 'Contains',
     containedInSlice: 'Contained in',
@@ -80,7 +82,7 @@
   };
 
   let metricNames = [];
-  let metricInfo = {};
+  let metricInfo: { [key: string]: any } = {};
   let scoreNames = [];
   let scoreWidthScalers = {};
 
@@ -90,38 +92,39 @@
   $: if (allSlices.length > 0) {
     let testSlice = allSlices.find((s) => !s.isEmpty);
     if (!testSlice) testSlice = allSlices[0];
-
-    // tabulate score names and normalize
-    let newScoreNames = Object.keys(testSlice.scoreValues);
-    if (!areSetsEqual(new Set(scoreNames), new Set(newScoreNames))) {
-      scoreNames = newScoreNames;
-      scoreNames.sort();
-    }
-
-    scoreWidthScalers = {};
-    scoreNames.forEach((n) => {
-      let maxScore =
-        allSlices.reduce(
-          (curr, next) => Math.max(curr, next.scoreValues[n]),
-          -1e9
-        ) + 0.01;
-      let minScore =
-        allSlices.reduce(
-          (curr, next) => Math.min(curr, next.scoreValues[n]),
-          1e9
-        ) - 0.01;
-      scoreWidthScalers[n] = (v: number) =>
-        (v - minScore) / (maxScore - minScore);
-    });
-
-    // tabulate metric names and normalize
-    if (!!testSlice.metrics) {
-      let newMetricNames = Object.keys(testSlice.metrics);
-      if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
-        metricNames = newMetricNames;
-        metricNames.sort();
+    if (!!testSlice.scoreValues) {
+      // tabulate score names and normalize
+      let newScoreNames = Object.keys(testSlice.scoreValues);
+      if (!areSetsEqual(new Set(scoreNames), new Set(newScoreNames))) {
+        scoreNames = newScoreNames;
+        scoreNames.sort();
       }
-      updateMetricInfo(testSlice.metrics);
+
+      scoreWidthScalers = {};
+      scoreNames.forEach((n) => {
+        let maxScore =
+          allSlices.reduce(
+            (curr, next) => Math.max(curr, next.scoreValues[n]),
+            -1e9
+          ) + 0.01;
+        let minScore =
+          allSlices.reduce(
+            (curr, next) => Math.min(curr, next.scoreValues[n]),
+            1e9
+          ) - 0.01;
+        scoreWidthScalers[n] = (v: number) =>
+          (v - minScore) / (maxScore - minScore);
+      });
+
+      // tabulate metric names and normalize
+      if (!!testSlice.metrics) {
+        let newMetricNames = Object.keys(testSlice.metrics);
+        if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
+          metricNames = newMetricNames;
+          metricNames.sort(sortMetrics);
+        }
+        updateMetricInfo(testSlice.metrics);
+      }
     }
   } else {
     scoreNames = [];
@@ -171,9 +174,21 @@
       } else {
         metricInfo[n] = {};
       }
-      metricInfo[n].visible = (oldMetricInfo[n] || { visible: true }).visible;
+      metricInfo[n].visible = (
+        oldMetricInfo[n] || { visible: !hiddenMetrics.includes(n) }
+      ).visible;
     });
     console.log('metric info:', metricInfo, testMetrics);
+  }
+
+  let oldHiddenMetrics: string[] = [];
+  $: if (oldHiddenMetrics !== hiddenMetrics) {
+    metricInfo = Object.fromEntries(
+      Object.entries(metricInfo).map((e) => [
+        e[0],
+        { ...e[1], visible: !hiddenMetrics.includes(e[0]) },
+      ])
+    );
   }
 
   /*function toggleSliceFeature(slice: Slice, feature: string) {
@@ -204,7 +219,7 @@
 
   $: if (!!searchViewHeader && !!samplerPanel) {
     samplerPanel.style.top = `${searchViewHeader.clientHeight}px`;
-    if (!!sizeObserver) sizeObserver.unobserve(samplerPanel);
+    if (!!sizeObserver) sizeObserver.disconnect();
 
     sizeObserver = new ResizeObserver(() => {
       if (
@@ -212,9 +227,12 @@
         samplerPanel.style.top == `${searchViewHeader.clientHeight}px`
       )
         return;
-      samplerPanel.style.top = `${searchViewHeader.clientHeight}px`;
+      setTimeout(
+        () => (samplerPanel.style.top = `${searchViewHeader.clientHeight}px`)
+      );
     });
     sizeObserver.observe(samplerPanel);
+    sizeObserver.observe(searchViewHeader);
   }
 
   function toggleSliceControl(field, value = null) {
@@ -274,6 +292,7 @@
         {positiveOnly}
         {valueNames}
         {allowedValues}
+        showHeader={false}
         bind:metricInfo
         bind:metricNames
         bind:scoreNames

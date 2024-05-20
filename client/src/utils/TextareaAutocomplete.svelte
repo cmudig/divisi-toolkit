@@ -83,7 +83,7 @@
     div.textContent = element.value.substring(0, position);
 
     const span = document.createElement('span');
-    span.textContent = element.value.substring(position) || '.';
+    span.textContent = element.value.substring(position, 1) || '.';
     div.appendChild(span);
 
     const coordinates = {
@@ -108,6 +108,11 @@
   export let visible = false;
   export let maxItems = null;
 
+  // characters that when typed will trigger autocompletion
+  export let triggers = ['"', "'"];
+  // pattern that delimits the text such that text within the same component can be autocompleted
+  export let delimiterPattern = /[\s\[\]\(\)]/;
+
   $: visible = top !== undefined;
 
   let menuRef;
@@ -120,6 +125,8 @@
   $: if (!!ref) {
     ref.addEventListener('input', onInput);
     ref.addEventListener('keydown', onKeyDown);
+    ref.addEventListener('blur', closeMenu);
+    document.addEventListener('selectionchange', onSelectionChange);
   }
 
   async function makeOptions(query, fullPrefix) {
@@ -133,6 +140,7 @@
 
   function closeMenu() {
     setTimeout(() => {
+      lastSuffix = null;
       options = [];
       left = undefined;
       top = undefined;
@@ -143,29 +151,41 @@
   function selectItem(active) {
     return () => {
       const preMention = ref.value.substr(0, triggerIdx);
-      const option = options[active];
-      const mention = replaceFn(option, ref.value[triggerIdx], preMention);
       const postMention = ref.value.substr(ref.selectionStart);
-      const newValue = `${preMention}${mention}${postMention}`;
-      ref.value = newValue;
-      const caretPosition = ref.value.length - postMention.length;
-      ref.setSelectionRange(caretPosition, caretPosition);
+      const option = options[active];
+      const mention = replaceFn(
+        option,
+        ref.value[triggerIdx],
+        preMention,
+        postMention,
+        ref.value.substr(triggerIdx, ref.selectionStart)
+      );
+      ref.setSelectionRange(triggerIdx, ref.selectionStart);
+      document.execCommand('insertText', false, mention);
+      // const newValue = `${preMention}${mention}${postMention}`;
+      // ref.value = newValue;
+      // const caretPosition = ref.value.length - postMention.length;
+      // ref.setSelectionRange(caretPosition, caretPosition);
       closeMenu();
       ref.focus();
       setTimeout(() => dispatch('replace', ref.value), 100);
     };
   }
 
+  // store what comes after the cursor, if this changes then we know the selection has changed without typing
+  let lastSuffix = null;
+
   function onInput(ev) {
     const positionIndex = ref.selectionStart;
     const textBeforeCaret = ref.value.slice(0, positionIndex);
-    const tokens = textBeforeCaret.split(/[\s\[\]\(\)]/);
+    const tokens = textBeforeCaret.split(delimiterPattern);
     const lastToken = tokens[tokens.length - 1];
     const newTriggerIdx = textBeforeCaret.endsWith(lastToken)
       ? textBeforeCaret.length - lastToken.length
       : -1;
     const maybeTrigger = textBeforeCaret[newTriggerIdx];
-    const keystrokeTriggered = maybeTrigger == '"' || maybeTrigger == "'";
+    const keystrokeTriggered = triggers.includes(maybeTrigger);
+    lastSuffix = ref.value.slice(positionIndex);
 
     if (!keystrokeTriggered) {
       closeMenu();
@@ -184,7 +204,17 @@
       top =
         window.scrollY + coords.top + newTop + coords.height - ref.scrollTop;
       triggerIdx = newTriggerIdx;
+      console.log(left, top);
     }, 0);
+  }
+
+  function onSelectionChange(ev) {
+    const activeElement = document.activeElement;
+    // Only hide the menu, don't attempt to show it when the selection changes
+    if (top === undefined || activeElement !== ref) return;
+
+    const positionIndex = ref.selectionStart;
+    if (ref.value.slice(positionIndex) != lastSuffix) closeMenu();
   }
 
   function onKeyDown(ev) {
@@ -198,6 +228,10 @@
         case 'ArrowUp':
           active = Math.max(active - 1, 0);
           keyCaught = true;
+          break;
+        case 'Escape':
+          closeMenu();
+          ev.preventDefault();
           break;
         case 'Enter':
         case 'Tab':
@@ -236,7 +270,7 @@
           role="option"
           class="menu-item pointer rounded-md px-2 py-1 {menuItemClass} hover:bg-slate-100 text-sm text-slate-400"
           on:mousedown|preventDefault|stopPropagation={() => {}}
-          on:click|preventDefault={() =>
+          on:click|preventDefault|stopPropagation={() =>
             (visibleStart = Math.max(0, visibleStart - maxItems))}
         >
           <Fa icon={faCaretUp} />
@@ -250,7 +284,9 @@
           on:mouseenter={() => (active = idx + visibleStart)}
           on:mouseleave={() => (active = null)}
           on:mousedown|preventDefault|stopPropagation={() => {}}
-          on:click|preventDefault={selectItem(idx + visibleStart)}
+          on:click|preventDefault|stopPropagation={selectItem(
+            idx + visibleStart
+          )}
         >
           {!!menuItemTextFn ? menuItemTextFn(option) : option}
         </div>
@@ -260,7 +296,7 @@
           role="option"
           class="menu-item pointer rounded-md px-2 py-1 {menuItemClass} hover:bg-slate-100 text-sm text-slate-400"
           on:mousedown|preventDefault|stopPropagation={() => {}}
-          on:click|preventDefault={() =>
+          on:click|preventDefault|stopPropagation={() =>
             (visibleStart = Math.min(
               visibleStart + maxItems,
               options.length - maxItems

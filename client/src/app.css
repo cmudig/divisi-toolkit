@@ -164,7 +164,8 @@ button[disabled] {
   pointer-events: none;
 }
 
-select.flat-select {
+select.flat-select,
+select.flat-select-small {
   -webkit-appearance: none;
   -moz-appearance: none;
   -ms-appearance: none;
@@ -174,4 +175,56 @@ select.flat-select {
 
 .slice-description {
   @apply p-2 m-1 bg-indigo-700 rounded;
+}
+
+select.flat-select,
+select.flat-select-small {
+  @apply bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg p-1.5;
+}
+
+.flat-select-small {
+  @apply pl-1.5 py-0.5;
+}
+
+select:focus {
+  @apply ring-blue-500 border-blue-500;
+}
+
+select.flat-select,
+select.flat-select-small {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg aria-hidden='true' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 10 6'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m1 1 4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 0.75rem center;
+  background-repeat: no-repeat;
+  background-size: 0.75em 0.75em;
+  padding-right: 2.5rem;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+input[type='search'].flat-text-input {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg aria-hidden='true' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z'/%3E%3C/svg%3E");
+  background-position: left 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 0.75rem 0.75rem;
+  padding-left: 1.75rem;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.flat-text-input-large {
+  @apply bg-slate-100 appearance-none border-2 border-slate-100 rounded text-slate-700 font-mono text-sm p-2;
+}
+
+.flat-text-input {
+  @apply bg-slate-100 appearance-none border-2 border-slate-100 rounded text-slate-700 font-mono text-xs p-2 leading-tight;
+}
+
+.flat-text-input-small {
+  @apply bg-slate-100 appearance-none border-2 border-slate-100 rounded text-slate-700 font-mono text-xs px-2 py-1 leading-tight;
+}
+
+.flat-text-input:focus,
+.flat-text-input-large:focus,
+.flat-text-input-small:focus {
+  @apply outline-none border-blue-600 bg-white;
 }
