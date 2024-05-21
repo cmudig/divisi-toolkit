@@ -116,23 +116,26 @@
 
 {#if !!sliceToShow}
   <div
-    class="slice-row w-full {rowClass
+    class="slice-row w-full pl-2 gap-1 {rowClass
       ? rowClass
       : 'bg-white'} inline-flex items-center"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
     on:mouseenter={() => (hovering = true)}
     on:mouseleave={() => (hovering = false)}
   >
-    <div class="p-2 grow-0 shrink-0" style="width: {TableWidths.Checkbox}px;">
-      {#if showFavoriteButton}
+    {#if showFavoriteButton}
+      <div
+        class="py-2 grow-0 shrink-0"
+        style="width: {TableWidths.Checkbox}px;"
+      >
         <button
-          class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+          class="bg-transparent hover:opacity-60 ml-1 text-slate-600 py-2"
           title="Add a new custom slice"
           on:click={() => dispatch('saveslice', slice)}
           ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
         >
-      {/if}
-    </div>
+      </div>
+    {/if}
     <div
       class="py-2 text-xs flex-auto overflow-x-auto"
       class:opacity-50={revertedScores}

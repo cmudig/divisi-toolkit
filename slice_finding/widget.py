@@ -249,20 +249,18 @@ class SliceFinderWidget(anywidget.AnyWidget):
 
     @traitlets.observe("score_weights")
     def rerank_results(self, change=None):
-        print("Reranking")
         if not self.slice_finder or not self.slice_finder.results: return
-        print("Still reranking")
         weights = change.new if change is not None else self.score_weights
         ranked_results = self.slice_finder.results.rank(weights, n_slices=self.num_slices)
         self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results, metrics=None):
         self.update_custom_slices()
+        self.base_slice = self.get_slice_description(Slice(SliceFeatureBase()), metrics=metrics or self.derived_metrics)
         self.slices = [
             self.get_slice_description(slice_obj, metrics=metrics or self.derived_metrics)
             for slice_obj in ranked_results
         ]
-        self.base_slice = self.get_slice_description(Slice(SliceFeatureBase()), metrics=metrics or self.derived_metrics)
         
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):

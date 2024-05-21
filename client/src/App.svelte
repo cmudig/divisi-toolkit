@@ -202,7 +202,7 @@
 </script>
 
 <main
-  class="w-full flex flex-col"
+  class="w-full flex flex-col bg-white"
   style={isFullScreen ? 'height: 100vh;' : 'height: 640px; max-height: 90vh;'}
   bind:this={parentElement}
 >
@@ -223,7 +223,11 @@
     </button>
   </div>
   <div class="flex flex-1 w-full min-h-0">
-    <div class="flex-1 h-full overflow-auto" class:p-2={isFullScreen}>
+    <div
+      class="flex-1 h-full overflow-auto"
+      class:pl-2={isFullScreen}
+      class:py-2={isFullScreen}
+    >
       {#if viewingTab == 0}
         <SliceSearchView
           runningSampler={$runningSampler}
@@ -291,11 +295,39 @@
       height="100%"
       width={500}
       class="border-x border-b border-slate-500 {!isFullScreen
-        ? 'rounded-b'
+        ? 'rounded-br'
         : ''}"
     >
-      <div class="w-full h-full flex flex-col">
-        <div class="w-full px-4 py-2 flex gap-3 bg-slate-200">
+      <div
+        class="w-full h-full relative"
+        class:overflow-y-auto={currentView == View.configuration}
+      >
+        <div
+          class="absolute top-0 left-0 bottom-0 right-0 w-full h-full"
+          class:hidden={currentView != View.overlaps}
+        >
+          {#if overlapPlotMetric != null}
+            <SliceOverlapPlot
+              errorKey={overlapPlotMetric}
+              colorBySlice={true}
+              intersectionCounts={$sliceIntersectionCounts}
+              labels={$sliceIntersectionLabels}
+            />
+          {/if}
+        </div>
+        {#if metricNames.length > 0 && currentView == View.overlaps}
+          <div class="absolute top-0 left-0 mt-16 ml-4">
+            <select class="flat-select" bind:value={overlapPlotMetric}>
+              {#each binaryMetrics as metric}
+                <option value={metric}>{metric}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+
+        <div
+          class="w-full px-4 py-2 flex justify-between sticky top-0 left-0 bg-white/80 z-90"
+        >
           {#each [View.configuration, View.overlaps, View.examples] as view}
             <button
               class="rounded my-2 py-1 text-center w-36 {currentView == view
@@ -307,7 +339,7 @@
         </div>
 
         {#if currentView == View.configuration}
-          <div class="overflow-x-auto overflow-y-auto w-full min-h-0">
+          <div class="w-full">
             <div style="min-width: 300px;" class="w-full">
               <ConfigurationView
                 metricInfo={$metricInfo}
@@ -321,30 +353,6 @@
             </div>
           </div>
         {:else if currentView == View.examples}{/if}
-        <div
-          class="w-full flex-auto min-h-0 relative"
-          class:hidden={currentView != View.overlaps}
-        >
-          <div class="absolute top-0 left-0 bottom-0 right-0">
-            {#if overlapPlotMetric != null}
-              <SliceOverlapPlot
-                errorKey={overlapPlotMetric}
-                colorBySlice={true}
-                intersectionCounts={$sliceIntersectionCounts}
-                labels={$sliceIntersectionLabels}
-              />
-            {/if}
-          </div>
-          {#if metricNames.length > 0}
-            <div class="absolute top-0 left-0 mt-4 ml-4">
-              <select class="flat-select" bind:value={overlapPlotMetric}>
-                {#each binaryMetrics as metric}
-                  <option value={metric}>{metric}</option>
-                {/each}
-              </select>
-            </div>
-          {/if}
-        </div>
       </div>
     </ResizablePanel>
   </div>

@@ -93,7 +93,7 @@
 
   $: if ($data.length > 0) {
     cleanUp();
-    initSimulation($data);
+    initSimulation(Object.fromEntries($data.map((d) => [d.id, d])));
   } else {
     cleanUp();
   }
@@ -135,7 +135,7 @@
     worker = await createWebWorker(workerURL);
 
     worker.onmessage = (e) => {
-      console.log(e.data.id, currentWorkerID);
+      console.log(e.data.id, currentWorkerID, e.data);
       if (e.data.id != currentWorkerID) {
         worker.terminate();
         return;
@@ -145,6 +145,7 @@
         worker.terminate();
         return;
       }
+      console.log(e.data.positions[0].x);
       markSet
         .animateTo('x', (m, i) => e.data.positions[i].x)
         .animateTo('y', (m, i) => e.data.positions[i].y)
@@ -159,25 +160,65 @@
     return worker;
   }
 
-  function initSimulation(ds) {
+  let slicePositions = {}; // put nodes with the same least-common slice in the same coordinates
+  let sliceCounts: number[] = [];
+
+  function generateRandomPosition(datum) {
+    let numSlices = datum.slices.reduce((prev, curr) => prev + curr, 0);
+
+    if (numSlices > 0) {
+      let leastCommonSlice = datum.slices.reduce(
+        (prev, curr, idx) =>
+          sliceCounts[idx] < sliceCounts[prev] ? idx : prev,
+        0
+      );
+      if (!!slicePositions[leastCommonSlice])
+        return Object.assign({}, slicePositions[leastCommonSlice]);
+      let newPos = {
+        x: Math.random() * 50 - 25,
+        y: Math.random() * 50 - 25,
+      };
+      slicePositions[leastCommonSlice] = newPos;
+      return newPos;
+    }
+    return {
+      x: Math.random() * layoutWidth - layoutWidth / 2,
+      y: Math.random() * layoutHeight - layoutHeight / 2,
+    };
+  }
+
+  function initSimulation(ds: { [key: string]: any }) {
     if (!!simulation) cleanUp();
 
-    markSet.forEach((m) => {
-      if (m.id >= ds.length) markSet.removeMark(m);
+    sliceCounts = Array.apply(null, Array($data[0].slices.length)).map(() => 0);
+    $data.forEach((d) => {
+      d.slices.forEach((x, i) => {
+        if (x) sliceCounts[i] += 1;
+      });
     });
 
-    ds.forEach((d, i) =>
-      markSet.showID(i, (mark) =>
-        mark
-          .setAttr('slices', d.slices)
-          .setAttr(
-            'numSlices',
-            d.slices.reduce((prev, curr) => prev + curr, 0)
-          )
-          .setAttr('outcome', d.outcome)
-          .setAttr('alpha', 0.0)
-      )
-    );
+    console.log('initializing simulation', Object.keys(ds).length);
+    let marksToRemove = markSet.filter((m) => !ds[m.id]).getMarks();
+    marksToRemove.forEach((m) => markSet.removeMark(m));
+
+    Object.values(ds).forEach((d, i) => {
+      if (!markSet.has(d.id)) {
+        let mark = makeMark(d.id);
+        let pos = generateRandomPosition(d);
+        mark.setAttr('x', pos.x).setAttr('y', pos.y);
+        markSet.addMark(mark);
+      }
+      let mark = markSet.getMarkByID(d.id);
+      mark
+        .setAttr('slices', d.slices)
+        .setAttr(
+          'numSlices',
+          d.slices.reduce((prev, curr) => prev + curr, 0)
+        )
+        .setAttr('outcome', d.outcome);
+    });
+
+    console.log('new mark set has', markSet.count());
 
     currentWorkerID = (+new Date()).toString(36).slice(-10);
     getWorker().then((w) => {
@@ -185,7 +226,8 @@
         id: currentWorkerID,
         w: layoutWidth,
         h: layoutHeight,
-        data: $data,
+        // make sure data is in order of the markset
+        data: markSet.getMarks().map((m) => ds[m.id]),
         pointRadius,
       });
     });
@@ -217,16 +259,22 @@
         $ctx.beginPath();
         let color =
           colorFn != null ? colorFn({ slices: itemSlices, outcome }) : null;
-        // if (!$data[i].error) radius *= 0.7;
         $ctx.strokeStyle = '#94a3b8';
         $ctx.lineWidth = 1;
-        $ctx.arc(x, y, radius * 0.5, 0, 2 * Math.PI, false);
+        $ctx.arc(
+          x,
+          y,
+          radius * (numSlices > 0 ? 0.4 : 0.5),
+          0,
+          2 * Math.PI,
+          false
+        );
         $ctx.stroke();
         if (outcome) {
           $ctx.fillStyle = '#94a3b8';
           $ctx.fill();
         }
-        let lw = radius * 0.5; // outcome ? 4 : 2;
+        let lw = radius * 0.4; // outcome ? 4 : 2;
         $ctx.lineWidth = lw;
         // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
@@ -237,7 +285,7 @@
             $ctx.arc(
               x,
               y,
-              radius * 0.75, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
+              radius * 0.6, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
               -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
               -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
               false
@@ -247,7 +295,6 @@
         }
       } else if (colorByError) {
         $ctx.beginPath();
-        let itemSlices = $data[i].slices;
         let color =
           colorFn != null
             ? colorFn({ slices: itemSlices, outcome })

@@ -329,9 +329,7 @@
     />
   {/if}
   <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
-    <div
-      class="mx-2 rounded transition-colors duration-300 bg-slate-200 text-gray-700 border-slate-200 border-2 box-border"
-    >
+    <div class="bg-slate-200 text-gray-700 rounded-l">
       {#if runningSampler}
         <div class="flex items-center px-3 py-3">
           <button

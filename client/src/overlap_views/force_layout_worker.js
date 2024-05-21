@@ -12,14 +12,14 @@ class ForceLayout {
   w;
   /** @type {number} */
   h;
-  /** @type {Array<{ slices: Array<number>, outcome: number }>} */
+  /** @type {Array<{ slices: Array<number>, outcome: number, x: number, y: number }>} */
   data;
   simulation = null;
 
   /**
    * @param {number} w
    * @param {number} h
-   * @param {Array<{ slices: Array<number>, outcome: number }>} data
+   * @param {Array<{ slices: Array<number>, outcome: number, x: number, y: number }>} data
    */
   constructor(w, h, data) {
     this.w = w;
@@ -39,17 +39,17 @@ class ForceLayout {
 
     // TODO try using UMAP as an initialization
 
-    let slicePositions = {}; // put nodes with the same least-common slice in the same coordinates
-    let counts = Array.apply(null, Array(this.data[0].slices.length)).map(
-      () => 0
-    );
-    this.data.forEach((d) => {
-      d.slices.forEach((x, i) => {
-        if (x) counts[i] += 1;
-      });
-    });
+    // let slicePositions = {}; // put nodes with the same least-common slice in the same coordinates
+    // let counts = Array.apply(null, Array(this.data[0].slices.length)).map(
+    //   () => 0
+    // );
+    // this.data.forEach((d) => {
+    //   d.slices.forEach((x, i) => {
+    //     if (x) counts[i] += 1;
+    //   });
+    // });
 
-    this.nodePositions = this.nodeData.map((n, i) => {
+    /*this.nodePositions = this.nodeData.map((n, i) => {
       if (n.numSlices > 0) {
         let leastCommonSlice = this.data[i].slices.reduce(
           (prev, curr, idx) => (counts[idx] < counts[prev] ? idx : prev),
@@ -70,13 +70,13 @@ class ForceLayout {
         vx: 0,
         vy: 0,
       };
-    });
+    });*/
+    this.nodePositions = this.data.map((d) => ({ x: d.x, y: d.y }));
   }
 
   compute(opts = {}) {
     let pointRadius = opts.pointRadius ?? 5;
 
-    this.resetNodePositions();
     let counts = Array.apply(null, Array(this.data[0].slices.length)).map(
       () => 0
     );

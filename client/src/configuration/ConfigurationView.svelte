@@ -33,7 +33,12 @@
 
 <div class="w-full pt-2 px-2">
   <div class="px-2 mb-2 flex items-center justify-between">
-    <div class="font-bold">METRICS</div>
+    <div>
+      <div class="font-bold">METRICS</div>
+      <div class="text-xs text-slate-600">
+        Define what metrics will be shown for each slice.
+      </div>
+    </div>
     <button
       class="btn btn-slate ml-2 py-1"
       on:click={(e) => (creatingNewDerivedMetric = true)}
@@ -97,8 +102,13 @@
       bind:metricExpressionResponse
     />
   {/if}
-  <div class="px-2 mt-4 mb-2 justify-between items-center flex">
-    <div class="font-bold">SCORE FUNCTIONS</div>
+  <div class="px-2 mb-1 mt-4 justify-between items-center flex">
+    <div>
+      <div class="font-bold">SCORE FUNCTIONS</div>
+      <div class="text-xs text-slate-600">
+        Define and reweight how slices will be ranked.
+      </div>
+    </div>
     <button
       class="btn btn-slate ml-2 py-1"
       on:click={(e) => (creatingNewScoreFunction = true)}

@@ -2,9 +2,10 @@
   import { LayerCake, Canvas } from 'layercake';
   import ForceScatterPlot from './ForceScatterPlot.svelte';
   import * as d3 from 'd3';
+  import { shuffle } from '../utils/utils';
 
-  export let intersectionCounts = [];
-  export let labels = [];
+  export let intersectionCounts: any[] = [];
+  export let labels: { stringRep: string }[] = [];
   export let numPoints = 500;
   export let selectedIndexes = null;
 
@@ -27,9 +28,13 @@
 
   let numPerPoint;
 
-  $: if (intersectionCounts.length > 0) {
-    sliceCount = intersectionCounts[0].slices.length;
+  function randomPointID(): string {
+    return Array.from(Array(20), () =>
+      Math.floor(Math.random() * 36).toString(36)
+    ).join('');
+  }
 
+  function generatePointData() {
     let totalPoints = intersectionCounts.reduce(
       (prev, curr) => prev + curr.count,
       0
@@ -45,27 +50,158 @@
       0
     );
 
-    pointData = intersectionCounts
-      .map((item) => {
-        let errors = Math.round(item[errorKey] / numPerPoint);
-        let noErrors = Math.round((item.count - item[errorKey]) / numPerPoint);
-        return [
-          ...Array.apply(null, Array(noErrors)).map((_) => ({
-            slices: item.slices,
-            outcome: false,
-          })),
-          ...Array.apply(null, Array(errors)).map((_) => ({
-            slices: item.slices,
-            outcome: true,
-          })),
-        ];
-      })
-      .flat();
+    if (pointData.length > 0) {
+      // remap the existing point data where possible
+      let unmappedIndexes: Set<number> = new Set(
+        new Array(pointData.length).fill(0).map((_, i) => i)
+      );
+      let existingIndexMap: Map<string, number[]> = new Map();
+      let makeKey = (d, ls) =>
+        `${d.outcome}:` +
+        d.slices
+          .map((s: boolean, j: number) => (s ? ls[j].stringRep : null))
+          .filter((x: string | null) => x !== null)
+          .join(', ');
+      pointData.forEach((d, i) => {
+        let key = makeKey(d, oldLabels);
+        if (existingIndexMap.has(key)) existingIndexMap.get(key).push(i);
+        else existingIndexMap.set(key, [i]);
+      });
+
+      // go over intersections that existed already first
+      let mappedCounts: any[] = intersectionCounts
+        .map((item) => {
+          let errors = Math.round(item[errorKey] / numPerPoint);
+          let noErrors = Math.round(
+            (item.count - item[errorKey]) / numPerPoint
+          );
+          let noErrorMapKey = makeKey(
+            { slices: item.slices, outcome: false },
+            labels
+          );
+          let errorMapKey = makeKey(
+            { slices: item.slices, outcome: true },
+            labels
+          );
+          let mappedErrors = 0;
+          let mappedNoErrors = 0;
+          if (existingIndexMap.has(errorMapKey)) {
+            mappedErrors = Math.min(
+              errors,
+              existingIndexMap.get(errorMapKey).length
+            );
+            existingIndexMap
+              .get(errorMapKey)
+              .slice(0, mappedErrors)
+              .forEach((i) => {
+                pointData[i].slices = item.slices; // in case the slices are in different order
+                unmappedIndexes.delete(i);
+              });
+          }
+          if (existingIndexMap.has(noErrorMapKey)) {
+            mappedNoErrors = Math.min(
+              noErrors,
+              existingIndexMap.get(noErrorMapKey).length
+            );
+            existingIndexMap
+              .get(noErrorMapKey)
+              .slice(0, mappedNoErrors)
+              .forEach((i) => {
+                pointData[i].slices = item.slices; // in case the slices are in different order
+                unmappedIndexes.delete(i);
+              });
+          }
+          return [
+            {
+              ...item,
+              outcome: true,
+              total: errors,
+              mapped: mappedErrors,
+            },
+            {
+              ...item,
+              outcome: false,
+              total: noErrors,
+              mapped: mappedNoErrors,
+            },
+          ];
+        })
+        .flat();
+
+      console.log(
+        'after mapping existing intersections:',
+        mappedCounts,
+        unmappedIndexes
+      );
+      // remap remaining intersections to random points
+      mappedCounts.forEach((item) => {
+        while (item.total > item.mapped) {
+          if (unmappedIndexes.size == 0) {
+            pointData.push({
+              slices: item.slices,
+              outcome: item.outcome,
+              id: randomPointID(),
+            });
+          } else {
+            let randomIdx = [...unmappedIndexes][
+              Math.floor(Math.random() * unmappedIndexes.size)
+            ];
+            console.log(randomIdx, pointData[randomIdx]);
+            pointData[randomIdx].slices = item.slices;
+            pointData[randomIdx].outcome = item.outcome;
+            unmappedIndexes.delete(randomIdx);
+          }
+          item.mapped++;
+        }
+      });
+
+      pointData = pointData.filter((_, i) => !unmappedIndexes.has(i));
+      console.log('final:', pointData);
+    } else {
+      pointData = intersectionCounts
+        .map((item) => {
+          let errors = Math.round(item[errorKey] / numPerPoint);
+          let noErrors = Math.round(
+            (item.count - item[errorKey]) / numPerPoint
+          );
+          return [
+            ...Array.apply(null, Array(noErrors)).map((_) => ({
+              slices: item.slices,
+              outcome: false,
+              id: randomPointID(),
+            })),
+            ...Array.apply(null, Array(errors)).map((_) => ({
+              slices: item.slices,
+              outcome: true,
+              id: randomPointID(),
+            })),
+          ];
+        })
+        .flat();
+      shuffle(pointData);
+    }
     colorScale = d3
       .scaleSequential(d3.interpolateSpectral)
       // .scaleOrdinal(d3.schemeCategory10)
       // .domain(d3.range(1, intersectionCounts[0].slices.length + 1));
       .domain([1, maxNumSlices]);
+  }
+
+  let oldLabels = [];
+  let oldErrorKey = '';
+  $: if (
+    intersectionCounts.length > 0 &&
+    (labels !== oldLabels || oldErrorKey !== errorKey)
+  ) {
+    sliceCount = intersectionCounts[0].slices.length;
+
+    if (sliceCount == labels.length) {
+      if (oldErrorKey !== errorKey) pointData = [];
+
+      generatePointData();
+      oldLabels = labels;
+      oldErrorKey = errorKey;
+    }
   } else {
     pointData = [];
   }

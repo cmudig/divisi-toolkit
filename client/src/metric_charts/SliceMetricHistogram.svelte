@@ -54,7 +54,11 @@
   }
 </script>
 
-<div class:flex={horizontalLayout} class="gap-1 items-center">
+<div
+  class:flex={horizontalLayout}
+  class:my-0.5={horizontalLayout}
+  class="gap-1 items-center"
+>
   {#if !!title}
     <div class="font-bold text-xs truncate text-right" style="width: 96px;">
       {title}
@@ -86,12 +90,12 @@
       </LayerCake>
     {/if}
   </div>
-  <div class="mt-1 text-xs text-slate-800 truncate">
+  <div class:mt-1={!horizontalLayout} class="text-xs text-slate-800 truncate">
     {#if !$$slots.caption}
       {#if hoveredBin != null}
         {makeTooltipText(data.find((d) => d.bin == hoveredBin))}
       {:else if mean != null}
-        M = {format('.3')(mean)}
+        M = <strong>{format('.3')(mean)}</strong>
       {:else}
         &nbsp;{/if}
     {:else}
