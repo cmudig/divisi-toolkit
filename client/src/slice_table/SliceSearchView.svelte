@@ -331,12 +331,7 @@
   <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
     <div class="bg-slate-200 text-gray-700 rounded-l">
       {#if runningSampler}
-        <div class="flex items-center px-3 py-3">
-          <button
-            class="ml-2 mr-4 btn btn-blue disabled:opacity-50"
-            disabled={shouldCancel}
-            on:click={() => (shouldCancel = true)}>Stop</button
-          >
+        <div class="flex items-center px-4 py-3">
           <div class="flex-auto">
             <div class="text-sm">
               {#if shouldCancel}
@@ -355,14 +350,17 @@
               />
             </div>
           </div>
+          <button
+            class="ml-2 btn btn-blue disabled:opacity-50"
+            disabled={shouldCancel}
+            on:click={() => (shouldCancel = true)}>Stop</button
+          >
         </div>
       {:else}
-        <div class="flex pl-3 items-center whitespace-nowrap gap-3">
-          <button
-            class="my-3 ml-1 btn btn-blue disabled:opacity-50"
-            disabled={runningSampler}
-            on:click={() => dispatch('runsampler')}>Find Slices</button
-          >
+        <div class="flex px-4 items-center whitespace-nowrap gap-3">
+          <div class="text-slate-500 font-bold flex-auto text-base">
+            Slice Search
+          </div>
           <div>
             <input
               class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
@@ -398,6 +396,11 @@
               {/each}
             </div>
           </ActionMenuButton>
+          <button
+            class="my-3 ml-1 btn btn-blue disabled:opacity-50"
+            disabled={runningSampler}
+            on:click={() => dispatch('runsampler')}>Find Slices</button
+          >
         </div>
         {#each Object.keys(SliceControlEnableNames) as control}
           {#if enabledSliceControls[SliceControlEnableNames[control]]}

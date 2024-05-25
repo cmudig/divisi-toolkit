@@ -35,7 +35,7 @@
         >
       {:else}
         <button
-          class="bg-transparent text-sm font-mono text-black font-normal hover:opacity-70"
+          class="bg-transparent text-sm font-mono text-gray-800 font-normal hover:opacity-70"
           disabled={!canToggle}
           class:opacity-50={featureDisabled}
           title={featureDisabled
@@ -49,7 +49,9 @@
           {#if featureDisabled}
             <span class="opacity-50">(any value)</span>
           {:else}
-            <span class="text-gray-600">{feature.vals.join(', ')}</span>
+            <span class="text-gray-500 font-bold"
+              >{feature.vals.join(', ')}</span
+            >
           {/if}
         </div>
       {/if}

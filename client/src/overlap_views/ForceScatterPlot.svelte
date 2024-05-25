@@ -259,7 +259,7 @@
         $ctx.beginPath();
         let color =
           colorFn != null ? colorFn({ slices: itemSlices, outcome }) : null;
-        $ctx.strokeStyle = '#94a3b8';
+        $ctx.strokeStyle = '#cbd5e1';
         $ctx.lineWidth = 1;
         $ctx.arc(
           x,
@@ -271,7 +271,7 @@
         );
         $ctx.stroke();
         if (outcome) {
-          $ctx.fillStyle = '#94a3b8';
+          $ctx.fillStyle = '#cbd5e1';
           $ctx.fill();
         }
         let lw = radius * 0.4; // outcome ? 4 : 2;

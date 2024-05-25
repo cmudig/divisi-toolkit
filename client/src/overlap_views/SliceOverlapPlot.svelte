@@ -232,13 +232,13 @@
     if (colorBySlice) {
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-        if (allEqual) return '#94a3b8';
+        if (allEqual) return '#cbd5e1';
         return null;
       } else if (selIndexes != null) {
-        if (selIndexes.some((s, i) => item.slices[i] && s)) return '#94a3b8';
+        if (selIndexes.some((s, i) => item.slices[i] && s)) return '#cbd5e1';
         return null;
       }
-      return '#94a3b8';
+      return '#cbd5e1';
     } else if (colorByError) {
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
@@ -253,14 +253,14 @@
     }
     if (selectedSlices != null) {
       let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-      if (allEqual) return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
+      if (allEqual) return numSlices == 0 ? '#cbd5e1' : colorScale(numSlices);
       return '#e2e8f0';
     } else if (selIndexes != null) {
       if (selIndexes.some((s, i) => item.slices[i] && s))
-        return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
+        return numSlices == 0 ? '#cbd5e1' : colorScale(numSlices);
       return '#e2e8f0';
     }
-    return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
+    return numSlices == 0 ? '#cbd5e1' : colorScale(numSlices);
   }
 </script>
 
@@ -292,7 +292,7 @@
 
     {#if simulationProgress != null}
       <div
-        class="absolute bg-white/50 flex flex-col items-center justify-center top-0 left-0 right-0 bottom-0 pointer-events-none"
+        class="absolute flex flex-col items-center justify-end top-0 left-0 right-0 bottom-0 mb-8 pointer-events-none"
       >
         <div
           class="w-1/2 bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"

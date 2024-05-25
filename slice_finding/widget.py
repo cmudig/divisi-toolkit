@@ -149,6 +149,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.score_functions,
             source_mask=parse_metric_expression(self.source_mask_expr, self.derived_metrics) if self.source_mask_expr else None,
             min_items=len(data) * 0.5 * self.min_items_fraction,
+            holdout_fraction=0.5,
             max_features=self.max_features,
             positive_only=self.positive_only,
             similarity_threshold=0.9
