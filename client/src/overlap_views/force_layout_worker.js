@@ -71,10 +71,17 @@ class ForceLayout {
         vy: 0,
       };
     });*/
-    this.nodePositions = this.data.map((d) => ({ x: d.x, y: d.y }));
+    this.nodePositions = this.data.map((d) => ({
+      originalX: d.x,
+      originalY: d.y,
+      x: d.x,
+      y: d.y,
+      size: d.size,
+    }));
   }
 
   compute(opts = {}) {
+    console.log('computing');
     let pointRadius = opts.pointRadius ?? 5;
 
     let counts = Array.apply(null, Array(this.data[0].slices.length)).map(
@@ -85,76 +92,32 @@ class ForceLayout {
         if (x) counts[i] += 1;
       });
     });
-    let maxCount = counts.reduce((prev, curr) => Math.max(prev, curr), 0);
-
-    let links = [];
-    let repulsions = [];
-    let strongRepulsions = [];
-    this.data.forEach((n1, i) => {
-      this.data.forEach((n2, j) => {
-        if (i <= j) return;
-        let countEqual = n1.slices
-          .map((s1, k) => (s1 && n2.slices[k] ? 1 / counts[k] : 0))
-          .reduce((prev, curr) => prev + curr, 0);
-        let sum1 = n1.slices.reduce((prev, curr, k) => prev + curr, 0);
-        let sum2 = n2.slices.reduce((prev, curr, k) => prev + curr, 0);
-        if (sum1 == 0 && sum2 == 0) {
-          if (n1.outcome && n2.outcome)
-            repulsions.push({ source: i, target: j });
-          return; // links.push({ source: i, target: j, strength: 1.0 });
-        } else if (sum1 == 0 || sum2 == 0) {
-          return;
-        } else {
-          let allEqual = n1.slices.every((s, k) => n2.slices[k] == s);
-          if (!allEqual) strongRepulsions.push({ source: i, target: j });
-          if (countEqual != 0)
-            links.push({
-              source: i,
-              target: j,
-              strength: countEqual * (allEqual ? 3 : 1),
-            });
-        }
-      });
-    });
-
-    let linkForce = d3
-      .forceLink(links)
-      .distance(pointRadius * 1.5)
-      .strength((l) => l.strength);
-
-    let magnetForce = forceMagnetic()
-      .links(repulsions)
-      .strength(0.1)
-      .distanceWeight((d) => Math.min(1 / (d * d), 100))
-      .polarity(false);
-
-    let clusterForce = forceMagnetic()
-      .links(strongRepulsions)
-      .strength(1.0)
-      .distanceWeight((d) => Math.min(1 / (d * d), 100))
-      .polarity(false);
 
     let alphaResetInterval = 200;
-    let initialAlpha = 1.0;
+    let initialAlpha = 1e-6; // 1.0;
     let finalAlpha = 0.1;
-    let minAlpha = 1e-5;
+    let minAlpha = 1e-8;
     let numTicks = 0;
     let numResets = 40;
     let totalTicks = alphaResetInterval * numResets;
 
     this.simulation = d3
       .forceSimulation(this.nodePositions)
-      .force('center', d3.forceCenter(0, 0))
-      .force('link', linkForce)
+      // .force('center', d3.forceCenter(0, 0))
+      // .force('link', linkForce)
       .force(
         'collide',
         d3
           .forceCollide()
-          .radius(pointRadius * 2)
-          .strength(0.1)
+          .radius((d) => d.size * 2)
+          .strength(0.01)
       )
-      .force('x', d3.forceX(0).strength(0.001))
-      .force('y', d3.forceY(0).strength(0.001))
+      // .force(
+      //   'repel',
+      //   d3.forceManyBody().distanceMin(1).distanceMax(100).strength(-1)
+      // )
+      .force('x', d3.forceX((d) => d.originalX).strength(1))
+      .force('y', d3.forceY((d) => d.originalY).strength(1))
       .stop();
 
     this.simulation
@@ -163,33 +126,7 @@ class ForceLayout {
       .alphaMin(minAlpha)
       .stop();
 
-    let resetIndex = 0;
     for (let i = 0; i < totalTicks; i++) {
-      let f = this.simulation.force('collide');
-      f.strength(Math.min(1.0, f.strength() * 1.0005));
-      if (numTicks >= alphaResetInterval) {
-        numTicks = 0;
-        resetIndex++;
-        if (initialAlpha > finalAlpha) {
-          initialAlpha *= 0.7;
-          this.simulation.alpha(initialAlpha);
-        }
-        f.strength(Math.min(1.0, Math.pow((resetIndex / numResets) * 4, 2.0)));
-        if (resetIndex >= 3) {
-          this.simulation
-            .force('x')
-            .strength(0.001 * Math.pow(1.75, resetIndex - 3));
-          this.simulation
-            .force('y')
-            .strength(0.001 * Math.pow(1.75, resetIndex - 3));
-        }
-        console.log('resetting', initialAlpha, f.strength());
-        if (!this.simulation.force('magnet')) {
-          this.simulation = this.simulation
-            .force('magnet', magnetForce)
-            .force('cluster', clusterForce);
-        }
-      }
       this.simulation.tick();
       numTicks += 1;
       if (this.simulation.alpha() < minAlpha) break;
@@ -214,6 +151,7 @@ onmessage = (e) => {
   let task = e.data;
   let layout = new ForceLayout(task.w ?? 400, task.h ?? 400, task.data);
   let id = task.id;
+  console.log('received message');
   layout.compute({
     callback: (result) => postMessage({ ...result, id }),
     updateInterval: task.updateInterval,

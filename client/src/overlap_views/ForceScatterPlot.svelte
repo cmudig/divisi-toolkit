@@ -7,6 +7,7 @@
     Attribute,
     Mark,
     MarkRenderGroup,
+    PositionMap,
     Scales,
     Ticker,
     markBox,
@@ -45,31 +46,63 @@
         sel.call(zoom.transform, new d3.ZoomTransform(t.k, t.x, t.y));
       }
     });
-  let markSet = new MarkRenderGroup(makeMark);
+  let markSet = new MarkRenderGroup()
+    .configure({
+      hitTest: (mark, location) => {
+        return (
+          Math.sqrt(
+            Math.pow(mark.attr('x') - location[0], 2.0) +
+              Math.pow(mark.attr('y') - location[1], 2.0)
+          ) <=
+          mark.attr('size') + 4
+        );
+      },
+    })
+    .configureStaging({
+      initialize: (element) => element.setAttr('entranceProgress', 0),
+      enter: async (element) =>
+        await element
+          .animateTo('entranceProgress', 1.0)
+          .wait('entranceProgress'),
+      exit: async (element) =>
+        await element
+          .animateTo('entranceProgress', 0.0)
+          .wait('entranceProgress'),
+    });
+  let positionMap = new PositionMap().add(markSet);
 
   function makeMark(id: any) {
     return new Mark(id, {
-      x: new Attribute({ value: $width * 0.5, transform: scales.xScale }),
-      y: new Attribute({ value: $height * 0.5, transform: scales.yScale }),
-      radius: new Attribute({
-        value: pointRadius,
+      x: { value: $width * 0.5, transform: scales.xScale },
+      y: { value: $height * 0.5, transform: scales.yScale },
+      size: 0,
+      entranceProgress: 0,
+      radius: {
+        valueFn: (mark) => mark.attr('entranceProgress') * mark.attr('size'),
         transform: (v) =>
-          Math.min(
-            Math.max(
-              (v * scales.transform().k * Math.min($width, $height)) / 400,
-              3
-            ),
-            12
-          ),
-      }),
-      slices: new Attribute({ value: [] }),
-      numSlices: new Attribute(0),
-      outcome: new Attribute(false),
-      alpha: new Attribute(0.0),
+          (v * scales.transform().k * Math.min($width, $height)) / 400,
+      },
+      slices: [],
+      numSlices: 0,
+      outcome: false,
+      alpha: (mark) => {
+        let slices = mark.attr('slices');
+        return (
+          mark.attr('entranceProgress') *
+          (hoveredSlices !== null &&
+          (slices.length != hoveredSlices.length ||
+            !slices.every((s, i) => hoveredSlices[i] == s))
+            ? 0.2
+            : 1.0)
+        );
+      },
     });
   }
 
-  let ticker = new Ticker([markSet, scales]).onChange(draw);
+  let ticker = new Ticker([markSet, scales]).onChange(() => {
+    positionMap.invalidate();
+    draw();
+  });
 
   // We use a d3 zoom object to simplify the gesture handling, but supply the
   // output transform to our Scales instance
@@ -110,9 +143,19 @@
         .reset();
     })();
 
-  $: if (!!$ctx) {
+  let oldCtx = null;
+  $: if (!!$ctx && $ctx !== oldCtx) {
     // set up the d3 zoom object
-    d3.select($ctx.canvas as Element).call(zoom);
+    console.log('setting up canvas');
+    d3.select($ctx.canvas as Element)
+      .on('mousemove', handleMouseover)
+      .on('mouseleave', () => {
+        hoveredMousePosition = null;
+        hoveredPointIndex = null;
+        hoveredSlices = null;
+      })
+      .call(zoom);
+    oldCtx = $ctx;
   }
 
   function cleanUp() {
@@ -135,7 +178,6 @@
     worker = await createWebWorker(workerURL);
 
     worker.onmessage = (e) => {
-      console.log(e.data.id, currentWorkerID, e.data);
       if (e.data.id != currentWorkerID) {
         worker.terminate();
         return;
@@ -145,11 +187,9 @@
         worker.terminate();
         return;
       }
-      console.log(e.data.positions[0].x);
       markSet
         .animateTo('x', (m, i) => e.data.positions[i].x)
-        .animateTo('y', (m, i) => e.data.positions[i].y)
-        .animateTo('alpha', 1.0);
+        .animateTo('y', (m, i) => e.data.positions[i].y);
 
       if (e.data.tick == e.data.totalTicks) {
         simulationProgress = null;
@@ -196,21 +236,35 @@
         if (x) sliceCounts[i] += 1;
       });
     });
+    let maxSize = Object.values(ds).reduce(
+      (prev, curr) => Math.max(prev, Math.sqrt(curr.size) ?? 1),
+      1
+    );
+    console.log('max size:', maxSize);
 
-    console.log('initializing simulation', Object.keys(ds).length);
     let marksToRemove = markSet.filter((m) => !ds[m.id]).getMarks();
-    marksToRemove.forEach((m) => markSet.removeMark(m));
+    marksToRemove.forEach((m) => markSet.deleteMark(m));
 
     Object.values(ds).forEach((d, i) => {
       if (!markSet.has(d.id)) {
         let mark = makeMark(d.id);
-        let pos = generateRandomPosition(d);
+        let pos = !!d.x
+          ? {
+              x: d.x * layoutWidth - layoutWidth * 0.5,
+              y: -d.y * layoutHeight + layoutHeight * 0.5,
+            }
+          : generateRandomPosition(d);
         mark.setAttr('x', pos.x).setAttr('y', pos.y);
         markSet.addMark(mark);
+      } else markSet.get(d.id).animate('radius');
+      let mark = markSet.get(d.id);
+      if (!!d.x) {
+        mark.animateTo('x', d.x * layoutWidth - layoutWidth * 0.5);
+        mark.animateTo('y', -d.y * layoutHeight + layoutHeight * 0.5);
       }
-      let mark = markSet.getMarkByID(d.id);
       mark
         .setAttr('slices', d.slices)
+        .setAttr('size', 1 + (Math.sqrt(d.size) * 20) / maxSize)
         .setAttr(
           'numSlices',
           d.slices.reduce((prev, curr) => prev + curr, 0)
@@ -222,18 +276,26 @@
 
     currentWorkerID = (+new Date()).toString(36).slice(-10);
     getWorker().then((w) => {
+      console.log('posting message');
       w.postMessage({
         id: currentWorkerID,
         w: layoutWidth,
         h: layoutHeight,
+        updateInterval: 10,
         // make sure data is in order of the markset
-        data: markSet.getMarks().map((m) => ds[m.id]),
+        data: markSet.getMarks().map((m) => ({
+          x: ds[m.id].x * layoutWidth - layoutWidth * 0.5,
+          y: -ds[m.id].y * layoutHeight + layoutHeight * 0.5,
+          size: m.attr('size'),
+          outcome: ds[m.id].outcome,
+          slices: ds[m.id].slices,
+        })),
         pointRadius,
       });
     });
   }
 
-  function draw(colorF) {
+  function draw(colorF = null) {
     colorF = colorF || colorFn;
 
     scaleCanvas($ctx, $width, $height);
@@ -242,7 +304,7 @@
     /* --------------------------------------------
      * Draw our scatterplot
      */
-    markSet.forEach((mark, i) => {
+    markSet.stage.forEach((mark, i) => {
       let itemSlices = mark.attr('slices');
       let x = mark.attr('x');
       let y = mark.attr('y');
@@ -271,13 +333,14 @@
         );
         $ctx.stroke();
         if (outcome) {
-          $ctx.fillStyle = '#cbd5e1';
+          $ctx.fillStyle = '#94a3b8';
           $ctx.fill();
         }
         let lw = radius * 0.4; // outcome ? 4 : 2;
         $ctx.lineWidth = lw;
         // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
+          let sliceIdx = 0;
           itemSlices.forEach((s, j) => {
             if (!s) return;
             $ctx.beginPath();
@@ -286,11 +349,12 @@
               x,
               y,
               radius * 0.6, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
-              -Math.PI * 0.5 + (j * Math.PI * 2.0) / itemSlices.length,
-              -Math.PI * 0.5 + ((j + 1) * Math.PI * 2.0) / itemSlices.length,
+              -Math.PI * 0.5 + (sliceIdx * Math.PI * 2.0) / numSlices,
+              -Math.PI * 0.5 + ((sliceIdx + 1) * Math.PI * 2.0) / numSlices,
               false
             );
             $ctx.stroke();
+            sliceIdx++;
           });
         }
       } else if (colorByError) {
@@ -367,21 +431,19 @@
     $ctx.globalAlpha = 1.0;
   }*/
 
-  $: if (!!hoveredMousePosition && !!simulation) {
-    let closest = simulation.find(
-      hoveredMousePosition[0],
-      hoveredMousePosition[1],
-      pointRadius * 2
-    );
+  function handleMouseover(e: MouseEvent) {
+    let rect = e.target.getBoundingClientRect();
+    hoveredMousePosition = [e.clientX - rect.left, e.clientY - rect.top];
+    let closest = positionMap.hitTest(hoveredMousePosition);
+    let oldHover = hoveredPointIndex;
     if (!!closest) {
-      hoveredSlices = $data[closest.index].slices;
-      hoveredPointIndex = closest.index;
+      hoveredPointIndex = closest.id;
+      hoveredSlices = closest.attr('slices');
     } else {
-      hoveredSlices = null;
       hoveredPointIndex = null;
+      hoveredSlices = null;
     }
-  } else {
-    hoveredSlices = null;
-    hoveredPointIndex = null;
+    if (oldHover != hoveredPointIndex)
+      markSet.animate('alpha', { duration: 500 });
   }
 </script>

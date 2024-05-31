@@ -14,6 +14,19 @@
 
   export let errorKey;
 
+  export let groupedLayout: {
+    labels?: { stringRep: string }[];
+    overlap_plot_metric?: string;
+    layout?: {
+      [key: string]: {
+        slices: boolean[];
+        outcome: boolean;
+        x: number;
+        y: number;
+      };
+    };
+  } = {};
+
   export let hoveredSlices = null;
   let hoveredMousePosition = null;
   let hoveredSliceInfo = null;
@@ -50,7 +63,15 @@
       0
     );
 
-    if (pointData.length > 0) {
+    if (Object.keys(groupedLayout?.layout ?? {}).length > 0) {
+      console.log('grouped layout!');
+      pointData = Object.entries(groupedLayout.layout).map(
+        ([id, layoutItem]) => ({
+          ...layoutItem,
+          id: parseInt(id),
+        })
+      );
+    } /* else if (pointData.length > 0) {
       // remap the existing point data where possible
       let unmappedIndexes: Set<number> = new Set(
         new Array(pointData.length).fill(0).map((_, i) => i)
@@ -157,7 +178,7 @@
 
       pointData = pointData.filter((_, i) => !unmappedIndexes.has(i));
       console.log('final:', pointData);
-    } else {
+    } */ else {
       pointData = intersectionCounts
         .map((item) => {
           let errors = Math.round(item[errorKey] / numPerPoint);
@@ -189,18 +210,30 @@
 
   let oldLabels = [];
   let oldErrorKey = '';
+  let oldGroupedLayout = null;
   $: if (
     intersectionCounts.length > 0 &&
-    (labels !== oldLabels || oldErrorKey !== errorKey)
+    (labels !== oldLabels ||
+      oldErrorKey !== errorKey ||
+      oldGroupedLayout !== groupedLayout)
   ) {
     sliceCount = intersectionCounts[0].slices.length;
 
-    if (sliceCount == labels.length) {
+    if (
+      sliceCount == labels.length &&
+      (Object.keys(groupedLayout.layout ?? {}).length == 0 ||
+        (groupedLayout.overlap_plot_metric == errorKey &&
+          (groupedLayout.labels ?? []).length == labels.length &&
+          groupedLayout.labels.every(
+            (l, i) => l.stringRep == labels[i].stringRep
+          )))
+    ) {
       if (oldErrorKey !== errorKey) pointData = [];
 
       generatePointData();
       oldLabels = labels;
       oldErrorKey = errorKey;
+      oldGroupedLayout = groupedLayout;
     }
   } else {
     pointData = [];
@@ -221,11 +254,6 @@
         { count: 0, [errorKey]: 0 }
       );
   else hoveredSliceInfo = null;
-
-  function handleMousePosition(e) {
-    let rect = e.target.getBoundingClientRect();
-    hoveredMousePosition = [e.clientX - rect.left, e.clientY - rect.top];
-  }
 
   function color(item, selectedSlices, selIndexes) {
     let numSlices = item.slices.reduce((prev, curr) => prev + curr, 0);

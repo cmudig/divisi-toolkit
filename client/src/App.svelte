@@ -87,6 +87,8 @@
     'selected_intersection_index',
     -1
   );
+  let overlapPlotMetric = traitlet(model, 'overlap_plot_metric', '');
+  let groupedMapLayout = traitlet(model, 'grouped_map_layout', {});
 
   let viewingTab = 0; // 0 = search, 1 = curation
 
@@ -109,13 +111,12 @@
         binaryMetrics = metricNames.filter(
           (m) => testSlice.metrics[m].type == 'binary'
         );
-        if (binaryMetrics.length > 0) overlapPlotMetric = binaryMetrics[0];
-        else overlapPlotMetric = null;
+        if (binaryMetrics.length > 0) $overlapPlotMetric = binaryMetrics[0];
+        else $overlapPlotMetric = null;
       }
     }
-    console.log('overlap metric:', overlapPlotMetric);
+    console.log('overlap metric:', $overlapPlotMetric);
   }
-  let overlapPlotMetric: string | null = null;
   let hiddenMetrics: string[] = [];
 
   let parentElement: Element;
@@ -306,18 +307,19 @@
           class="absolute top-0 left-0 bottom-0 right-0 w-full h-full"
           class:hidden={currentView != View.overlaps}
         >
-          {#if overlapPlotMetric != null}
+          {#if $overlapPlotMetric != null}
             <SliceOverlapPlot
-              errorKey={overlapPlotMetric}
+              errorKey={$overlapPlotMetric}
               colorBySlice={true}
               intersectionCounts={$sliceIntersectionCounts}
               labels={$sliceIntersectionLabels}
+              groupedLayout={$groupedMapLayout}
             />
           {/if}
         </div>
         {#if metricNames.length > 0 && currentView == View.overlaps}
           <div class="absolute top-0 left-0 mt-16 ml-4">
-            <select class="flat-select" bind:value={overlapPlotMetric}>
+            <select class="flat-select" bind:value={$overlapPlotMetric}>
               {#each binaryMetrics as metric}
                 <option value={metric}>{metric}</option>
               {/each}

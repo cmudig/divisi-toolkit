@@ -11,6 +11,7 @@ from .filters import *
 from .scores import *
 from .discretization import DiscretizedData
 from .utils import powerset, detect_data_type
+from sklearn.neighbors import NearestNeighbors
 
 def default_thread_starter(fn, args=[], kwargs={}):
     thread = threading.Thread(target=fn, args=args, kwargs=kwargs)
@@ -69,6 +70,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
     selected_slices = traitlets.List([]).tag(sync=True)
     slice_intersection_labels = traitlets.List([]).tag(sync=True)
     slice_intersection_counts = traitlets.List([]).tag(sync=True)
+    grouped_map_layout = traitlets.Dict({}).tag(sync=True)
+    overlap_plot_metric = traitlets.Unicode("").tag(sync=True)
     selected_intersection_index = traitlets.Int(-1).tag(sync=True)
     
     thread_starter = traitlets.Any(default_thread_starter)
@@ -156,6 +159,22 @@ class SliceFinderWidget(anywidget.AnyWidget):
         )
         
         self.score_weights = score_weights
+        
+        if "map_layout" in kwargs:
+            self.map_layout = kwargs["map_layout"]
+        else:
+            from sklearn.manifold import TSNE
+
+            eval_df = self.slice_finder.results.eval_df
+            df = pd.DataFrame(eval_df, columns=np.arange(eval_df.shape[1])).astype('category')
+            dummy_matrix = pd.get_dummies(df).values.astype(np.uint8)
+
+            self.map_layout = TSNE(verbose=False).fit_transform(dummy_matrix)
+        self.map_layout = (self.map_layout - self.map_layout.min(axis=0)) / (self.map_layout.max(axis=0) - self.map_layout.min(axis=0))
+            
+        neighbors = NearestNeighbors(n_neighbors=min(int(len(discrete_data) * 0.02), 1000), 
+                                                metric="euclidean").fit(self.map_layout)
+        self.map_neighbor_dists, self.map_neighbors = neighbors.radius_neighbors(self.map_layout, radius=0.05, sort_results=True)
         
         super().__init__(*args, **kwargs)
         self.positive_only = self.slice_finder.positive_only
@@ -505,9 +524,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
     #     self.rerank_results()
     #     # self.should_rerun = True
         
+    @traitlets.observe("overlap_plot_metric")
+    def overlap_plot_metric_changed(self, change):
+        self.update_saved_slices(change=None, overlap_metric=change.new)
+        
     @traitlets.observe("saved_slices")
-    def update_saved_slices(self, change=None):
+    def update_saved_slices(self, change=None, overlap_metric=None):
         selected = change.new if change is not None else self.saved_slices
+        overlap_metric = overlap_metric if overlap_metric is not None else self.overlap_plot_metric
         
         slice_masks = {}
         
@@ -568,3 +592,58 @@ class SliceFinderWidget(anywidget.AnyWidget):
         #      for s, count in intersect_counts.items()
         #      if count > 0
         # ]
+        
+        if self.map_layout is not None and overlap_metric:
+            error_metric = self.derived_metrics[overlap_metric]
+            if isinstance(error_metric, dict): error_metric = error_metric["data"]
+            error_metric = error_metric[self.slice_finder.results.eval_indexes]
+            point_identity_mat = np.vstack([error_metric, *list(slice_masks.values())]).T
+
+            # nonequal_threshold = 0.1 # 10 of the points in the radius are allowed to be different
+            # min_grouping = max(4, int(len(self.map_layout) * 0.005))
+            # first_nonequal_idxs = np.zeros(len(self.map_layout), dtype=np.uint32)
+            # for i, (point_identity, idxs) in enumerate(zip(point_identity_mat, self.map_neighbors)):
+            #     nonequal = ((np.cumsum((point_identity_mat[idxs] != point_identity).sum(axis=1) > 0) / (np.arange(len(idxs)) + 1)) >= nonequal_threshold)[min_grouping:]
+            #     if not nonequal.shape[0]: 
+            #         first_nonequal_idxs[i] = len(idxs)
+            #         continue
+            #     first_nonequal = nonequal.argmax() + min_grouping
+            #     if first_nonequal < nonequal.shape[0] and nonequal[first_nonequal]:
+            #         first_nonequal_idxs[i] = first_nonequal
+            #     else:
+            #         first_nonequal_idxs[i] = len(idxs)
+
+            cluster_labels = np.ones(len(self.map_layout), dtype=np.int32) * -1
+            seen_idxs = set()
+            clust_idx = 0
+            for point_identity, neighbors in zip(point_identity_mat, self.map_neighbors): # np.flip(np.argsort(first_nonequal_idxs)):
+                cluster_idxs = [x for x in neighbors if x not in seen_idxs and (point_identity_mat[x] == point_identity).all()]
+                if not cluster_idxs: continue
+                cluster_labels[cluster_idxs] = clust_idx
+                clust_idx += 1
+                seen_idxs |= set(cluster_idxs)
+
+            cluster_labels[cluster_labels < 0] = clust_idx + np.arange((cluster_labels < 0).sum())
+
+            centroids = pd.DataFrame(self.map_layout, columns=['x', 'y']).groupby(cluster_labels).agg({'x': 'mean', 'y': 'mean'})
+            print(error_metric.shape, self.map_layout.shape, [slice_masks[o].shape for i, o in enumerate(slice_order)])
+            metadata = (pd.DataFrame({'outcome': error_metric, 
+                                      'point_index': np.arange(self.map_layout.shape[0]),
+                                     **{'slice_' + str(i): slice_masks[o] for i, o in enumerate(slice_order)}})
+                        .groupby(cluster_labels)
+                        .agg('first'))
+            sizes = pd.Series(cluster_labels).groupby(cluster_labels).size()
+            centroids['outcome'] = metadata['outcome']
+            centroids['slices'] = metadata[['slice_' + str(i) for i in range(len(slice_order))]].values.tolist()
+            centroids['size'] = sizes
+            self.grouped_map_layout = {
+                'overlap_plot_metric': overlap_metric,
+                'labels': self.slice_intersection_labels,
+                'layout': centroids.set_index(metadata['point_index'], drop=True).to_dict(orient='index')
+            }
+        else:
+            self.grouped_map_layout = {
+                'overlap_plot_metric': overlap_metric,
+                'labels': self.slice_intersection_labels,
+                'layout': {}
+            }

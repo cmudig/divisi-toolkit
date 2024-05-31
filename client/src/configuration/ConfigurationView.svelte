@@ -148,6 +148,7 @@
       }}
       bind:metricExpressionRequest
       bind:metricExpressionResponse
+      metricNames={Object.keys(derivedMetricConfigs)}
     />
   {/each}
   {#if creatingNewScoreFunction}

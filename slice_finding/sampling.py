@@ -550,7 +550,7 @@ class SamplingSliceFinder:
             source_mask = (self.source_mask.values if isinstance(self.source_mask, pd.Series) else self.source_mask).copy()
             source_mask &= self.discovery_mask
         else:
-            source_mask = self.discovery_mask
+            source_mask = self.discovery_mask.copy()
             
         source_mask &= ~self.sampled_idxs
                     
