@@ -1,5 +1,5 @@
 export const TableWidths: { [key: string]: number } = {
-  Checkbox: 36,
+  Checkbox: 50,
   ActionMenus: 42,
   FeatureList: 540,
   Metric: 120,

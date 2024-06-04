@@ -29,6 +29,8 @@ BUNDLE_DIR = pathlib.Path(__file__).parent / "static"
 class SliceFinderWidget(anywidget.AnyWidget):
     name = traitlets.Unicode().tag(sync=True)
     
+    slice_color_map = traitlets.Dict({}).tag(sync=True)
+
     num_slices = traitlets.Int(10).tag(sync=True)
     num_samples = traitlets.Int(50).tag(sync=True)
     should_rerun = traitlets.Bool(False).tag(sync=True)

@@ -94,6 +94,7 @@
   $: if ($data.length > 0) {
     cleanUp();
     initSimulation($data);
+    // console.log($data);
   } else {
     cleanUp();
   }
@@ -135,7 +136,7 @@
     worker = await createWebWorker(workerURL);
 
     worker.onmessage = (e) => {
-      console.log(e.data.id, currentWorkerID);
+      // console.log(e.data.id, currentWorkerID);
       if (e.data.id != currentWorkerID) {
         worker.terminate();
         return;
@@ -202,6 +203,7 @@
      */
     markSet.forEach((mark, i) => {
       let itemSlices = mark.attr('slices');
+      // console.log(itemSlices); //something like [1, 0]
       let x = mark.attr('x');
       let y = mark.attr('y');
       let alpha = mark.attr('alpha');
@@ -215,8 +217,8 @@
 
       if (colorBySlice) {
         $ctx.beginPath();
-        let color =
-          colorFn != null ? colorFn({ slices: itemSlices, outcome }) : null;
+        // let color =
+        //   colorFn != null ? colorFn({ slices: itemSlices, outcome }) : null;
         // if (!$data[i].error) radius *= 0.7;
         $ctx.strokeStyle = '#94a3b8';
         $ctx.lineWidth = 1;
@@ -243,8 +245,11 @@
               false
             );
             $ctx.stroke();
+            // console.log(`Mark ${i}: Color - ${sliceColorScale(j)}, Slices - ${itemSlices}, j - ${j}`);
           });
+          // console.log(`Mark ${i}: Color - ${color}, Slices - ${itemSlices}, Outcome - ${outcome}`);
         }
+        // console.log(`Mark ${i}: Color - ${color}, Slices - ${itemSlices}, Outcome - ${outcome}`);
       } else if (colorByError) {
         $ctx.beginPath();
         let itemSlices = $data[i].slices;

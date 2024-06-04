@@ -91,19 +91,28 @@
     hoveredMousePosition = [e.clientX - rect.left, e.clientY - rect.top];
   }
 
+  // The whole color function was not really used in coloring the slices
   function color(item, selectedSlices, selIndexes) {
+    // console.log("enter color");
     let numSlices = item.slices.reduce((prev, curr) => prev + curr, 0);
+    // if(numSlices != 0){
+    //   console.log("Function Input:", item, selectedSlices, selIndexes);
+    //   console.log("Number of slices:", numSlices);}
     if (colorBySlice) {
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-        if (allEqual) return '#94a3b8';
+        if (allEqual) {
+          return '#b89794';}
         return null;
       } else if (selIndexes != null) {
-        if (selIndexes.some((s, i) => item.slices[i] && s)) return '#94a3b8';
+        if (selIndexes.some((s, i) => item.slices[i] && s)) {
+          return '#b89794';}
         return null;
       }
-      return '#94a3b8';
+      // console.log("ckp1");
+      return '#b89794';
     } else if (colorByError) {
+      console.log("ckp3");
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
         if (allEqual) return item.error ? '#c2410c' : '#6ee7b7';
@@ -115,16 +124,24 @@
       }
       return item.error ? '#c2410c' : '#6ee7b7';
     }
+    console.log("ckp2");
     if (selectedSlices != null) {
+      console.log("selectedSlices != null")
       let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
+      console.log(allEqual);
+      console.log(numSlices == 0 ? '#94a3b8' : colorScale(numSlices));
       if (allEqual) return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
       return '#e2e8f0';
     } else if (selIndexes != null) {
+      console.log("selIndexes != null")
+      console.log(selIndexes);
       if (selIndexes.some((s, i) => item.slices[i] && s))
         return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
       return '#e2e8f0';
     }
-    return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
+    console.log("got here");
+    // console.log(numSlices == 0 ? '#94a3b8' : colorScale(numSlices));
+    return numSlices == 0 ? '#b89794' : colorScale(numSlices);
   }
 </script>
 

@@ -8,6 +8,11 @@
 
   export let slices: Array<Slice> = [];
 
+  export let sliceColorMap: { [key: string]: string } = {};
+
+  // $: console.log('sliceColorMap at SliceCurationTable:', sliceColorMap);
+  $: console.log('Current sliceColorMap in SliceCurationTable:', sliceColorMap);
+
   export let baseSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
@@ -96,6 +101,7 @@
       {slices}
       {baseSlice}
       {savedSlices}
+      {sliceColorMap}
       bind:selectedSlices
       bind:sliceRequests
       bind:sliceRequestResults

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { Slice } from '../utils/slice.type';
-  import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
-  import { format } from 'd3-format';
-  import SliceMetricHistogram from '../metric_charts/SliceMetricHistogram.svelte';
-  import SliceMetricCategoryBar from '../metric_charts/SliceMetricCategoryBar.svelte';
-  import { createEventDispatcher, onMount } from 'svelte';
-  import Select from 'svelte-select';
-  import Fa from 'svelte-fa/src/fa.svelte';
+  import type { Slice } from "../utils/slice.type";
+  import SliceMetricBar from "../metric_charts/SliceMetricBar.svelte";
+  import { format } from "d3-format";
+  import SliceMetricHistogram from "../metric_charts/SliceMetricHistogram.svelte";
+  import SliceMetricCategoryBar from "../metric_charts/SliceMetricCategoryBar.svelte";
+  import { createEventDispatcher, onMount } from "svelte";
+  import Select from "svelte-select";
+  import Fa from "svelte-fa/src/fa.svelte";
   import {
     faPencil,
     faPlus,
@@ -14,17 +14,19 @@
     faDownload,
     faSearch,
     faHeart,
-  } from '@fortawesome/free-solid-svg-icons';
-  import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
-  import ActionMenuButton from '../utils/ActionMenuButton.svelte';
-  import { TableWidths } from './tablewidths';
-  import SliceFeature from './SliceFeature.svelte';
-  import { areObjectsEqual, featuresHaveSameTree } from '../utils/utils';
-  import SliceFeatureEditor from './SliceFeatureEditor.svelte';
-  import { featureToString, parseFeature } from '../utils/slice_parsing';
-  import Checkbox from '../utils/Checkbox.svelte';
+  } from "@fortawesome/free-solid-svg-icons";
+  import { faHeart as faHeartOutline } from "@fortawesome/free-regular-svg-icons";
+  import ActionMenuButton from "../utils/ActionMenuButton.svelte";
+  import { TableWidths } from "./tablewidths";
+  import SliceFeature from "./SliceFeature.svelte";
+  import { areObjectsEqual, featuresHaveSameTree } from "../utils/utils";
+  import SliceFeatureEditor from "./SliceFeatureEditor.svelte";
+  import { featureToString, parseFeature } from "../utils/slice_parsing";
+  import Checkbox from "../utils/Checkbox.svelte";
 
   const dispatch = createEventDispatcher();
+
+  export let sliceColorMap: { [key: string]: string } = {};
 
   export let slice: Slice = null;
   export let scoreNames: Array<string> = [];
@@ -43,7 +45,7 @@
   export let scoreWidthScalers = {};
   export let metricInfo = {};
 
-  export let rowClass = '';
+  export let rowClass = "";
   export let maxIndent = 0;
   export let indent = 0;
 
@@ -79,29 +81,29 @@
   $: sliceForScores = revertedScores ? customSlice || slice : sliceToShow;
 
   function searchContainsSlice() {
-    dispatch('newsearch', {
-      type: 'containsSlice',
+    dispatch("newsearch", {
+      type: "containsSlice",
       base_slice: sliceToShow.feature,
     });
   }
 
   function searchContainedInSlice() {
-    dispatch('newsearch', {
-      type: 'containedInSlice',
+    dispatch("newsearch", {
+      type: "containedInSlice",
       base_slice: sliceToShow.feature,
     });
   }
 
   function searchSubslices() {
-    dispatch('newsearch', {
-      type: 'subsliceOfSlice',
+    dispatch("newsearch", {
+      type: "subsliceOfSlice",
       base_slice: sliceToShow.feature,
     });
   }
 
   function searchSimilarSlices() {
-    dispatch('newsearch', {
-      type: 'similarToSlice',
+    dispatch("newsearch", {
+      type: "similarToSlice",
       base_slice: sliceToShow.feature,
     });
   }
@@ -110,6 +112,13 @@
   function temporaryRevertSlice(revert) {
     revertedScores = revert;
   }
+
+  // $:{console.log(sliceColorMap)}
+  $: console.log(
+    "Current sliceColorMap in SliceRow:",
+    sliceColorMap,
+    slice.stringRep
+  );
 </script>
 
 {#if !!sliceToShow}
@@ -121,11 +130,26 @@
     on:mouseenter={() => (showButtons = true)}
     on:mouseleave={() => (showButtons = false)}
   >
-    <div class="p-2" style="width: {TableWidths.Checkbox}px;">
+    <div
+      class="p-2"
+      style="display: flex; align-items: center; width: {TableWidths.Checkbox}px;"
+    >
       <Checkbox
         checked={isSelected}
-        on:change={(e) => dispatch('select', !isSelected)}
+        on:change={(e) => dispatch("select", !isSelected)}
       />
+      <div
+        style="width: {sliceColorMap[slice.stringRep]
+          ? '12px'
+          : '9px'}; height: {sliceColorMap[slice.stringRep]
+          ? '12px'
+          : '9px'}; border-color: {sliceColorMap[slice.stringRep] ||
+          '#94a3b8'}; border-radius: 50%; border-width: {sliceColorMap[
+          slice.stringRep
+        ]
+          ? '3px'
+          : '1px'}; margin-left: 0px;"
+      ></div>
     </div>
     <div
       class="py-2 text-xs"
@@ -137,7 +161,7 @@
         <SliceFeatureEditor
           featureText={featureToString(
             featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
-              slice.feature.type != 'base'
+              slice.feature.type != "base"
               ? slice.feature
               : sliceToShow.feature,
             false,
@@ -147,14 +171,14 @@
           {allowedValues}
           on:cancel={(e) => {
             isEditing = false;
-            dispatch('endedit');
+            dispatch("endedit");
           }}
           on:save={(e) => {
             let newFeature = parseFeature(e.detail, allowedValues);
-            console.log('new feature:', newFeature);
+            console.log("new feature:", newFeature);
             isEditing = false;
-            dispatch('endedit');
-            dispatch('edit', newFeature);
+            dispatch("endedit");
+            dispatch("edit", newFeature);
           }}
         />
       {:else}
@@ -164,7 +188,7 @@
               feature={featuresHaveSameTree(
                 slice.feature,
                 sliceToShow.feature
-              ) && slice.feature.type != 'base'
+              ) && slice.feature.type != "base"
                 ? slice.feature
                 : sliceToShow.feature}
               currentFeature={sliceToShow.feature}
@@ -180,7 +204,7 @@
             <button
               class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
               title="Add a new custom slice"
-              on:click={() => dispatch('saveslice', slice)}
+              on:click={() => dispatch("saveslice", slice)}
               ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
             >
           {/if}
@@ -189,14 +213,14 @@
               <button
                 class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
                 title="Add a new custom slice"
-                on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
+                on:click={() => dispatch("create")}><Fa icon={faPlus} /></button
               >
             {/if}
             <button
               class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
               on:click={() => {
                 isEditing = true;
-                dispatch('beginedit');
+                dispatch("beginedit");
               }}
               title="Temporarily modify the slice definition"
               ><Fa icon={faPencil} /></button
@@ -206,7 +230,7 @@
                 class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
                 on:click={() => {
                   temporaryRevertSlice(false);
-                  dispatch('reset');
+                  dispatch("reset");
                 }}
                 on:mouseenter={() => temporaryRevertSlice(true)}
                 on:mouseleave={() => temporaryRevertSlice(false)}
@@ -333,39 +357,39 @@
         {#if sliceForScores.isEmpty}
           <span class="text-slate-600">Empty</span>
         {:else if !!metricInfo[name] && metricInfo[name].visible}
-          {#if metric.type == 'binary'}
+          {#if metric.type == "binary"}
             <SliceMetricBar
               value={metric.mean}
               scale={metricInfo[name].scale}
               width={scoreCellWidth}
             >
               <span slot="caption">
-                <strong>{format('.1%')(metric.mean)}</strong>
-                {#if metric.hasOwnProperty('share')}
+                <strong>{format(".1%")(metric.mean)}</strong>
+                {#if metric.hasOwnProperty("share")}
                   <br />
                   <span style="font-size: 0.7rem;" class="italic text-gray-700"
-                    >({format('.1%')(metric.share)} of total)</span
+                    >({format(".1%")(metric.share)} of total)</span
                   >
                 {/if}
               </span>
             </SliceMetricBar>
-          {:else if metric.type == 'count'}
+          {:else if metric.type == "count"}
             <SliceMetricBar value={metric.share} width={scoreCellWidth}>
               <span slot="caption">
-                <strong>{format(',')(metric.count)}</strong><br /><span
+                <strong>{format(",")(metric.count)}</strong><br /><span
                   style="font-size: 0.7rem;"
                   class="italic text-gray-700"
-                  >({format('.1%')(metric.share)})</span
+                  >({format(".1%")(metric.share)})</span
                 >
               </span>
             </SliceMetricBar>
-          {:else if metric.type == 'continuous'}
+          {:else if metric.type == "continuous"}
             <SliceMetricHistogram
               mean={metric.mean}
               histValues={metric.hist}
               width={scoreCellWidth}
             />
-          {:else if metric.type == 'categorical'}
+          {:else if metric.type == "categorical"}
             <SliceMetricCategoryBar
               order={metricInfo[name].order}
               counts={metric.counts}

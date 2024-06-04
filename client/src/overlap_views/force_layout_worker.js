@@ -183,7 +183,7 @@ class ForceLayout {
             .force('y')
             .strength(0.001 * Math.pow(1.75, resetIndex - 3));
         }
-        console.log('resetting', initialAlpha, f.strength());
+        // console.log('resetting', initialAlpha, f.strength());
         if (!this.simulation.force('magnet')) {
           this.simulation = this.simulation
             .force('magnet', magnetForce)

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import SliceTable from './slice_table/SliceTable.svelte';
-  import { traitlet } from './stores';
-  import ScoreWeightMenu from './utils/ScoreWeightMenu.svelte';
-  import Fa from 'svelte-fa/src/fa.svelte';
+  import SliceTable from "./slice_table/SliceTable.svelte";
+  import { traitlet } from "./stores";
+  import ScoreWeightMenu from "./utils/ScoreWeightMenu.svelte";
+  import Fa from "svelte-fa/src/fa.svelte";
   import {
     faBookBookmark,
     faChevronLeft,
@@ -10,60 +10,69 @@
     faExpand,
     faHeart,
     faSearch,
-  } from '@fortawesome/free-solid-svg-icons';
-  import SliceCurationView from './overlap_views/SliceCurationView.svelte';
-  import SliceOverlapPlot from './overlap_views/SliceOverlapPlot.svelte';
-  import SliceUpsetPlot from './overlap_views/SliceUpsetPlot.svelte';
-  import SliceRow from './slice_table/SliceRow.svelte';
-  import SliceSearchView from './slice_table/SliceSearchView.svelte';
-  import { areObjectsEqual, areSetsEqual } from './utils/utils';
-  import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
-  import ResizablePanel from './utils/ResizablePanel.svelte';
+  } from "@fortawesome/free-solid-svg-icons";
+  import SliceCurationView from "./overlap_views/SliceCurationView.svelte";
+  import SliceOverlapPlot from "./overlap_views/SliceOverlapPlot.svelte";
+  import SliceUpsetPlot from "./overlap_views/SliceUpsetPlot.svelte";
+  import SliceRow from "./slice_table/SliceRow.svelte";
+  import SliceSearchView from "./slice_table/SliceSearchView.svelte";
+  import { areObjectsEqual, areSetsEqual } from "./utils/utils";
+  import SliceCurationTable from "./slice_table/SliceCurationTable.svelte";
+  import ResizablePanel from "./utils/ResizablePanel.svelte";
+  // import { readable } from 'svelte/store';
+  // import { writable } from 'svelte/store';
+  import * as d3 from "d3";
 
+  export const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+  // const sliceColorScale = d3.scaleOrdinal(d3.schemeCategory10);
+  // export let sliceColorMap = writable({});
   export let model;
 
-  let numSlices = traitlet(model, 'num_slices', 10);
-  let numSamples = traitlet(model, 'num_samples', 50);
-  let shouldRerun = traitlet(model, 'should_rerun', false);
-  let numSamplesDrawn = traitlet(model, 'num_samples_drawn', 0);
-  let runningSampler = traitlet(model, 'running_sampler', false);
-  let shouldCancel = traitlet(model, 'should_cancel', false);
-  let samplerRunProgress = traitlet(model, 'sampler_run_progress', 0.0);
+  // export const sliceColorMap = writable({});
+  let sliceColorMap = traitlet(model, "slice_color_map", {});
 
-  let slices = traitlet(model, 'slices', []);
-  let customSlices = traitlet(model, 'custom_slices', []);
-  let customSliceResults = traitlet(model, 'custom_slice_results', []);
-  let savedSlices = traitlet(model, 'saved_slices', []);
-  let selectedSlices = traitlet(model, 'selected_slices', []);
-  let baseSlice = traitlet(model, 'base_slice', {});
-  let positiveOnly = traitlet(model, 'positive_only', false);
+  let numSlices = traitlet(model, "num_slices", 10);
+  let numSamples = traitlet(model, "num_samples", 50);
+  let shouldRerun = traitlet(model, "should_rerun", false);
+  let numSamplesDrawn = traitlet(model, "num_samples_drawn", 0);
+  let runningSampler = traitlet(model, "running_sampler", false);
+  let shouldCancel = traitlet(model, "should_cancel", false);
+  let samplerRunProgress = traitlet(model, "sampler_run_progress", 0.0);
 
-  let valueNames = traitlet(model, 'value_names', {});
+  let slices = traitlet(model, "slices", []);
+  let customSlices = traitlet(model, "custom_slices", []);
+  let customSliceResults = traitlet(model, "custom_slice_results", []);
+  let savedSlices = traitlet(model, "saved_slices", []);
+  let selectedSlices = traitlet(model, "selected_slices", []);
+  let baseSlice = traitlet(model, "base_slice", {});
+  let positiveOnly = traitlet(model, "positive_only", false);
 
-  let scoreWeights = traitlet(model, 'score_weights', {});
+  let valueNames = traitlet(model, "value_names", {});
 
-  let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
-  let sliceScoreResults = traitlet(model, 'slice_score_results', {});
+  let scoreWeights = traitlet(model, "score_weights", {});
 
-  let enabledSliceControls = traitlet(model, 'enabled_slice_controls', {});
-  let containsSlice = traitlet(model, 'contains_slice', {});
-  let containedInSlice = traitlet(model, 'contained_in_slice', {});
-  let similarToSlice = traitlet(model, 'similar_to_slice', {});
-  let subsliceOfSlice = traitlet(model, 'subslice_of_slice', {});
+  let sliceScoreRequests = traitlet(model, "slice_score_requests", {});
+  let sliceScoreResults = traitlet(model, "slice_score_results", {});
+
+  let enabledSliceControls = traitlet(model, "enabled_slice_controls", {});
+  let containsSlice = traitlet(model, "contains_slice", {});
+  let containedInSlice = traitlet(model, "contained_in_slice", {});
+  let similarToSlice = traitlet(model, "similar_to_slice", {});
+  let subsliceOfSlice = traitlet(model, "subslice_of_slice", {});
 
   let sliceIntersectionCounts = traitlet(
     model,
-    'slice_intersection_counts',
+    "slice_intersection_counts",
     []
   );
   let sliceIntersectionLabels = traitlet(
     model,
-    'slice_intersection_labels',
+    "slice_intersection_labels",
     []
   );
   let selectedIntersectionIndex = traitlet(
     model,
-    'selected_intersection_index',
+    "selected_intersection_index",
     -1
   );
 
@@ -86,13 +95,13 @@
         metricNames = newMetricNames;
         metricNames.sort();
         binaryMetrics = metricNames.filter(
-          (m) => testSlice.metrics[m].type == 'binary'
+          (m) => testSlice.metrics[m].type == "binary"
         );
         if (binaryMetrics.length > 0) overlapPlotMetric = binaryMetrics[0];
         else overlapPlotMetric = null;
       }
     }
-    console.log('overlap metric:', overlapPlotMetric);
+    console.log("overlap metric:", overlapPlotMetric);
   }
   let overlapPlotMetric: string | null = null;
 
@@ -114,17 +123,17 @@
     isFullScreen = true;
     ignoreFullScreenEvent = true;
 
-    parentElement.addEventListener('fullscreenchange', handleFullScreenChange);
+    parentElement.addEventListener("fullscreenchange", handleFullScreenChange);
     parentElement.addEventListener(
-      'webkitfullscreenchange',
+      "webkitfullscreenchange",
       handleFullScreenChange
     );
     parentElement.addEventListener(
-      'mozfullscreenchange',
+      "mozfullscreenchange",
       handleFullScreenChange
     );
     parentElement.addEventListener(
-      'msfullscreenchange',
+      "msfullscreenchange",
       handleFullScreenChange
     );
   }
@@ -145,26 +154,26 @@
 
   $: if (!isFullScreen && !!parentElement) {
     parentElement.removeEventListener(
-      'fullscreenchange',
+      "fullscreenchange",
       handleFullScreenChange
     );
     parentElement.removeEventListener(
-      'webkitfullscreenchange',
+      "webkitfullscreenchange",
       handleFullScreenChange
     );
     parentElement.removeEventListener(
-      'mozfullscreenchange',
+      "mozfullscreenchange",
       handleFullScreenChange
     );
     parentElement.removeEventListener(
-      'msfullscreenchange',
+      "msfullscreenchange",
       handleFullScreenChange
     );
   }
 
   function handleFullScreenChange(e) {
     if (isFullScreen && !ignoreFullScreenEvent) isFullScreen = false;
-    console.log('is full screen', isFullScreen);
+    console.log("is full screen", isFullScreen);
     ignoreFullScreenEvent = false;
   }
 
@@ -177,11 +186,35 @@
       $selectedSlices = $savedSlices;
     }
   }
+
+  $: {
+    console.log("selected slices from App.svelte");
+    console.log($selectedSlices);
+  }
+
+  function assignColorToSlice(selectedSlices) {
+    $sliceColorMap = {};
+    selectedSlices.forEach((slice, ind) => {
+      sliceColorMap.update((currentMap) => {
+        const stringRep = slice.stringRep;
+        if (!currentMap[stringRep]) {
+          currentMap[stringRep] = colorScale(ind);
+        }
+        console.log(currentMap);
+        return { ...currentMap };
+      });
+    });
+  }
+
+  $: {
+    assignColorToSlice($selectedSlices);
+    console.log($sliceColorMap);
+  }
 </script>
 
 <main
   class="w-full flex flex-col"
-  style={isFullScreen ? 'height: 100vh;' : 'height: 640px; max-height: 90vh;'}
+  style={isFullScreen ? "height: 100vh;" : "height: 640px; max-height: 90vh;"}
   bind:this={parentElement}
 >
   <div
@@ -233,6 +266,7 @@
           slices={$slices}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
+          sliceColorMap={$sliceColorMap}
           {valueNames}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
@@ -262,6 +296,7 @@
           slices={$savedSlices}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
+          sliceColorMap={$sliceColorMap}
           {valueNames}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
