@@ -160,12 +160,20 @@
 
 {#if intersectionCounts.length > 0}
   <div class="w-full h-full relative">
-    <button on:click={clearSelectedSlices} class="clear-btn">
-      Clear All Selected
-    </button>
-    <button on:click={selectSavedSlices} class="clear-btn">
-      Select All Saved
-    </button>
+    <div class="my-3 flex justify-end items-center" style="padding-right:20px;">
+      <button
+        on:click={clearSelectedSlices}
+        class="my-3 ml-1 btn btn-blue disabled:opacity-50"
+      >
+        Clear All Selected
+      </button>
+      <button
+        on:click={selectSavedSlices}
+        class="my-3 ml-1 btn btn-blue disabled:opacity-50"
+      >
+        Select All Saved
+      </button>
+    </div>
     <LayerCake
       padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
       data={pointData}
