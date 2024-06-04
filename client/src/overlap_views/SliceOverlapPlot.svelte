@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { LayerCake, Canvas } from 'layercake';
-  import ForceScatterPlot from './ForceScatterPlot.svelte';
-  import * as d3 from 'd3';
+  import { LayerCake, Canvas } from "layercake";
+  import ForceScatterPlot from "./ForceScatterPlot.svelte";
+  import * as d3 from "d3";
 
   export let intersectionCounts = [];
   export let labels = [];
   export let numPoints = 500;
   export let selectedIndexes = null;
+
+  export let selectedSlices = [];
+  export let savedSlices = [];
 
   export let colorByError = false;
   export let colorBySlice = true;
@@ -102,51 +105,67 @@
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
         if (allEqual) {
-          return '#b89794';}
+          return "#b89794";
+        }
         return null;
       } else if (selIndexes != null) {
         if (selIndexes.some((s, i) => item.slices[i] && s)) {
-          return '#b89794';}
+          return "#b89794";
+        }
         return null;
       }
       // console.log("ckp1");
-      return '#b89794';
+      return "#b89794";
     } else if (colorByError) {
       console.log("ckp3");
       if (selectedSlices != null) {
         let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-        if (allEqual) return item.error ? '#c2410c' : '#6ee7b7';
-        return '#e2e8f0';
+        if (allEqual) return item.error ? "#c2410c" : "#6ee7b7";
+        return "#e2e8f0";
       } else if (selIndexes != null) {
         if (selIndexes.some((s, i) => item.slices[i] && s))
-          return item.error ? '#c2410c' : '#6ee7b7';
-        return '#e2e8f0';
+          return item.error ? "#c2410c" : "#6ee7b7";
+        return "#e2e8f0";
       }
-      return item.error ? '#c2410c' : '#6ee7b7';
+      return item.error ? "#c2410c" : "#6ee7b7";
     }
     console.log("ckp2");
     if (selectedSlices != null) {
-      console.log("selectedSlices != null")
+      console.log("selectedSlices != null");
       let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
       console.log(allEqual);
-      console.log(numSlices == 0 ? '#94a3b8' : colorScale(numSlices));
-      if (allEqual) return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
-      return '#e2e8f0';
+      console.log(numSlices == 0 ? "#94a3b8" : colorScale(numSlices));
+      if (allEqual) return numSlices == 0 ? "#94a3b8" : colorScale(numSlices);
+      return "#e2e8f0";
     } else if (selIndexes != null) {
-      console.log("selIndexes != null")
+      console.log("selIndexes != null");
       console.log(selIndexes);
       if (selIndexes.some((s, i) => item.slices[i] && s))
-        return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
-      return '#e2e8f0';
+        return numSlices == 0 ? "#94a3b8" : colorScale(numSlices);
+      return "#e2e8f0";
     }
     console.log("got here");
     // console.log(numSlices == 0 ? '#94a3b8' : colorScale(numSlices));
-    return numSlices == 0 ? '#b89794' : colorScale(numSlices);
+    return numSlices == 0 ? "#b89794" : colorScale(numSlices);
+  }
+
+  function clearSelectedSlices() {
+    selectedSlices = [];
+  }
+
+  function selectSavedSlices() {
+    selectedSlices = savedSlices;
   }
 </script>
 
 {#if intersectionCounts.length > 0}
   <div class="w-full h-full relative">
+    <button on:click={clearSelectedSlices} class="clear-btn">
+      Clear All Selected
+    </button>
+    <button on:click={selectSavedSlices} class="clear-btn">
+      Select All Saved
+    </button>
     <LayerCake
       padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
       data={pointData}
@@ -191,7 +210,7 @@
     {#if hoveredSliceInfo != null}
       <div class="absolute bottom-0 left-0 p-3 text-gray-600">
         {hoveredSliceInfo.count} instances, {hoveredSliceInfo[errorKey]} errors ({d3.format(
-          '.1%'
+          ".1%"
         )(hoveredSliceInfo[errorKey] / hoveredSliceInfo.count)})
       </div>
     {/if}
