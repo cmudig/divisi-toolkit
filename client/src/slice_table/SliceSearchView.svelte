@@ -22,6 +22,8 @@
 
   const dispatch = createEventDispatcher();
 
+  export let sliceColorMap: { [key: string]: string } = {};
+
   export let runningSampler = false;
   export let numSamples = 10;
   export let shouldCancel = false;
@@ -235,6 +237,7 @@
       <SliceTable
         slices={[]}
         {savedSlices}
+        {sliceColorMap}
         bind:selectedSlices
         {baseSlice}
         bind:sliceRequests
@@ -259,6 +262,7 @@
     <SliceTable
       slices={savedSlices}
       {savedSlices}
+      {sliceColorMap}
       bind:selectedSlices
       showHeader={false}
       bind:sliceRequests={savedSliceRequests}
@@ -394,6 +398,7 @@
     <SliceTable
       {slices}
       {savedSlices}
+      {sliceColorMap}
       bind:selectedSlices
       bind:sliceRequests
       bind:sliceRequestResults

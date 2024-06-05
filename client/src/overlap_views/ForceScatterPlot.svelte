@@ -306,6 +306,7 @@
      */
     markSet.stage.forEach((mark, i) => {
       let itemSlices = mark.attr('slices');
+      // console.log(itemSlices); //something like [1, 0]
       let x = mark.attr('x');
       let y = mark.attr('y');
       let alpha = mark.attr('alpha');
@@ -392,7 +393,9 @@
             $ctx.stroke();
             sliceIdx++;
           });
+          // console.log(`Mark ${i}: Color - ${color}, Slices - ${itemSlices}, Outcome - ${outcome}`);
         }
+        // console.log(`Mark ${i}: Color - ${color}, Slices - ${itemSlices}, Outcome - ${outcome}`);
       } else if (colorByError) {
         $ctx.beginPath();
         let color =

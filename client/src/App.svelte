@@ -11,16 +11,17 @@
     faHeart,
     faSearch,
   } from '@fortawesome/free-solid-svg-icons';
-  import SliceCurationView from './overlap_views/SliceCurationView.svelte';
+  import ConfigurationView from './configuration/ConfigurationView.svelte';
   import SliceOverlapPlot from './overlap_views/SliceOverlapPlot.svelte';
-  import SliceUpsetPlot from './overlap_views/SliceUpsetPlot.svelte';
-  import SliceRow from './slice_table/SliceRow.svelte';
   import SliceSearchView from './slice_table/SliceSearchView.svelte';
   import { areObjectsEqual, areSetsEqual } from './utils/utils';
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
   import ResizablePanel from './utils/ResizablePanel.svelte';
-  import ConfigurationView from './configuration/ConfigurationView.svelte';
+  import * as d3 from 'd3';
 
+  export const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+  // const sliceColorScale = d3.scaleOrdinal(d3.schemeCategory10);
+  // export let sliceColorMap = writable({});
   export let model;
 
   enum View {
@@ -29,6 +30,9 @@
     examples = 'Examples',
   }
   let currentView: View = View.configuration;
+
+  // export const sliceColorMap = writable({});
+  let sliceColorMap = traitlet(model, 'slice_color_map', {});
 
   let numSlices = traitlet(model, 'num_slices', 10);
   let numSamples = traitlet(model, 'num_samples', 50);
@@ -46,8 +50,6 @@
   let baseSlice = traitlet(model, 'base_slice', {});
   let positiveOnly = traitlet(model, 'positive_only', false);
 
-  let valueNames = traitlet(model, 'value_names', {});
-
   let metricInfo = traitlet(model, 'metric_info', {});
   let derivedMetricConfigs = traitlet(model, 'derived_metric_config', {});
   let scoreFunctionConfigs = traitlet(model, 'score_function_config', {});
@@ -61,12 +63,14 @@
     'metric_expression_response',
     null
   );
+
+  let valueNames = traitlet(model, 'value_names', {});
+
   let scoreWeights = traitlet(model, 'score_weights', {});
 
+  let searchScopeInfo = traitlet(model, 'search_scope_info', {});
   let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
   let sliceScoreResults = traitlet(model, 'slice_score_results', {});
-
-  let searchScopeInfo = traitlet(model, 'search_scope_info', {});
 
   let sliceIntersectionCounts = traitlet(
     model,
@@ -205,6 +209,30 @@
       $selectedSlices = $savedSlices;
     }
   }
+
+  $: {
+    console.log('selected slices from App.svelte');
+    console.log($selectedSlices);
+  }
+
+  function assignColorToSlice(selectedSlices) {
+    $sliceColorMap = {};
+    selectedSlices.forEach((slice, ind) => {
+      sliceColorMap.update((currentMap) => {
+        const stringRep = slice.stringRep;
+        if (!currentMap[stringRep]) {
+          currentMap[stringRep] = colorScale(ind);
+        }
+        console.log(currentMap);
+        return { ...currentMap };
+      });
+    });
+  }
+
+  $: {
+    assignColorToSlice($selectedSlices);
+    console.log($sliceColorMap);
+  }
 </script>
 
 <main
@@ -245,6 +273,7 @@
           slices={$slices}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
+          sliceColorMap={$sliceColorMap}
           {valueNames}
           baseSlice={$baseSlice}
           bind:hiddenMetrics
@@ -271,6 +300,7 @@
           slices={$savedSlices}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
+          sliceColorMap={$sliceColorMap}
           {valueNames}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
@@ -311,6 +341,8 @@
           {#if $overlapPlotMetric != null}
             <SliceOverlapPlot
               errorKey={$overlapPlotMetric}
+              bind:selectedSlices={$selectedSlices}
+              savedSlices={$savedSlices}
               colorBySlice={true}
               intersectionCounts={$sliceIntersectionCounts}
               labels={$sliceIntersectionLabels}

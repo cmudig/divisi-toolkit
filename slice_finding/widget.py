@@ -31,6 +31,8 @@ BUNDLE_DIR = pathlib.Path(__file__).parent / "static"
 class SliceFinderWidget(anywidget.AnyWidget):
     name = traitlets.Unicode().tag(sync=True)
     
+    slice_color_map = traitlets.Dict({}).tag(sync=True)
+
     num_slices = traitlets.Int(10).tag(sync=True)
     num_samples = traitlets.Int(50).tag(sync=True)
     should_rerun = traitlets.Bool(False).tag(sync=True)
@@ -186,7 +188,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                                 for col in range(self.slice_finder.inputs.shape[1])}
         
         self.original_slice_finder = self.slice_finder
-        self.update_saved_slices()
+        self.update_selected_slices()
         
     def get_slice_description(self, slice_obj, metrics=None):
         """
@@ -216,7 +218,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.slices = []
         ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
         self.update_slices(ranked_results, metrics=mets)
-        self.update_saved_slices()
+        self.update_selected_slices()
             
     @traitlets.observe("should_rerun")
     def rerun_flag_changed(self, change):
@@ -468,11 +470,11 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("overlap_plot_metric")
     def overlap_plot_metric_changed(self, change):
-        self.update_saved_slices(change=None, overlap_metric=change.new)
+        self.update_selected_slices(change=None, overlap_metric=change.new)
         
-    @traitlets.observe("saved_slices")
-    def update_saved_slices(self, change=None, overlap_metric=None):
-        selected = change.new if change is not None else self.saved_slices
+    @traitlets.observe("selected_slices")
+    def update_selected_slices(self, change=None, overlap_metric=None):
+        selected = change.new if change is not None else self.selected_slices
         overlap_metric = overlap_metric if overlap_metric is not None else self.overlap_plot_metric
         
         slice_masks = {}

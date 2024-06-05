@@ -27,6 +27,8 @@
 
   const dispatch = createEventDispatcher();
 
+  export let sliceColorMap: { [key: string]: string } = {};
+
   export let slice: Slice = null;
   export let scoreNames: Array<string> = [];
   export let showScores = false;
@@ -55,6 +57,7 @@
 
   const indentAmount = 24;
 
+  export let showButtons = false;
   export let showCreateSliceButton = false;
   export let showFavoriteButton = true;
 
@@ -112,6 +115,13 @@
   function temporaryRevertSlice(revert) {
     revertedScores = revert;
   }
+
+  // $:{console.log(sliceColorMap)}
+  $: console.log(
+    'Current sliceColorMap in SliceRow:',
+    sliceColorMap,
+    slice.stringRep
+  );
 </script>
 
 {#if !!sliceToShow}
@@ -123,19 +133,16 @@
     on:mouseenter={() => (hovering = true)}
     on:mouseleave={() => (hovering = false)}
   >
-    {#if showFavoriteButton}
-      <div
-        class="py-2 grow-0 shrink-0"
-        style="width: {TableWidths.Checkbox}px;"
-      >
-        <button
-          class="bg-transparent hover:opacity-60 ml-1 text-slate-600 py-2"
-          title="Add a new custom slice"
-          on:click={() => dispatch('saveslice', slice)}
-          ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
-        >
-      </div>
-    {/if}
+    <div
+      class="py-2"
+      style="display: flex; align-items: center; width: {TableWidths.Checkbox}px;"
+    >
+      <Checkbox
+        checked={isSelected}
+        on:change={(e) => dispatch('select', !isSelected)}
+        color={isSelected ? sliceColorMap[slice.stringRep] : null}
+      />
+    </div>
     <div
       class="py-2 text-xs flex-auto overflow-x-auto"
       class:opacity-50={revertedScores}
@@ -165,19 +172,33 @@
           }}
         />
       {:else}
-        <div class="whitespace-nowrap">
-          <SliceFeature
-            feature={featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
-            slice.feature.type != 'base'
-              ? slice.feature
-              : sliceToShow.feature}
-            currentFeature={sliceToShow.feature}
-            canToggle={featuresHaveSameTree(slice.feature, sliceToShow.feature)}
-            {positiveOnly}
-            on:toggle
-          />
-        </div>
-        <!-- {#if hovering}
+        <div class="flex pt-1 items-center h-full whitespace-nowrap">
+          <div style="flex: 0 1 auto;" class="overflow-x-auto">
+            <SliceFeature
+              feature={featuresHaveSameTree(
+                slice.feature,
+                sliceToShow.feature
+              ) && slice.feature.type != 'base'
+                ? slice.feature
+                : sliceToShow.feature}
+              currentFeature={sliceToShow.feature}
+              canToggle={featuresHaveSameTree(
+                slice.feature,
+                sliceToShow.feature
+              )}
+              {positiveOnly}
+              on:toggle
+            />
+          </div>
+          {#if showButtons || hovering || isSaved}
+            <button
+              class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+              title="Add a new custom slice"
+              on:click={() => dispatch('saveslice', slice)}
+              ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
+            >
+          {/if}
+          {#if showButtons || hovering}
             {#if showCreateSliceButton}
               <button
                 class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
@@ -207,45 +228,8 @@
                 ><Fa icon={faRotateRight} /></button
               >
             {/if}
-            <ActionMenuButton
-              buttonClass="bg-transparent ml-1 px-1 hover:opacity-60"
-            >
-              <span slot="button-content"
-                ><Fa icon={faSearch} class="inline mr-1" /></span
-              >
-              <div slot="options">
-                <a
-                  href="#"
-                  tabindex="0"
-                  role="menuitem"
-                  title="Search among slices with different features that contain most instances in this slice"
-                  on:click={searchContainsSlice}>Search Containing This Slice</a
-                >
-                <a
-                  href="#"
-                  tabindex="0"
-                  role="menuitem"
-                  title="Search among slices with different features that are mostly contained in this slice"
-                  on:click={searchContainedInSlice}
-                  >Search Contained In This Slice</a
-                >
-                <a
-                  href="#"
-                  tabindex="0"
-                  role="menuitem"
-                  title="Search among slices with different features that have high overlap with this slice"
-                  on:click={searchSimilarSlices}>Search Similar Slices</a
-                >
-                <a
-                  href="#"
-                  tabindex="0"
-                  role="menuitem"
-                  title="Search among slices that are strict subsets of this slice"
-                  on:click={searchSubslices}>Search Subslices</a
-                >
-              </div>
-            </ActionMenuButton>
-          {/if} -->
+          {/if}
+        </div>
       {/if}
       <!-- {#each featureOrder as col, i}
         {@const featureDisabled =

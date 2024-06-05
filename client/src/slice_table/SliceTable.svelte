@@ -27,6 +27,8 @@
   export let selectedSlices: Array<Slice> = [];
   export let savedSlices: Array<Slice> = [];
 
+  export let sliceColorMap: { [key: string]: string } = {};
+
   export let baseSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
@@ -143,8 +145,12 @@
 
   $: console.log(
     `table with ${slices.length} slices has selected slices:`,
-    selectedSlices
+    selectedSlices,
+    'Current sliceColorMap in SliceCurationTable:',
+    sliceColorMap
   );
+
+  $: console.log('color map in SliceTable:', sliceColorMap);
 
   function saveSlice(slice: Slice) {
     // if unsaving, remove any customizations
@@ -173,6 +179,7 @@
   {#if !!baseSlice}
     <SliceRow
       slice={baseSlice}
+      {sliceColorMap}
       {scoreNames}
       {positiveOnly}
       scoreCellWidth={100}
@@ -214,6 +221,7 @@
     {@const sliceToShow = sliceRequestResults[slice.stringRep] || slice}
     <SliceRow
       {slice}
+      {sliceColorMap}
       {scoreNames}
       {positiveOnly}
       scoreCellWidth={100}
