@@ -66,11 +66,7 @@
   let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
   let sliceScoreResults = traitlet(model, 'slice_score_results', {});
 
-  let enabledSliceControls = traitlet(model, 'enabled_slice_controls', {});
-  let containsSlice = traitlet(model, 'contains_slice', {});
-  let containedInSlice = traitlet(model, 'contained_in_slice', {});
-  let similarToSlice = traitlet(model, 'similar_to_slice', {});
-  let subsliceOfSlice = traitlet(model, 'subslice_of_slice', {});
+  let searchScopeInfo = traitlet(model, 'search_scope_info', {});
 
   let sliceIntersectionCounts = traitlet(
     model,
@@ -118,6 +114,15 @@
     console.log('overlap metric:', $overlapPlotMetric);
   }
   let hiddenMetrics: string[] = [];
+
+  $: {
+    console.log('metric info obj:', $metricInfo);
+    Object.entries($metricInfo).forEach(([n, info]) => {
+      if (!(info.visible ?? true) && !hiddenMetrics.includes(n)) {
+        hiddenMetrics.push(n);
+      }
+    });
+  }
 
   let parentElement: Element;
   let isFullScreen = false;
@@ -245,11 +250,7 @@
           bind:hiddenMetrics
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
-          bind:enabledSliceControls={$enabledSliceControls}
-          bind:containsSlice={$containsSlice}
-          bind:containedInSlice={$containedInSlice}
-          bind:similarToSlice={$similarToSlice}
-          bind:subsliceOfSlice={$subsliceOfSlice}
+          bind:searchScopeInfo={$searchScopeInfo}
           on:runsampler={() => ($shouldRerun = true)}
           on:loadmore={() => ($numSlices += 10)}
           on:saveslice={(e) => {

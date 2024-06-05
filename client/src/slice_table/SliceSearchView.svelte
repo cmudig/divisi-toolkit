@@ -1,8 +1,6 @@
 <script lang="ts">
   import type { Slice } from '../utils/slice.type';
-  import SliceRow from './SliceRow.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
-  import Hoverable from '../utils/Hoverable.svelte';
   import {
     faAngleLeft,
     faAngleRight,
@@ -15,15 +13,12 @@
     faScaleBalanced,
     faSearch,
   } from '@fortawesome/free-solid-svg-icons';
-  import { areObjectsEqual, areSetsEqual, sortMetrics } from '../utils/utils';
-  import { TableWidths } from './tablewidths';
+  import { areSetsEqual, sortMetrics } from '../utils/utils';
   import { createEventDispatcher } from 'svelte';
   import SliceTable from './SliceTable.svelte';
   import SliceFeatureEditor from './SliceFeatureEditor.svelte';
   import { featureToString, parseFeature } from '../utils/slice_parsing';
   import SliceFeature from './SliceFeature.svelte';
-  import ScoreWeightMenu from '../utils/ScoreWeightMenu.svelte';
-  import ActionMenuButton from '../utils/ActionMenuButton.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -48,38 +43,13 @@
 
   export let valueNames: any = {};
 
-  export let enabledSliceControls: any = {};
-  export let containsSlice: any = {};
-  export let containedInSlice: any = {};
-  export let similarToSlice: any = {};
-  export let subsliceOfSlice: any = {};
+  export let searchScopeInfo: { within_slice?: any; point_ids?: number[] } = {};
+  let editingSearchScope: boolean = false;
 
   export let selectedSlices: Slice[] = [];
   export let savedSlices: Slice[] = [];
 
   export let hiddenMetrics: string[] = [];
-
-  const SliceControlStrings = {
-    containsSlice: 'Contains',
-    containedInSlice: 'Contained in',
-    similarToSlice: 'Similar to',
-    subsliceOfSlice: 'Subslice of',
-  };
-
-  const SliceControlEnableNames = {
-    containsSlice: 'contains_slice',
-    containedInSlice: 'contained_in_slice',
-    similarToSlice: 'similar_to_slice',
-    subsliceOfSlice: 'subslice_of_slice',
-  };
-
-  let controlFeatures;
-  $: controlFeatures = {
-    containsSlice,
-    containedInSlice,
-    similarToSlice,
-    subsliceOfSlice,
-  };
 
   let metricNames = [];
   let metricInfo: { [key: string]: any } = {};
@@ -235,26 +205,6 @@
     sizeObserver.observe(searchViewHeader);
   }
 
-  function toggleSliceControl(field, value = null) {
-    let flagField = SliceControlEnableNames[field];
-    let newControls = Object.assign({}, enabledSliceControls);
-    if (value == null) newControls[flagField] = !newControls[flagField];
-    else newControls[flagField] = value;
-    enabledSliceControls = newControls;
-    if (newControls[flagField] && controlFeatures[field].type == 'base')
-      editingControl = flagField;
-  }
-
-  let editingControl = null;
-
-  function updateEditingControl(control, feature) {
-    if (control == 'containsSlice') containsSlice = feature;
-    else if (control == 'containedInSlice') containedInSlice = feature;
-    else if (control == 'similarToSlice') similarToSlice = feature;
-    else if (control == 'subsliceOfSlice') subsliceOfSlice = feature;
-    controlFeatures[control] = feature;
-  }
-
   let savedSliceRequests: { [key: string]: any } = {};
   let savedSliceRequestResults: { [key: string]: Slice } = {};
 
@@ -299,8 +249,7 @@
         bind:scoreWidthScalers
         bind:showScores
         on:newsearch={(e) => {
-          updateEditingControl(e.detail.type, e.detail.base_slice);
-          toggleSliceControl(SliceControlEnableNames[e.detail.type], true);
+          searchScopeInfo = { within_slice: e.detail.base_slice };
         }}
         on:saveslice
       />
@@ -322,8 +271,7 @@
       bind:scoreNames
       bind:scoreWidthScalers
       on:newsearch={(e) => {
-        updateEditingControl(e.detail.type, e.detail.base_slice);
-        toggleSliceControl(e.detail.type, true);
+        searchScopeInfo = { within_slice: e.detail.base_slice };
       }}
       on:saveslice
     />
@@ -372,88 +320,73 @@
             />
             samples
           </div>
-
-          <ActionMenuButton
-            buttonClass="btn btn-slate"
-            buttonStyle="padding-left: 1rem;"
-            buttonTitle="Add a filter option"
-          >
-            <span slot="button-content"
-              ><Fa icon={faSearch} class="inline mr-1" />
-              Refine
-            </span>
-            <div slot="options">
-              {#each Object.keys(SliceControlEnableNames) as control}
-                {#if !enabledSliceControls[SliceControlEnableNames[control]]}
-                  <a
-                    href="#"
-                    tabindex="0"
-                    role="menuitem"
-                    on:click={() => toggleSliceControl(control)}
-                    >{SliceControlStrings[control]} Slice</a
-                  >
-                {/if}
-              {/each}
-            </div>
-          </ActionMenuButton>
           <button
             class="my-3 ml-1 btn btn-blue disabled:opacity-50"
             disabled={runningSampler}
             on:click={() => dispatch('runsampler')}>Find Slices</button
           >
         </div>
-        {#each Object.keys(SliceControlEnableNames) as control}
-          {#if enabledSliceControls[SliceControlEnableNames[control]]}
-            <div class="flex items-center pb-3 w-full">
-              <button
-                style="padding-left: 1rem;"
-                class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-                on:click={() => toggleSliceControl(control)}
-                ><Fa icon={faMinus} class="inline mr-1" />
-                {SliceControlStrings[control]}</button
+        {#if !!searchScopeInfo.within_slice}
+          <div class="flex items-center pb-3 w-full">
+            <button
+              style="padding-left: 1rem;"
+              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
+              on:click={() => (searchScopeInfo = {})}
+              ><Fa icon={faMinus} class="inline mr-1" />
+              Within Slice</button
+            >
+            {#if editingSearchScope}
+              <SliceFeatureEditor
+                featureText={featureToString(
+                  searchScopeInfo.within_slice,
+                  false,
+                  positiveOnly
+                )}
+                {positiveOnly}
+                {allowedValues}
+                on:cancel={(e) => {
+                  editingSearchScope = false;
+                }}
+                on:save={(e) => {
+                  let newFeature = parseFeature(e.detail, allowedValues);
+                  searchScopeInfo = { within_slice: newFeature };
+                  editingSearchScope = false;
+                }}
+              />
+            {:else}
+              <div
+                class="overflow-x-auto whitespace-nowrap"
+                style="flex: 0 1 auto;"
               >
-              {#if editingControl == SliceControlEnableNames[control]}
-                <SliceFeatureEditor
-                  featureText={featureToString(
-                    controlFeatures[control],
-                    false,
-                    positiveOnly
-                  )}
+                <SliceFeature
+                  feature={searchScopeInfo.within_slice}
+                  currentFeature={searchScopeInfo.within_slice}
+                  canToggle={false}
                   {positiveOnly}
-                  {allowedValues}
-                  on:cancel={(e) => {
-                    editingControl = null;
-                  }}
-                  on:save={(e) => {
-                    let newFeature = parseFeature(e.detail, allowedValues);
-                    updateEditingControl(control, newFeature);
-                    editingControl = null;
-                  }}
                 />
-              {:else}
-                <div
-                  class="overflow-x-auto whitespace-nowrap"
-                  style="flex: 0 1 auto;"
-                >
-                  <SliceFeature
-                    feature={controlFeatures[control]}
-                    currentFeature={controlFeatures[control]}
-                    canToggle={false}
-                    {positiveOnly}
-                  />
-                </div>
-                <button
-                  class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
-                  on:click={() => {
-                    editingControl = SliceControlEnableNames[control];
-                  }}
-                  title="Modify the slice definition"
-                  ><Fa icon={faPencil} /></button
-                >
-              {/if}
-            </div>
-          {/if}
-        {/each}
+              </div>
+              <button
+                class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
+                on:click={() => {
+                  editingSearchScope = true;
+                }}
+                title="Modify the slice definition"
+                ><Fa icon={faPencil} /></button
+              >
+            {/if}
+          </div>
+        {:else if !!searchScopeInfo.point_ids}
+          <button
+            style="padding-left: 1rem;"
+            class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
+            on:click={() => (searchScopeInfo = {})}
+            ><Fa icon={faMinus} class="inline mr-1" />
+            Within Selection</button
+          >
+          <div class="text-slate-600">
+            {searchScopeInfo.point_ids.length} point{searchScopeInfo.point_ids}
+          </div>
+        {/if}
       {/if}
     </div>
   </div>

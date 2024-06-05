@@ -76,17 +76,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     
     thread_starter = traitlets.Any(default_thread_starter)
     
-    # Allows setting slices to filter search by
-    enabled_slice_controls = traitlets.Dict({
-        "contains_slice": False,
-        "contained_in_slice": False,
-        "similar_to_slice": False,
-        "subslice_of_slice": False
-    }).tag(sync=True)
-    contains_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
-    contained_in_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
-    similar_to_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
-    subslice_of_slice = traitlets.Dict(SliceFeatureBase().to_dict()).tag(sync=True)
+    search_scope_info = traitlets.Dict({}).tag(sync=True)
     
     def __init__(self, discrete_data, *args, **kwargs):
         try:
@@ -107,7 +97,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 options = {}
             dtype = options.get("type", detect_data_type(data))
             metric_info[name] = {
-                "type": dtype
+                "type": dtype,
+                **{k: v for k, v in options.items() if k != "data"}
             }
             if dtype == "categorical":
                 metric_info[name]["values"] = [str(v) for v in np.unique(data)]
@@ -130,15 +121,17 @@ class SliceFinderWidget(anywidget.AnyWidget):
             score_fn_configs["Simple Rule"] = {"type": "NumFeaturesScore"}
             score_weights["Simple Rule"] = 0.5
             
-            for name, info in self.metric_info.items():
+            if len(self.metric_info):
+                first_metric = sorted(self.metric_info.keys())[0]
+                info = self.metric_info[first_metric]
                 if info["type"] == "binary":
-                    score_fn_configs[f"{name} High"] = {"type": "OutcomeRateScore", "metric": f"{{{name}}}", "inverse": False}
-                    score_fn_configs[f"{name} Low"] = {"type": "OutcomeRateScore", "metric": f"{{{name}}}", "inverse": True}
-                    score_weights[f"{name} High"] = 1.0
-                    score_weights[f"{name} Low"] = 0.0
+                    score_fn_configs[f"{first_metric} High"] = {"type": "OutcomeRateScore", "metric": f"{{{first_metric}}}", "inverse": False}
+                    score_fn_configs[f"{first_metric} Low"] = {"type": "OutcomeRateScore", "metric": f"{{{first_metric}}}", "inverse": True}
+                    score_weights[f"{first_metric} High"] = 1.0
+                    score_weights[f"{first_metric} Low"] = 0.0
                 elif info["type"] == "continuous":
-                    score_fn_configs[f"{name} Different"] = {"type": "MeanDifferenceScore", "metric": f"{{{name}}}"}
-                    score_weights[f"{name} Different"] = 1.0
+                    score_fn_configs[f"{first_metric} Different"] = {"type": "MeanDifferenceScore", "metric": f"{{{first_metric}}}"}
+                    score_weights[f"{first_metric} Different"] = 1.0
                 
         self.metrics = kwargs.get("metrics", {})
         self.derived_metrics = {**self.metrics}
@@ -175,6 +168,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
         neighbors = NearestNeighbors(n_neighbors=min(int(len(discrete_data) * 0.02), 1000), 
                                                 metric="euclidean").fit(self.map_layout)
         self.map_neighbor_dists, self.map_neighbors = neighbors.radius_neighbors(self.map_layout, radius=0.05, sort_results=True)
+        
+        self.search_scope_mask = None
         
         super().__init__(*args, **kwargs)
         self.positive_only = self.slice_finder.positive_only
@@ -301,38 +296,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             return spec["score_weights"]
         
-    @traitlets.observe("enabled_slice_controls")
-    def _update_enabled_slice_controls(self, change):
-        self.update_search_scopes(enabled_mask=change.new)
-    @traitlets.observe("contains_slice")
-    def _update_contains_slice(self, change):
-        self.update_search_scopes(contains_slice=change.new)
-    @traitlets.observe("contained_in_slice")
-    def _update_contained_in_slice(self, change):
-        self.update_search_scopes(contained_in_slice=change.new)
-    @traitlets.observe("similar_to_slice")
-    def _update_similar_to_slice(self, change):
-        self.update_search_scopes(similar_to_slice=change.new)
-    @traitlets.observe("subslice_of_slice")
-    def _update_subslice_of_slice(self, change):
-        self.update_search_scopes(subslice_of_slice=change.new)
-        
-        
+    @traitlets.observe("search_scope_info")        
     def update_search_scopes(self, 
-                             enabled_mask=None, 
-                             contains_slice=None, 
-                             contained_in_slice=None, 
-                             similar_to_slice=None, 
-                             subslice_of_slice=None):
-        enabled_mask = enabled_mask or self.enabled_slice_controls
-        contains_slice = contains_slice or self.contains_slice
-        contained_in_slice = contained_in_slice or self.contained_in_slice
-        similar_to_slice = similar_to_slice or self.similar_to_slice
-        subslice_of_slice = subslice_of_slice or self.subslice_of_slice
+                             change=None):
+        search_info = change.new if change is not None else self.search_scope_info
         
-        if all(not v for v in enabled_mask.values()):
+        if not search_info:
             self.slice_finder = self.original_slice_finder
-            self.score_weights = {s: w for s, w in self.score_weights.items() if s not in ("contains_slice", "contained_in_slice", "similar_to_slice", "subslice_of_slice")}
+            self.score_weights = {s: w for s, w in self.score_weights.items() if s != "Search Scope"}
             self._slice_description_cache = {}
             self.rerank_results()
             return
@@ -343,43 +314,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
         new_source_mask = base_finder.source_mask.copy()
         exclusion_criteria = None
         
-        contains_slice = base_finder.results.encode_slice(contains_slice)
-        if enabled_mask["contains_slice"] and contains_slice.feature != SliceFeatureBase():
-            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = contains_slice.make_mask(raw_inputs)
-            new_score_fns["contains_slice"] = SliceSimilarityScore(ref_mask, metric='superslice')
-            exclusion_criteria = ExcludeIfAny([
-                ExcludeFeatureValueSet([f.feature_name], f.allowed_values)
-                for f in contains_slice.univariate_features()
-            ])
-            new_source_mask &= ref_mask
+        if "within_slice" in search_info:
+            contained_in_slice = base_finder.results.encode_slice(search_info["within_slice"])
+            if contained_in_slice.feature != SliceFeatureBase():
+                raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
+                ref_mask = contained_in_slice.make_mask(raw_inputs)
+                new_score_fns["Search Scope"] = OutcomeRateScore(ref_mask)
+                new_source_mask &= ref_mask
 
-        contained_in_slice = base_finder.results.encode_slice(contained_in_slice)
-        if enabled_mask["contained_in_slice"] and contained_in_slice.feature != SliceFeatureBase():
-            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = contained_in_slice.make_mask(raw_inputs)
-            new_score_fns["contained_in_slice"] = SliceSimilarityScore(ref_mask, metric='subslice')
-            exclusion_criteria = ExcludeIfAny([
-                ExcludeFeatureValueSet([f.feature_name], f.allowed_values)
-                for f in contained_in_slice.univariate_features()
-            ])
-            new_source_mask &= ref_mask
-
-        similar_to_slice = base_finder.results.encode_slice(similar_to_slice)
-        if enabled_mask["similar_to_slice"] and similar_to_slice.feature != SliceFeatureBase():
-            raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-            ref_mask = similar_to_slice.make_mask(raw_inputs)
-            new_score_fns["similar_to_slice"] = SliceSimilarityScore(ref_mask, metric='jaccard')
-            exclusion_criteria = ExcludeIfAny([
-                ExcludeFeatureValueSet([f.feature_name], f.allowed_values)
-                for f in similar_to_slice.univariate_features()
-            ])
-            new_source_mask &= ref_mask
-
-        subslice_of_slice = base_finder.results.encode_slice(subslice_of_slice)
-        if enabled_mask["subslice_of_slice"] and subslice_of_slice.feature != SliceFeatureBase():
-            initial_slice = subslice_of_slice
-            
         new_filter = base_finder.group_filter
         if exclusion_criteria is not None:
             if new_filter is not None:
@@ -641,6 +583,18 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 'labels': self.slice_intersection_labels,
                 'layout': centroids.set_index(metadata['point_index'], drop=True).to_dict(orient='index')
             }
+             #Ungrouped version
+            '''self.grouped_map_layout = {
+                'overlap_plot_metric': overlap_metric,
+                'labels': self.slice_intersection_labels,
+                'layout': [{
+                    'outcome': error_metric[i],
+                    'slices': [int(slice_masks[s][i]) for s in slice_order],
+                    'x': self.map_layout[i,0],
+                    'y': self.map_layout[i,1],
+                    'size': 1
+                } for i in range(len(self.map_layout))]
+            }'''
         else:
             self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,

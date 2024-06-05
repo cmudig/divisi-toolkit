@@ -317,7 +317,43 @@
 
       $ctx.globalAlpha = alpha;
 
-      if (colorBySlice) {
+      /*if (false) {
+        $ctx.beginPath();
+        if (outcome) {
+          $ctx.strokeStyle = '#333';
+          $ctx.lineWidth = radius * 0.2;
+          $ctx.ellipse(x, y, radius * 0.5, radius * 0.5, 0, 2 * Math.PI, false);
+          $ctx.stroke();
+        }
+        let lw = radius * 0.4; // outcome ? 4 : 2;
+        $ctx.lineWidth = lw;
+        // if (numSlices == 0) $ctx.globalAlpha = 0.7;
+        if (numSlices > 0) {
+          let sliceIdx = 0;
+          itemSlices.forEach((s, j) => {
+            if (!s) return;
+            $ctx.beginPath();
+            $ctx.fillStyle = sliceColorScale(j);
+            $ctx.moveTo(x, y);
+            $ctx.arc(
+              x,
+              y,
+              radius * 0.4, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
+              -Math.PI * 0.5 + (sliceIdx * Math.PI * 2.0) / numSlices,
+              -Math.PI * 0.5 + ((sliceIdx + 1) * Math.PI * 2.0) / numSlices,
+              false
+            );
+            $ctx.closePath();
+            $ctx.fill();
+            sliceIdx++;
+          });
+        } else {
+          $ctx.beginPath();
+          $ctx.fillStyle = '#e2e8f0';
+          $ctx.ellipse(x, y, radius * 0.4, radius * 0.4, 0, 2 * Math.PI, false);
+          $ctx.fill();
+        }
+      } else */ if (colorBySlice) {
         $ctx.beginPath();
         let color =
           colorFn != null ? colorFn({ slices: itemSlices, outcome }) : null;
@@ -334,9 +370,9 @@
         $ctx.stroke();
         if (outcome) {
           $ctx.fillStyle = '#94a3b8';
-          $ctx.fill();
-        }
-        let lw = radius * 0.4; // outcome ? 4 : 2;
+        } else $ctx.fillStyle = 'white';
+        $ctx.fill();
+        let lw = radius * 0.3; // outcome ? 4 : 2;
         $ctx.lineWidth = lw;
         // if (numSlices == 0) $ctx.globalAlpha = 0.7;
         if (numSlices > 0) {
@@ -348,7 +384,7 @@
             $ctx.arc(
               x,
               y,
-              radius * 0.6, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
+              radius * 0.55, // (numSlices > 0 ? radius : radius * 0.5) + (outcome ? 1 : 0),
               -Math.PI * 0.5 + (sliceIdx * Math.PI * 2.0) / numSlices,
               -Math.PI * 0.5 + ((sliceIdx + 1) * Math.PI * 2.0) / numSlices,
               false

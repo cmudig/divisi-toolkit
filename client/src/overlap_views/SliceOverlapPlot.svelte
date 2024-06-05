@@ -293,7 +293,7 @@
 </script>
 
 {#if intersectionCounts.length > 0}
-  <div class="w-full h-full relative">
+  <div class="w-full h-full relative bg-slate-100">
     <LayerCake
       padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
       data={pointData}
