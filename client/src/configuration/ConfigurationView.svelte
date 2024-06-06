@@ -3,7 +3,12 @@
   import { ColorWheelTailwind } from '../utils/colorwheel';
   import MetricConfiguration from './MetricConfiguration.svelte';
   import Fa from 'svelte-fa';
-  import { faPlus } from '@fortawesome/free-solid-svg-icons';
+  import {
+    faEye,
+    faEyeSlash,
+    faPlus,
+    faPlusCircle,
+  } from '@fortawesome/free-solid-svg-icons';
 
   export let metricInfo: {
     [key: string]: {
@@ -12,7 +17,7 @@
     };
   };
 
-  export let hiddenMetrics: string[] = [];
+  export let hiddenMetrics: string[] | null = null;
 
   export let derivedMetricConfigs: { [key: string]: any };
   export let scoreFunctionConfigs: { [key: string]: any };
@@ -29,6 +34,15 @@
     success: boolean;
     error?: string;
   } | null = null;
+
+  function toggleMetric(metricName: string) {
+    if (hiddenMetrics.includes(metricName))
+      hiddenMetrics = [
+        ...hiddenMetrics.slice(0, hiddenMetrics.indexOf(metricName)),
+        ...hiddenMetrics.slice(hiddenMetrics.indexOf(metricName) + 1),
+      ];
+    else hiddenMetrics = [...hiddenMetrics, metricName];
+  }
 </script>
 
 <div class="w-full pt-2 px-2">
@@ -40,11 +54,26 @@
       </div>
     </div>
     <button
-      class="btn btn-slate ml-2 py-1"
+      class="hover:text-slate-600 text-slate-400 bg-transparent text-lg ml-2 py-1 px-1 shrink-0 grow-0"
       on:click={(e) => (creatingNewDerivedMetric = true)}
       disabled={creatingNewDerivedMetric}
-      ><Fa icon={faPlus} class="inline" />&nbsp; New Metric</button
+      ><Fa icon={faPlusCircle} class="inline" /></button
     >
+  </div>
+  <div class="px-2 py-1 flex items-center text-sm w-full">
+    <button
+      class="{!!hiddenMetrics && hiddenMetrics.includes('Count')
+        ? 'text-slate-300 hover:text-slate-400'
+        : 'hover:opacity-70 text-' + ColorWheelTailwind[0]} bg-transparent mr-2"
+      on:click|stopPropagation={() => toggleMetric('Count')}
+      ><Fa
+        icon={!!hiddenMetrics && hiddenMetrics.includes('Count')
+          ? faEyeSlash
+          : faEye}
+        class="inline"
+      /></button
+    >
+    <div class="flex-auto shrink-0">Count</div>
   </div>
   {#each Object.entries(derivedMetricConfigs).sort() as [metricName, config], i (metricName)}
     <MetricConfiguration
@@ -52,15 +81,8 @@
       {config}
       {metricInfo}
       tailwindColor={ColorWheelTailwind[i + 1]}
-      isHidden={hiddenMetrics.includes(metricName)}
-      on:toggle={(e) => {
-        if (hiddenMetrics.includes(metricName))
-          hiddenMetrics = [
-            ...hiddenMetrics.slice(0, hiddenMetrics.indexOf(metricName)),
-            ...hiddenMetrics.slice(hiddenMetrics.indexOf(metricName) + 1),
-          ];
-        else hiddenMetrics = [...hiddenMetrics, metricName];
-      }}
+      isHidden={!!hiddenMetrics && hiddenMetrics.includes(metricName)}
+      on:toggle={(e) => toggleMetric(metricName)}
       on:save={(e) => {
         derivedMetricConfigs = {
           ...Object.fromEntries(
@@ -110,10 +132,10 @@
       </div>
     </div>
     <button
-      class="btn btn-slate ml-2 py-1"
+      class="hover:text-slate-600 text-slate-400 bg-transparent text-lg ml-2 py-1 px-1 shrink-0 grow-0"
       on:click={(e) => (creatingNewScoreFunction = true)}
       disabled={creatingNewScoreFunction}
-      ><Fa icon={faPlus} class="inline" />&nbsp; New Score Function</button
+      ><Fa icon={faPlusCircle} class="inline" /></button
     >
   </div>
   {#each Object.keys(scoreFunctionConfigs).sort() as fnName (fnName)}

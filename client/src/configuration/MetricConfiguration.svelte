@@ -15,7 +15,7 @@
     [key: string]: any;
   } | null = null;
 
-  export let config: { expression: string };
+  export let config: { expression: string } | null = null;
   export let isHidden: boolean = false;
   export let tailwindColor: string | null = null;
 

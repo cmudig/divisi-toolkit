@@ -14,6 +14,7 @@
   export let colors = schemeCategory10;
   export let colorScale = interpolateViridis;
   export let color: string | null = null;
+  export let fullBarColor: string = '#e5e7eb';
   export let hoverable = false;
   export let title: string | null = null;
   export let horizontalLayout = false;
@@ -41,7 +42,7 @@
         absolutePosition
         maxWidth={width}
         fraction={1.0}
-        color="#e5e7eb"
+        color={fullBarColor}
         {hoverable}
         on:mouseenter={(e) => (hoveringIndex = -1)}
         on:mouseleave={(e) => (hoveringIndex = null)}

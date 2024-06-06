@@ -56,7 +56,9 @@
     ? 'outline outline-1 outline-slate-400 mb-2'
     : 'hover:bg-slate-100'}"
 >
-  <div class="px-2 py-1 flex items-center text-sm w-full cursor-pointer">
+  <div
+    class="px-2 py-1 flex flex-wrap items-center text-sm w-full cursor-pointer"
+  >
     <div class="flex-auto shrink-0 mr-2">
       {#if editing}
         <input
@@ -69,37 +71,41 @@
         {name}
       {/if}
     </div>
-    <Checkbox
-      colorClass={weight > 0.0 ? 'bg-blue-600' : null}
-      checked={weight > 0.0}
-      on:change={(e) => {
-        if (!e.detail) {
-          weight = 0.0;
-          dispatch('reweight', weight);
-        } else {
-          weight = 1.0;
-          dispatch('reweight', weight);
-        }
-      }}
-    />
-    <SteppedSlider
-      class="ml-2 w-32"
-      min={0.5}
-      max={2.0}
-      step={0.5}
-      value={weight}
-      on:change={(e) => {
-        dispatch('reweight', e.detail);
-      }}
-    />
-    <button
-      class="bg-transparent ml-1 p-2"
-      on:click|stopPropagation={() => dispatch('delete')}
-      ><Fa
-        icon={faTrash}
-        class="inline text-slate-400 hover:text-slate-600"
-      /></button
-    >
+    {#if !editing}
+      <div class="flex items-center">
+        <Checkbox
+          colorClass={weight > 0.0 ? 'bg-blue-600' : null}
+          checked={weight > 0.0}
+          on:change={(e) => {
+            if (!e.detail) {
+              weight = 0.0;
+              dispatch('reweight', weight);
+            } else {
+              weight = 1.0;
+              dispatch('reweight', weight);
+            }
+          }}
+        />
+        <SteppedSlider
+          class="ml-2 w-32"
+          min={0.5}
+          max={2.0}
+          step={0.5}
+          value={weight}
+          on:change={(e) => {
+            dispatch('reweight', e.detail);
+          }}
+        />
+        <button
+          class="bg-transparent ml-1 p-2"
+          on:click|stopPropagation={() => dispatch('delete')}
+          ><Fa
+            icon={faTrash}
+            class="inline text-slate-400 hover:text-slate-600"
+          /></button
+        >
+      </div>
+    {/if}
   </div>
   {#if editing}
     <div class="px-2 my-2 flex gap-2 items-center">

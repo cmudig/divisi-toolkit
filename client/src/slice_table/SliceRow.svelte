@@ -115,18 +115,11 @@
   function temporaryRevertSlice(revert) {
     revertedScores = revert;
   }
-
-  // $:{console.log(sliceColorMap)}
-  $: console.log(
-    'Current sliceColorMap in SliceRow:',
-    sliceColorMap,
-    slice.stringRep
-  );
 </script>
 
 {#if !!sliceToShow}
   <div
-    class="slice-row w-full pl-2 gap-1 {rowClass
+    class="slice-row w-full px-2 gap-1 {rowClass
       ? rowClass
       : 'bg-white'} inline-flex items-center"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
@@ -134,7 +127,79 @@
     on:mouseleave={() => (hovering = false)}
   >
     <div
-      class="py-2"
+      class="p-2 pt-3 whitespace-nowrap shrink-0"
+      style="width: {TableWidths.AllMetrics}px;"
+    >
+      {#if sliceForScores.isEmpty}
+        <span class="text-slate-600">Empty</span>
+      {:else}
+        {#each metricNames as name, i}
+          {@const metric = sliceForScores.metrics[name]}
+
+          {#if !!metricInfo[name] && metricInfo[name].visible}
+            {#if metric.type == 'binary'}
+              <SliceMetricBar
+                title={name}
+                value={metric.mean}
+                color={ColorWheel[i]}
+                width={scoreCellWidth}
+                showFullBar
+                horizontalLayout
+              >
+                <span slot="caption">
+                  <strong>{format('.1%')(metric.mean)}</strong>
+                  {#if hovering && metric.hasOwnProperty('share')}
+                    &nbsp;
+                    <span
+                      style="font-size: 0.7rem;"
+                      class="italic text-gray-700"
+                      >({format('.1%')(metric.share)} of total)</span
+                    >
+                  {/if}
+                </span>
+              </SliceMetricBar>
+            {:else if metric.type == 'count'}
+              <SliceMetricBar
+                title={name}
+                value={metric.share}
+                width={scoreCellWidth}
+                color={ColorWheel[i]}
+                showFullBar
+                horizontalLayout
+              >
+                <span slot="caption">
+                  <strong>{format(',')(metric.count)}</strong
+                  >&nbsp;{#if hovering}<span
+                      style="font-size: 0.7rem;"
+                      class="italic text-gray-700"
+                      >({format('.1%')(metric.share)})</span
+                    >{/if}
+                </span>
+              </SliceMetricBar>
+            {:else if metric.type == 'continuous'}
+              <SliceMetricHistogram
+                title={name}
+                horizontalLayout
+                mean={metric.mean}
+                color={ColorWheel[i]}
+                histValues={metric.hist}
+                width={scoreCellWidth}
+              />
+            {:else if metric.type == 'categorical'}
+              <SliceMetricCategoryBar
+                title={name}
+                horizontalLayout
+                order={metricInfo[name].order}
+                counts={metric.counts}
+                width={scoreCellWidth}
+              />
+            {/if}
+          {/if}
+        {/each}
+      {/if}
+    </div>
+    <div
+      class="py-2 grow-0 shrink-0"
       style="display: flex; align-items: center; width: {TableWidths.Checkbox}px;"
     >
       <Checkbox
@@ -143,6 +208,7 @@
         color={isSelected ? sliceColorMap[slice.stringRep] : null}
       />
     </div>
+
     <div
       class="py-2 text-xs flex-auto overflow-x-auto"
       class:opacity-50={revertedScores}
@@ -297,78 +363,6 @@
           {/if}
         {/if}
       {/each} -->
-    </div>
-    <div
-      class="p-2 pt-3 whitespace-nowrap shrink-0"
-      style="width: {TableWidths.AllMetrics}px;"
-    >
-      {#if sliceForScores.isEmpty}
-        <span class="text-slate-600">Empty</span>
-      {:else}
-        {#each metricNames as name, i}
-          {@const metric = sliceForScores.metrics[name]}
-
-          {#if !!metricInfo[name] && metricInfo[name].visible}
-            {#if metric.type == 'binary'}
-              <SliceMetricBar
-                title={name}
-                value={metric.mean}
-                color={ColorWheel[i]}
-                width={scoreCellWidth}
-                showFullBar
-                horizontalLayout
-              >
-                <span slot="caption">
-                  <strong>{format('.1%')(metric.mean)}</strong>
-                  {#if hovering && metric.hasOwnProperty('share')}
-                    &nbsp;
-                    <span
-                      style="font-size: 0.7rem;"
-                      class="italic text-gray-700"
-                      >({format('.1%')(metric.share)} of total)</span
-                    >
-                  {/if}
-                </span>
-              </SliceMetricBar>
-            {:else if metric.type == 'count'}
-              <SliceMetricBar
-                title={name}
-                value={metric.share}
-                width={scoreCellWidth}
-                color={ColorWheel[i]}
-                showFullBar
-                horizontalLayout
-              >
-                <span slot="caption">
-                  <strong>{format(',')(metric.count)}</strong
-                  >&nbsp;{#if hovering}<span
-                      style="font-size: 0.7rem;"
-                      class="italic text-gray-700"
-                      >({format('.1%')(metric.share)})</span
-                    >{/if}
-                </span>
-              </SliceMetricBar>
-            {:else if metric.type == 'continuous'}
-              <SliceMetricHistogram
-                title={name}
-                horizontalLayout
-                mean={metric.mean}
-                color={ColorWheel[i]}
-                histValues={metric.hist}
-                width={scoreCellWidth}
-              />
-            {:else if metric.type == 'categorical'}
-              <SliceMetricCategoryBar
-                title={name}
-                horizontalLayout
-                order={metricInfo[name].order}
-                counts={metric.counts}
-                width={scoreCellWidth}
-              />
-            {/if}
-          {/if}
-        {/each}
-      {/if}
     </div>
   </div>
 {/if}

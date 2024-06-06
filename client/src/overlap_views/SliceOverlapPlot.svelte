@@ -3,6 +3,7 @@
   import ForceScatterPlot from './ForceScatterPlot.svelte';
   import * as d3 from 'd3';
   import { shuffle } from '../utils/utils';
+  import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
 
   export let intersectionCounts: any[] = [];
   export let labels: { stringRep: string }[] = [];
@@ -15,7 +16,8 @@
   export let colorByError = false;
   export let colorBySlice = true;
 
-  export let errorKey;
+  export let errorKey: string | null = null;
+  export let errorKeyOptions: string[] = [];
 
   export let groupedLayout: {
     labels?: { stringRep: string }[];
@@ -356,24 +358,59 @@
       >
         Select All Saved
       </button>
-      {#if simulationProgress != null}
-        <div
-          class="flex-auto bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
-        >
-          <div
-            class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
-            style="width: {(simulationProgress * 100).toFixed(1)}%"
-          />
-        </div>
-      {/if}
     </div>
 
-    {#if hoveredSliceInfo != null}
+    <!-- {#if hoveredSliceInfo != null}
       <div class="absolute top-0 right-0 mt-16 p-3 text-gray-600">
         {hoveredSliceInfo.count} instances, {hoveredSliceInfo[errorKey]} errors ({d3.format(
           '.1%'
         )(hoveredSliceInfo[errorKey] / hoveredSliceInfo.count)})
       </div>
-    {/if}
+    {/if} -->
+    <div class="absolute top-0 right-0 mt-2 mr-2 p-1 bg-slate-100/60 rounded">
+      {#each intersectionCounts.sort((a, b) => b.count - a.count) as intersection}
+        <div
+          class="flex items-center justify-end gap-2 transition-opacity duration-700 delay-100"
+          class:opacity-30={!!hoveredSliceInfo &&
+            !hoveredSliceInfo.slices.every(
+              (s, i) => intersection.slices[i] == s
+            )}
+        >
+          <p class="flex-auto">{intersection.slices}</p>
+          <SliceMetricBar
+            value={intersection[errorKey] / intersection.count}
+            color="#94a3b8"
+            width={64}
+            showFullBar
+            fullBarColor="white"
+            horizontalLayout
+            ><div slot="caption" class="ml-1" style="width: 160px;">
+              {d3.format(',')(intersection.count)} instances ({d3.format('.1%')(
+                intersection[errorKey] / intersection.count
+              )}
+              <span
+                class="inline-block rounded-full w-2 h-2 align-middle"
+                style="background-color: #94a3b8;"
+              />)
+            </div></SliceMetricBar
+          >
+        </div>
+      {/each}
+    </div>
   </div>
+
+  {#if errorKeyOptions.length > 0}
+    <div class="absolute top-0 left-0 mt-2 ml-2 p-1 bg-slate-100/60 rounded">
+      <span
+        class="inline-block rounded-full w-4 h-4 align-text-top"
+        style="background-color: #94a3b8;"
+      />
+      &nbsp;=&nbsp;
+      <select class="flat-select" bind:value={errorKey}>
+        {#each errorKeyOptions as metric}
+          <option value={metric}>{metric}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 {/if}

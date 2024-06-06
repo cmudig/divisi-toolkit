@@ -489,7 +489,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             #     slice_masks[univ_slice] = manager.slice_mask(univ_slice)
                     
         slice_order = list(slice_masks.keys())
-        self.slice_intersection_labels = [self.get_slice_description(s) for s in slice_order]
+        labels = [self.get_slice_description(s) for s in slice_order]
         
         intersect_counts = []
         base_mask = np.arange(manager.df.shape[0])[manager.eval_mask]
@@ -519,6 +519,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
            
         calculate_intersection_counts([], np.ones(manager.eval_df.shape[0], dtype=bool))
         self.slice_intersection_counts = intersect_counts 
+        self.slice_intersection_labels = labels
         # for slice_combo in powerset(slice_masks.keys()):
         #     if len(slice_combo) == 0: continue
         #     combined_slice = slice_combo[0]
@@ -582,7 +583,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             centroids['size'] = sizes
             self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,
-                'labels': self.slice_intersection_labels,
+                'labels': labels,
                 'layout': centroids.set_index(metadata['point_index'], drop=True).to_dict(orient='index')
             }
              #Ungrouped version

@@ -24,13 +24,6 @@
   // export let sliceColorMap = writable({});
   export let model;
 
-  enum View {
-    configuration = 'Configure',
-    overlaps = 'Slice Map',
-    examples = 'Examples',
-  }
-  let currentView: View = View.configuration;
-
   // export const sliceColorMap = writable({});
   let sliceColorMap = traitlet(model, 'slice_color_map', {});
 
@@ -117,10 +110,11 @@
     }
     console.log('overlap metric:', $overlapPlotMetric);
   }
-  let hiddenMetrics: string[] = [];
+  let hiddenMetrics: string[] | null = null;
 
-  $: {
+  $: if (!!$metricInfo && hiddenMetrics === null) {
     console.log('metric info obj:', $metricInfo);
+    hiddenMetrics = [];
     Object.entries($metricInfo).forEach(([n, info]) => {
       if (!(info.visible ?? true) && !hiddenMetrics.includes(n)) {
         hiddenMetrics.push(n);
@@ -257,6 +251,29 @@
     </button>
   </div>
   <div class="flex flex-1 w-full min-h-0">
+    <ResizablePanel
+      rightResizable
+      minWidth={240}
+      maxWidth="70%"
+      height="100%"
+      width={260}
+      class="border-x border-b border-slate-500 {!isFullScreen
+        ? 'rounded-bl'
+        : ''}"
+    >
+      <div class="w-full h-full overflow-y-auto">
+        <ConfigurationView
+          metricInfo={$metricInfo}
+          bind:derivedMetricConfigs={$derivedMetricConfigs}
+          bind:hiddenMetrics
+          bind:scoreFunctionConfigs={$scoreFunctionConfigs}
+          bind:scoreWeights={$scoreWeights}
+          bind:metricExpressionRequest={$metricExpressionRequest}
+          bind:metricExpressionResponse={$metricExpressionResponse}
+        />
+      </div>
+    </ResizablePanel>
+
     <div
       class="flex-1 h-full overflow-auto"
       class:pl-2={isFullScreen}
@@ -300,7 +317,6 @@
           slices={$savedSlices}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
-          sliceColorMap={$sliceColorMap}
           {valueNames}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
@@ -330,66 +346,21 @@
         ? 'rounded-br'
         : ''}"
     >
-      <div
-        class="w-full h-full relative"
-        class:overflow-y-auto={currentView == View.configuration}
-      >
-        <div
-          class="absolute top-0 left-0 bottom-0 right-0 w-full h-full"
-          class:hidden={currentView != View.overlaps}
-        >
-          {#if $overlapPlotMetric != null}
-            <SliceOverlapPlot
-              errorKey={$overlapPlotMetric}
-              bind:selectedSlices={$selectedSlices}
-              savedSlices={$savedSlices}
-              colorBySlice={true}
-              intersectionCounts={$sliceIntersectionCounts}
-              labels={$sliceIntersectionLabels}
-              groupedLayout={$groupedMapLayout}
-            />
-          {/if}
-        </div>
-        {#if metricNames.length > 0 && currentView == View.overlaps}
-          <div class="absolute top-0 left-0 mt-16 ml-4">
-            <select class="flat-select" bind:value={$overlapPlotMetric}>
-              {#each binaryMetrics as metric}
-                <option value={metric}>{metric}</option>
-              {/each}
-            </select>
-          </div>
+      <div class="w-full h-full relative">
+        {#if $overlapPlotMetric != null}
+          <SliceOverlapPlot
+            bind:errorKey={$overlapPlotMetric}
+            errorKeyOptions={binaryMetrics}
+            bind:selectedSlices={$selectedSlices}
+            savedSlices={$savedSlices}
+            colorBySlice={true}
+            intersectionCounts={$sliceIntersectionCounts}
+            labels={$sliceIntersectionLabels}
+            groupedLayout={$groupedMapLayout}
+          />
         {/if}
-
-        <div
-          class="w-full px-4 py-2 flex justify-between sticky top-0 left-0 bg-white/80 z-90"
-        >
-          {#each [View.configuration, View.overlaps, View.examples] as view}
-            <button
-              class="rounded my-2 py-1 text-center w-36 {currentView == view
-                ? 'bg-blue-600 text-white font-bold hover:bg-blue-700'
-                : 'bg-transparent text-slate-700 hover:bg-slate-300'}"
-              on:click={() => (currentView = view)}>{view}</button
-            >
-          {/each}
-        </div>
-
-        {#if currentView == View.configuration}
-          <div class="w-full">
-            <div style="min-width: 300px;" class="w-full">
-              <ConfigurationView
-                metricInfo={$metricInfo}
-                bind:derivedMetricConfigs={$derivedMetricConfigs}
-                bind:hiddenMetrics
-                bind:scoreFunctionConfigs={$scoreFunctionConfigs}
-                bind:scoreWeights={$scoreWeights}
-                bind:metricExpressionRequest={$metricExpressionRequest}
-                bind:metricExpressionResponse={$metricExpressionResponse}
-              />
-            </div>
-          </div>
-        {:else if currentView == View.examples}{/if}
-      </div>
-    </ResizablePanel>
+      </div></ResizablePanel
+    >
   </div>
 </main>
 

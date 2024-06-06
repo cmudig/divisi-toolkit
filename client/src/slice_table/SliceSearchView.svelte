@@ -281,7 +281,7 @@
     />
   {/if}
   <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
-    <div class="bg-slate-200 text-gray-700 rounded-l">
+    <div class="bg-slate-200 text-gray-700">
       {#if runningSampler}
         <div class="flex items-center px-4 py-3">
           <div class="flex-auto">
