@@ -210,17 +210,9 @@
   }
 
   function assignColorToSlice(selectedSlices) {
-    $sliceColorMap = {};
-    selectedSlices.forEach((slice, ind) => {
-      sliceColorMap.update((currentMap) => {
-        const stringRep = slice.stringRep;
-        if (!currentMap[stringRep]) {
-          currentMap[stringRep] = colorScale(ind);
-        }
-        console.log(currentMap);
-        return { ...currentMap };
-      });
-    });
+    $sliceColorMap = Object.fromEntries(
+      selectedSlices.map((slice, ind) => [slice.stringRep, colorScale(ind)])
+    );
   }
 
   $: {
@@ -353,7 +345,7 @@
             errorKeyOptions={binaryMetrics}
             bind:selectedSlices={$selectedSlices}
             savedSlices={$savedSlices}
-            colorBySlice={true}
+            sliceColorMap={$sliceColorMap}
             intersectionCounts={$sliceIntersectionCounts}
             labels={$sliceIntersectionLabels}
             groupedLayout={$groupedMapLayout}

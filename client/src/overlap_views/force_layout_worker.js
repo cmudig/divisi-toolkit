@@ -26,6 +26,7 @@ class ForceLayout {
     this.h = h;
     this.data = data;
     this.resetNodePositions();
+    this.computing = false;
   }
 
   resetNodePositions() {
@@ -81,7 +82,8 @@ class ForceLayout {
   }
 
   compute(opts = {}) {
-    console.log('computing');
+    if (this.computing) console.error('computing', this);
+    this.computing = true;
     let pointRadius = opts.pointRadius ?? 5;
 
     let counts = Array.apply(null, Array(this.data[0].slices.length)).map(
@@ -144,6 +146,7 @@ class ForceLayout {
         totalTicks,
         positions: this.nodePositions,
       });
+    this.computing = false;
   }
 }
 

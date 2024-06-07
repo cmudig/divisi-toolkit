@@ -34,7 +34,8 @@
     </div>
   {/if}
   <div
-    class="parent-bar relative mb-1 rounded-full overflow-hidden"
+    class="parent-bar relative rounded-full overflow-hidden"
+    class:mb-1={!horizontalLayout}
     style="width: {width}px; height: 6px;"
   >
     {#if showFullBar}

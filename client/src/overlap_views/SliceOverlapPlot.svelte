@@ -4,17 +4,17 @@
   import * as d3 from 'd3';
   import { shuffle } from '../utils/utils';
   import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
+  import { drawSliceGlyphHTML } from './slice_glyphs';
+  import { onMount } from 'svelte';
 
   export let intersectionCounts: any[] = [];
   export let labels: { stringRep: string }[] = [];
-  export let numPoints = 500;
   export let selectedIndexes = null;
 
   export let selectedSlices = [];
   export let savedSlices = [];
 
-  export let colorByError = false;
-  export let colorBySlice = true;
+  export let sliceColorMap: { [key: string]: string } = {};
 
   export let errorKey: string | null = null;
   export let errorKeyOptions: string[] = [];
@@ -37,37 +37,15 @@
   let hoveredSliceInfo = null;
 
   let sliceCount = 0;
-
-  let simulationProgress: number | null = null;
+  let maxIntersectionSize = 1;
 
   let pointData = [];
 
-  let colorScale = null;
-
-  let numPerPoint;
-
-  function randomPointID(): string {
-    return Array.from(Array(20), () =>
-      Math.floor(Math.random() * 36).toString(36)
-    ).join('');
-  }
-
   function generatePointData() {
-    let totalPoints = intersectionCounts.reduce(
-      (prev, curr) => prev + curr.count,
-      0
+    maxIntersectionSize = intersectionCounts.reduce(
+      (prev, int) => Math.max(prev, int.count),
+      1
     );
-    numPerPoint = Math.pow(2, Math.floor(Math.log2(totalPoints / numPoints)));
-
-    let maxNumSlices = intersectionCounts.reduce(
-      (prev, curr) =>
-        Math.max(
-          prev,
-          curr.slices.reduce((a, b) => a + b, 0)
-        ),
-      0
-    );
-
     if (Object.keys(groupedLayout?.layout ?? {}).length > 0) {
       console.log('grouped layout!');
       pointData = Object.entries(groupedLayout.layout).map(
@@ -76,143 +54,12 @@
           id: parseInt(id),
         })
       );
-    } /* else if (pointData.length > 0) {
-      // remap the existing point data where possible
-      let unmappedIndexes: Set<number> = new Set(
-        new Array(pointData.length).fill(0).map((_, i) => i)
-      );
-      let existingIndexMap: Map<string, number[]> = new Map();
-      let makeKey = (d, ls) =>
-        `${d.outcome}:` +
-        d.slices
-          .map((s: boolean, j: number) => (s ? ls[j].stringRep : null))
-          .filter((x: string | null) => x !== null)
-          .join(', ');
-      pointData.forEach((d, i) => {
-        let key = makeKey(d, oldLabels);
-        if (existingIndexMap.has(key)) existingIndexMap.get(key).push(i);
-        else existingIndexMap.set(key, [i]);
-      });
-
-      // go over intersections that existed already first
-      let mappedCounts: any[] = intersectionCounts
-        .map((item) => {
-          let errors = Math.round(item[errorKey] / numPerPoint);
-          let noErrors = Math.round(
-            (item.count - item[errorKey]) / numPerPoint
-          );
-          let noErrorMapKey = makeKey(
-            { slices: item.slices, outcome: false },
-            labels
-          );
-          let errorMapKey = makeKey(
-            { slices: item.slices, outcome: true },
-            labels
-          );
-          let mappedErrors = 0;
-          let mappedNoErrors = 0;
-          if (existingIndexMap.has(errorMapKey)) {
-            mappedErrors = Math.min(
-              errors,
-              existingIndexMap.get(errorMapKey).length
-            );
-            existingIndexMap
-              .get(errorMapKey)
-              .slice(0, mappedErrors)
-              .forEach((i) => {
-                pointData[i].slices = item.slices; // in case the slices are in different order
-                unmappedIndexes.delete(i);
-              });
-          }
-          if (existingIndexMap.has(noErrorMapKey)) {
-            mappedNoErrors = Math.min(
-              noErrors,
-              existingIndexMap.get(noErrorMapKey).length
-            );
-            existingIndexMap
-              .get(noErrorMapKey)
-              .slice(0, mappedNoErrors)
-              .forEach((i) => {
-                pointData[i].slices = item.slices; // in case the slices are in different order
-                unmappedIndexes.delete(i);
-              });
-          }
-          return [
-            {
-              ...item,
-              outcome: true,
-              total: errors,
-              mapped: mappedErrors,
-            },
-            {
-              ...item,
-              outcome: false,
-              total: noErrors,
-              mapped: mappedNoErrors,
-            },
-          ];
-        })
-        .flat();
-
-      console.log(
-        'after mapping existing intersections:',
-        mappedCounts,
-        unmappedIndexes
-      );
-      // remap remaining intersections to random points
-      mappedCounts.forEach((item) => {
-        while (item.total > item.mapped) {
-          if (unmappedIndexes.size == 0) {
-            pointData.push({
-              slices: item.slices,
-              outcome: item.outcome,
-              id: randomPointID(),
-            });
-          } else {
-            let randomIdx = [...unmappedIndexes][
-              Math.floor(Math.random() * unmappedIndexes.size)
-            ];
-            console.log(randomIdx, pointData[randomIdx]);
-            pointData[randomIdx].slices = item.slices;
-            pointData[randomIdx].outcome = item.outcome;
-            unmappedIndexes.delete(randomIdx);
-          }
-          item.mapped++;
-        }
-      });
-
-      pointData = pointData.filter((_, i) => !unmappedIndexes.has(i));
-      console.log('final:', pointData);
-    } */ else {
-      pointData = intersectionCounts
-        .map((item) => {
-          let errors = Math.round(item[errorKey] / numPerPoint);
-          let noErrors = Math.round(
-            (item.count - item[errorKey]) / numPerPoint
-          );
-          return [
-            ...Array.apply(null, Array(noErrors)).map((_) => ({
-              slices: item.slices,
-              outcome: false,
-              id: randomPointID(),
-            })),
-            ...Array.apply(null, Array(errors)).map((_) => ({
-              slices: item.slices,
-              outcome: true,
-              id: randomPointID(),
-            })),
-          ];
-        })
-        .flat();
-      shuffle(pointData);
+    } else {
+      pointData = [];
     }
-    colorScale = d3
-      .scaleSequential(d3.interpolateSpectral)
-      // .scaleOrdinal(d3.schemeCategory10)
-      // .domain(d3.range(1, intersectionCounts[0].slices.length + 1));
-      .domain([1, maxNumSlices]);
   }
 
+  // regenerate point data when a property changes, and the grouped layout reflects the new properties
   let oldLabels = [];
   let oldErrorKey = '';
   let oldGroupedLayout = null;
@@ -240,8 +87,6 @@
       oldErrorKey = errorKey;
       oldGroupedLayout = groupedLayout;
     }
-  } else {
-    pointData = [];
   }
 
   $: if (hoveredSlices != null)
@@ -260,58 +105,6 @@
       );
   else hoveredSliceInfo = null;
 
-  function color(item, selectedSlices, selIndexes) {
-    // console.log("enter color");
-    let numSlices = item.slices.reduce((prev, curr) => prev + curr, 0);
-    // if(numSlices != 0){
-    //   console.log("Function Input:", item, selectedSlices, selIndexes);
-    //   console.log("Number of slices:", numSlices);}
-    if (colorBySlice) {
-      if (selectedSlices != null) {
-        let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-        if (allEqual) {
-          return '#b89794';
-        }
-        return null;
-      } else if (selIndexes != null) {
-        if (selIndexes.some((s, i) => item.slices[i] && s)) {
-          return '#b89794';
-        }
-        return null;
-      }
-      // console.log("ckp1");
-      return '#b89794';
-    } else if (colorByError) {
-      console.log('ckp3');
-      if (selectedSlices != null) {
-        let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-        if (allEqual) return item.error ? '#c2410c' : '#6ee7b7';
-        return '#e2e8f0';
-      } else if (selIndexes != null) {
-        if (selIndexes.some((s, i) => item.slices[i] && s))
-          return item.error ? '#c2410c' : '#6ee7b7';
-        return '#e2e8f0';
-      }
-      return item.error ? '#c2410c' : '#6ee7b7';
-    }
-    console.log('ckp2');
-    if (selectedSlices != null) {
-      console.log('selectedSlices != null');
-      let allEqual = selectedSlices.every((s, i) => item.slices[i] == s);
-      if (allEqual) return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
-      return '#e2e8f0';
-    } else if (selIndexes != null) {
-      console.log('selIndexes != null');
-      console.log(selIndexes);
-      if (selIndexes.some((s, i) => item.slices[i] && s))
-        return numSlices == 0 ? '#94a3b8' : colorScale(numSlices);
-      return '#e2e8f0';
-    }
-    console.log('got here');
-    // console.log(numSlices == 0 ? '#94a3b8' : colorScale(numSlices));
-    return numSlices == 0 ? '#b89794' : colorScale(numSlices);
-  }
-
   function clearSelectedSlices() {
     selectedSlices = [];
   }
@@ -319,30 +112,48 @@
   function selectSavedSlices() {
     selectedSlices = savedSlices;
   }
+
+  let sortedIntersections: any[] = [];
+  let sliceColors: string[] = [];
+  $: sortedIntersections = intersectionCounts.sort((a, b) => b.count - a.count);
+  $: if (!!sliceColorMap)
+    sliceColors = labels.map((l) => sliceColorMap[l.stringRep]);
+  else sliceColors = [];
+
+  let sliceGlyphContainers: HTMLElement[] = [];
+  $: if (
+    sortedIntersections.length == intersectionCounts.length &&
+    sliceGlyphContainers.length == sortedIntersections.length &&
+    sliceColors.length == labels.length
+  )
+    sliceGlyphContainers.forEach((container, i) => {
+      let intersection = sortedIntersections[i];
+      drawSliceGlyphHTML(container, intersection.slices, sliceColors, 8);
+    });
+
+  // this appears to be needed when the overlap plot is visible on load
+  let loaded = false;
+  onMount(() => setTimeout(() => (loaded = true), 10));
 </script>
 
-{#if intersectionCounts.length > 0}
+{#if pointData.length > 0}
   <div class="w-full h-full relative bg-slate-100">
-    <LayerCake
-      padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
-      data={pointData}
-    >
-      <Canvas>
-        <ForceScatterPlot
-          bind:simulationProgress
-          bind:hoveredSlices
-          {colorByError}
-          {colorBySlice}
-          {hoveredMousePosition}
-          colorFn={(item) =>
-            color(
-              item,
-              hoveredSlices != null ? hoveredSlices : null,
-              selectedIndexes
-            )}
-        />
-      </Canvas>
-    </LayerCake>
+    {#if loaded}
+      <div class="w-full h-full">
+        <LayerCake
+          padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+          data={pointData}
+        >
+          <Canvas>
+            <ForceScatterPlot
+              bind:hoveredSlices
+              {sliceColors}
+              {hoveredMousePosition}
+            />
+          </Canvas>
+        </LayerCake>
+      </div>
+    {/if}
     <div
       class="absolute bottom-0 left-0 right-0 mb-2 mx-2 flex items-center gap-2"
     >
@@ -360,23 +171,34 @@
       </button>
     </div>
 
-    <!-- {#if hoveredSliceInfo != null}
-      <div class="absolute top-0 right-0 mt-16 p-3 text-gray-600">
-        {hoveredSliceInfo.count} instances, {hoveredSliceInfo[errorKey]} errors ({d3.format(
-          '.1%'
-        )(hoveredSliceInfo[errorKey] / hoveredSliceInfo.count)})
-      </div>
-    {/if} -->
-    <div class="absolute top-0 right-0 mt-2 mr-2 p-1 bg-slate-100/60 rounded">
-      {#each intersectionCounts.sort((a, b) => b.count - a.count) as intersection}
+    <div class="absolute top-0 right-0 mt-2 mr-2 p-1 bg-slate-100/80 rounded">
+      {#each sortedIntersections as intersection, intIndex}
+        {@const numSlices = intersection.slices.reduce((a, b) => a + b, 0)}
+        {@const errorRateString = d3.format('.1%')(
+          intersection[errorKey] / intersection.count
+        )}
         <div
           class="flex items-center justify-end gap-2 transition-opacity duration-700 delay-100"
           class:opacity-30={!!hoveredSliceInfo &&
             !hoveredSliceInfo.slices.every(
               (s, i) => intersection.slices[i] == s
             )}
+          on:mouseenter={() => {
+            hoveredSlices = intersection.slices;
+          }}
+          on:mouseleave={() => {
+            hoveredSlices = intersection.slices;
+          }}
+          title="{intersection.count} points included in {numSlices} slice{numSlices !=
+          1
+            ? 's'
+            : ''}, with an error rate of {errorRateString}"
         >
-          <p class="flex-auto">{intersection.slices}</p>
+          <div
+            style="width: 16px; height: 16px;"
+            bind:this={sliceGlyphContainers[intIndex]}
+          />
+          <!-- <p class="flex-auto">{intersection.slices}</p> -->
           <SliceMetricBar
             value={intersection[errorKey] / intersection.count}
             color="#94a3b8"
@@ -384,10 +206,8 @@
             showFullBar
             fullBarColor="white"
             horizontalLayout
-            ><div slot="caption" class="ml-1" style="width: 160px;">
-              {d3.format(',')(intersection.count)} instances ({d3.format('.1%')(
-                intersection[errorKey] / intersection.count
-              )}
+            ><div slot="caption" class="ml-1" style="width: 100px;">
+              {d3.format(',')(intersection.count)} ({errorRateString}
               <span
                 class="inline-block rounded-full w-2 h-2 align-middle"
                 style="background-color: #94a3b8;"

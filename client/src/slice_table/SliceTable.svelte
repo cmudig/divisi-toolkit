@@ -143,13 +143,6 @@
     }
   }
 
-  $: console.log(
-    `table with ${slices.length} slices has selected slices:`,
-    selectedSlices,
-    'Current sliceColorMap in SliceCurationTable:',
-    sliceColorMap
-  );
-
   $: console.log('color map in SliceTable:', sliceColorMap);
 
   function saveSlice(slice: Slice) {
