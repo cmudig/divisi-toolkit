@@ -24,6 +24,7 @@
   import { featureToString, parseFeature } from '../utils/slice_parsing';
   import Checkbox from '../utils/Checkbox.svelte';
   import { ColorWheel } from '../utils/colorwheel';
+  import * as d3 from 'd3';
 
   const dispatch = createEventDispatcher();
 
@@ -115,189 +116,194 @@
   function temporaryRevertSlice(revert) {
     revertedScores = revert;
   }
+
+  function makeCategoricalColorScale(baseColor: string): (v: number) => string {
+    let scale = d3.interpolateHsl(baseColor, '#ffffff');
+    // shift away from white a little bit
+    return (v: number) => {
+      return scale(v * 0.9);
+    };
+  }
 </script>
 
 {#if !!sliceToShow}
   <div
-    class="slice-row w-full px-2 gap-1 {rowClass
+    class="slice-row w-full py-1 px-2 {rowClass
       ? rowClass
-      : 'bg-white'} inline-flex items-center"
+      : 'bg-white'} inline-flex items-center justify-center flex-wrap-reverse"
     style="margin-left: {indentAmount * (maxIndent - indent)}px;"
     on:mouseenter={() => (hovering = true)}
     on:mouseleave={() => (hovering = false)}
   >
-    <div
-      class="p-2 pt-3 whitespace-nowrap shrink-0"
-      style="width: {TableWidths.AllMetrics}px;"
-    >
-      {#if sliceForScores.isEmpty}
-        <span class="text-slate-600">Empty</span>
-      {:else}
+    {#if sliceForScores.isEmpty}
+      <div
+        class="p-2 pt-3 whitespace-nowrap shrink-0 text-slate-600"
+        style="width: {TableWidths.AllMetrics}px;"
+      >
+        Empty
+      </div>
+    {:else}
+      <div
+        class="p-2 whitespace-nowrap shrink-0 grid auto-rows-max text-xs gap-x-2 gap-y-0 items-center"
+        style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 96px;"
+      >
         {#each metricNames as name, i}
           {@const metric = sliceForScores.metrics[name]}
 
           {#if !!metricInfo[name] && metricInfo[name].visible}
             {#if metric.type == 'binary'}
+              <div class="font-bold text-right">{name}</div>
               <SliceMetricBar
-                title={name}
                 value={metric.mean}
                 color={ColorWheel[i]}
-                width={scoreCellWidth}
+                width={null}
                 showFullBar
                 horizontalLayout
-              >
-                <span slot="caption">
-                  <strong>{format('.1%')(metric.mean)}</strong>
-                  {#if hovering && metric.hasOwnProperty('share')}
-                    &nbsp;
-                    <span
-                      style="font-size: 0.7rem;"
-                      class="italic text-gray-700"
-                      >({format('.1%')(metric.share)} of total)</span
-                    >
-                  {/if}
-                </span>
-              </SliceMetricBar>
+                showTooltip={false}
+              />
+              <div>
+                <strong>{format('.1%')(metric.mean)}</strong>
+              </div>
             {:else if metric.type == 'count'}
+              <div class="font-bold text-right">{name}</div>
               <SliceMetricBar
-                title={name}
                 value={metric.share}
-                width={scoreCellWidth}
+                width={null}
                 color={ColorWheel[i]}
                 showFullBar
                 horizontalLayout
-              >
-                <span slot="caption">
-                  <strong>{format(',')(metric.count)}</strong
-                  >&nbsp;{#if hovering}<span
-                      style="font-size: 0.7rem;"
-                      class="italic text-gray-700"
-                      >({format('.1%')(metric.share)})</span
-                    >{/if}
-                </span>
-              </SliceMetricBar>
+                showTooltip={false}
+              />
+              <div>
+                <strong>{format(',')(metric.count)}</strong>
+                <span style="font-size: 0.7rem;" class="italic text-gray-700"
+                  >({format('.1%')(metric.share)})</span
+                >
+              </div>
             {:else if metric.type == 'continuous'}
               <SliceMetricHistogram
+                noParent
                 title={name}
+                width={null}
                 horizontalLayout
                 mean={metric.mean}
                 color={ColorWheel[i]}
                 histValues={metric.hist}
-                width={scoreCellWidth}
               />
             {:else if metric.type == 'categorical'}
               <SliceMetricCategoryBar
+                noParent
+                width={null}
                 title={name}
                 horizontalLayout
+                colorScale={makeCategoricalColorScale(ColorWheel[i])}
                 order={metricInfo[name].order}
                 counts={metric.counts}
-                width={scoreCellWidth}
               />
             {/if}
           {/if}
         {/each}
-      {/if}
-    </div>
-    <div
-      class="py-2 grow-0 shrink-0"
-      style="display: flex; align-items: center; width: {TableWidths.Checkbox}px;"
-    >
-      <Checkbox
-        checked={isSelected}
-        on:change={(e) => dispatch('select', !isSelected)}
-        color={isSelected ? sliceColorMap[slice.stringRep] : null}
-      />
-    </div>
-
-    <div
-      class="py-2 text-xs flex-auto overflow-x-auto"
-      class:opacity-50={revertedScores}
-    >
-      {#if isEditing}
-        <SliceFeatureEditor
-          featureText={featureToString(
-            featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
-              slice.feature.type != 'base'
-              ? slice.feature
-              : sliceToShow.feature,
-            false,
-            positiveOnly
-          )}
-          {positiveOnly}
-          {allowedValues}
-          on:cancel={(e) => {
-            isEditing = false;
-            dispatch('endedit');
-          }}
-          on:save={(e) => {
-            let newFeature = parseFeature(e.detail, allowedValues);
-            console.log('new feature:', newFeature);
-            isEditing = false;
-            dispatch('endedit');
-            dispatch('edit', newFeature);
-          }}
+      </div>
+    {/if}
+    <div class="ml-2 flex flex-auto items-center" style="width: 200px;">
+      <div class="grow-0 shrink-0">
+        <Checkbox
+          checked={isSelected}
+          on:change={(e) => dispatch('select', !isSelected)}
+          color={isSelected ? sliceColorMap[slice.stringRep] : null}
         />
-      {:else}
-        <div class="flex pt-1 items-center h-full whitespace-nowrap">
-          <div style="flex: 0 1 auto;" class="overflow-x-auto">
-            <SliceFeature
-              feature={featuresHaveSameTree(
-                slice.feature,
-                sliceToShow.feature
-              ) && slice.feature.type != 'base'
+      </div>
+
+      <div
+        class="py-2 text-xs overflow-x-auto min-w-0"
+        class:opacity-50={revertedScores}
+      >
+        {#if isEditing}
+          <SliceFeatureEditor
+            featureText={featureToString(
+              featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
+                slice.feature.type != 'base'
                 ? slice.feature
-                : sliceToShow.feature}
-              currentFeature={sliceToShow.feature}
-              canToggle={featuresHaveSameTree(
-                slice.feature,
-                sliceToShow.feature
-              )}
-              {positiveOnly}
-              on:toggle
-            />
-          </div>
-          {#if showButtons || hovering || isSaved}
-            <button
-              class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
-              title="Add a new custom slice"
-              on:click={() => dispatch('saveslice', slice)}
-              ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
-            >
-          {/if}
-          {#if showButtons || hovering}
-            {#if showCreateSliceButton}
+                : sliceToShow.feature,
+              false,
+              positiveOnly
+            )}
+            {positiveOnly}
+            {allowedValues}
+            on:cancel={(e) => {
+              isEditing = false;
+              dispatch('endedit');
+            }}
+            on:save={(e) => {
+              let newFeature = parseFeature(e.detail, allowedValues);
+              console.log('new feature:', newFeature);
+              isEditing = false;
+              dispatch('endedit');
+              dispatch('edit', newFeature);
+            }}
+          />
+        {:else}
+          <div class="flex items-center h-full whitespace-nowrap">
+            <div style="flex: 0 1 auto;" class="overflow-x-auto">
+              <SliceFeature
+                feature={featuresHaveSameTree(
+                  slice.feature,
+                  sliceToShow.feature
+                ) && slice.feature.type != 'base'
+                  ? slice.feature
+                  : sliceToShow.feature}
+                currentFeature={sliceToShow.feature}
+                canToggle={featuresHaveSameTree(
+                  slice.feature,
+                  sliceToShow.feature
+                )}
+                {positiveOnly}
+                on:toggle
+              />
+            </div>
+            {#if showButtons || hovering || isSaved}
               <button
                 class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
                 title="Add a new custom slice"
-                on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
+                on:click={() => dispatch('saveslice', slice)}
+                ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
               >
             {/if}
-            <button
-              class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
-              on:click={() => {
-                isEditing = true;
-                dispatch('beginedit');
-              }}
-              title="Temporarily modify the slice definition"
-              ><Fa icon={faPencil} /></button
-            >
-            {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
+            {#if showButtons || hovering}
+              {#if showCreateSliceButton}
+                <button
+                  class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+                  title="Add a new custom slice"
+                  on:click={() => dispatch('create')}
+                  ><Fa icon={faPlus} /></button
+                >
+              {/if}
               <button
-                class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
+                class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
                 on:click={() => {
-                  temporaryRevertSlice(false);
-                  dispatch('reset');
+                  isEditing = true;
+                  dispatch('beginedit');
                 }}
-                on:mouseenter={() => temporaryRevertSlice(true)}
-                on:mouseleave={() => temporaryRevertSlice(false)}
-                title="Reset the slice definition"
-                ><Fa icon={faRotateRight} /></button
+                title="Temporarily modify the slice definition"
+                ><Fa icon={faPencil} /></button
               >
+              {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
+                <button
+                  class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
+                  on:click={() => {
+                    temporaryRevertSlice(false);
+                    dispatch('reset');
+                  }}
+                  on:mouseenter={() => temporaryRevertSlice(true)}
+                  on:mouseleave={() => temporaryRevertSlice(false)}
+                  title="Reset the slice definition"
+                  ><Fa icon={faRotateRight} /></button
+                >
+              {/if}
             {/if}
-          {/if}
-        </div>
-      {/if}
-      <!-- {#each featureOrder as col, i}
+          </div>
+        {/if}
+        <!-- {#each featureOrder as col, i}
         {@const featureDisabled =
           !sliceToShow.featureValues.hasOwnProperty(col) &&
           baseSlice.featureValues.hasOwnProperty(col)}
@@ -363,6 +369,7 @@
           {/if}
         {/if}
       {/each} -->
+      </div>
     </div>
   </div>
 {/if}

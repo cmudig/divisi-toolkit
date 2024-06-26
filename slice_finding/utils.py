@@ -72,8 +72,8 @@ def detect_data_type(arr):
     if arr.dtype == np.dtype('object'):
         return 'categorical'
     uniques = np.unique(arr)
-    uniques = uniques[~np.isnan(uniques)]
-    if len(uniques) == 2 and np.allclose(uniques, np.arange(2)):
+    uniques = uniques[~pd.isna(uniques)]
+    if len(uniques) == 2 and (np.issubdtype(uniques.dtype, np.number) or np.issubdtype(uniques.dtype, np.bool_)) and np.allclose(uniques, np.arange(2)):
         return 'binary'
     
     if len(uniques) < 5:

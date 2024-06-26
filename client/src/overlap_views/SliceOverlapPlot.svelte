@@ -2,14 +2,14 @@
   import { LayerCake, Canvas } from 'layercake';
   import ForceScatterPlot from './ForceScatterPlot.svelte';
   import * as d3 from 'd3';
-  import { shuffle } from '../utils/utils';
   import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
-  import { drawSliceGlyphHTML } from './slice_glyphs';
   import { onMount } from 'svelte';
+  import SliceLegendGlyph from './SliceLegendGlyph.svelte';
 
   export let intersectionCounts: any[] = [];
-  export let labels: { stringRep: string }[] = [];
-  export let selectedIndexes = null;
+  export let labels: { stringRep: string; feature: any }[] = [];
+
+  export let searchScopeInfo: any = {};
 
   export let selectedSlices = [];
   export let savedSlices = [];
@@ -36,8 +36,11 @@
   let hoveredMousePosition = null;
   let hoveredSliceInfo = null;
 
+  let selectedClusters: number[] = [];
+
   let sliceCount = 0;
   let maxIntersectionSize = 1;
+  let totalInstances = 1;
 
   let pointData = [];
 
@@ -45,6 +48,10 @@
     maxIntersectionSize = intersectionCounts.reduce(
       (prev, int) => Math.max(prev, int.count),
       1
+    );
+    totalInstances = intersectionCounts.reduce(
+      (prev, int) => prev + int.count,
+      0
     );
     if (Object.keys(groupedLayout?.layout ?? {}).length > 0) {
       console.log('grouped layout!');
@@ -83,6 +90,14 @@
       if (oldErrorKey !== errorKey) pointData = [];
 
       generatePointData();
+      sortedIntersections = intersectionCounts.sort(
+        (a, b) => b.count - a.count
+      );
+
+      if (!!sliceColorMap)
+        sliceColors = labels.map((l) => sliceColorMap[l.stringRep]);
+      else sliceColors = [];
+
       oldLabels = labels;
       oldErrorKey = errorKey;
       oldGroupedLayout = groupedLayout;
@@ -93,16 +108,6 @@
     hoveredSliceInfo = intersectionCounts.find((item) =>
       item.slices.every((s, i) => hoveredSlices[i] == s)
     );
-  else if (selectedIndexes != null)
-    hoveredSliceInfo = intersectionCounts
-      .filter((item) => selectedIndexes.some((s, i) => item.slices[i] && s))
-      .reduce(
-        (prev, curr) => ({
-          count: prev.count + curr.count,
-          [errorKey]: prev[errorKey] + curr[errorKey],
-        }),
-        { count: 0, [errorKey]: 0 }
-      );
   else hoveredSliceInfo = null;
 
   function clearSelectedSlices() {
@@ -113,23 +118,66 @@
     selectedSlices = savedSlices;
   }
 
+  function setSearchScopeToSlice(intersection: {
+    slices: number[];
+    count: number;
+  }) {
+    // construct an intersection slice
+    if (labels.length > 0) {
+      let negateIfNeeded: (label: { feature: any }, index: number) => any = (
+        label,
+        index
+      ) => {
+        console.log('negating if needed:', label, intersection.slices[index]);
+        if (!intersection.slices[index])
+          return { type: 'negation', feature: label.feature };
+        return label.feature;
+      };
+      console.log('Setting search scope to slice');
+      searchScopeInfo = {
+        // within_slice: labels.slice(1).reduce(
+        //   (prev, curr, i) => ({
+        //     type: 'and',
+        //     lhs: prev,
+        //     rhs: negateIfNeeded(curr, i + 1),
+        //   }),
+        //   negateIfNeeded(labels[0], 0)
+        // ),
+        within_selection: pointData
+          .filter((d) => d.slices.every((s, i) => intersection.slices[i] == s))
+          .map((d) => d.cluster),
+        proportion: intersection.count / totalInstances,
+      };
+    } else searchScopeInfo = {};
+    // searchScopeInfo = { within_slice}
+  }
+
+  $: console.log('Search scope INFO:', searchScopeInfo);
+
+  let oldSearchScopeInfo: any = {};
+  $: if (oldSearchScopeInfo !== searchScopeInfo) {
+    console.log(
+      '(Selected clusters) setting search scope info:',
+      searchScopeInfo
+    );
+    if (!!searchScopeInfo.within_selection)
+      selectedClusters = searchScopeInfo.within_selection;
+    // else if (!!searchScopeInfo.intersection) {
+    //   let selected = searchScopeInfo.intersection.slices;
+    //   console.log('looking at search scope info', selected);
+    //   selectedClusters = pointData
+    //     .filter(
+    //       (d) =>
+    //         d.slices.length == selected.length &&
+    //         d.slices.every((s, i) => s == selected[i])
+    //     )
+    //     .map((d) => d.cluster);
+    //   console.log('selected:', selectedClusters);
+    else selectedClusters = [];
+  }
+
   let sortedIntersections: any[] = [];
   let sliceColors: string[] = [];
-  $: sortedIntersections = intersectionCounts.sort((a, b) => b.count - a.count);
-  $: if (!!sliceColorMap)
-    sliceColors = labels.map((l) => sliceColorMap[l.stringRep]);
-  else sliceColors = [];
-
-  let sliceGlyphContainers: HTMLElement[] = [];
-  $: if (
-    sortedIntersections.length == intersectionCounts.length &&
-    sliceGlyphContainers.length == sortedIntersections.length &&
-    sliceColors.length == labels.length
-  )
-    sliceGlyphContainers.forEach((container, i) => {
-      let intersection = sortedIntersections[i];
-      drawSliceGlyphHTML(container, intersection.slices, sliceColors, 8);
-    });
 
   // this appears to be needed when the overlap plot is visible on load
   let loaded = false;
@@ -139,7 +187,7 @@
 {#if pointData.length > 0}
   <div class="w-full h-full relative bg-slate-100">
     {#if loaded}
-      <div class="w-full h-full">
+      <div class="w-full h-full select-none">
         <LayerCake
           padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
           data={pointData}
@@ -147,6 +195,19 @@
           <Canvas>
             <ForceScatterPlot
               bind:hoveredSlices
+              {selectedClusters}
+              on:selectClusters={(e) => {
+                console.log(
+                  'Select clusters from force scatter plot',
+                  e.detail
+                );
+                if (e.detail.ids.length > 0)
+                  searchScopeInfo = {
+                    within_selection: e.detail.ids,
+                    proportion: e.detail.num_instances / totalInstances,
+                  };
+                else searchScopeInfo = {};
+              }}
               {sliceColors}
               {hoveredMousePosition}
             />
@@ -177,8 +238,8 @@
         {@const errorRateString = d3.format('.1%')(
           intersection[errorKey] / intersection.count
         )}
-        <div
-          class="flex items-center justify-end gap-2 transition-opacity duration-700 delay-100"
+        <button
+          class="text-left bg-transparent flex items-center justify-end gap-2 transition-opacity duration-700 delay-100"
           class:opacity-30={!!hoveredSliceInfo &&
             !hoveredSliceInfo.slices.every(
               (s, i) => intersection.slices[i] == s
@@ -189,15 +250,13 @@
           on:mouseleave={() => {
             hoveredSlices = intersection.slices;
           }}
+          on:click={() => setSearchScopeToSlice(intersection)}
           title="{intersection.count} points included in {numSlices} slice{numSlices !=
           1
             ? 's'
             : ''}, with an error rate of {errorRateString}"
         >
-          <div
-            style="width: 16px; height: 16px;"
-            bind:this={sliceGlyphContainers[intIndex]}
-          />
+          <SliceLegendGlyph {intersection} {sliceColors} />
           <!-- <p class="flex-auto">{intersection.slices}</p> -->
           <SliceMetricBar
             value={intersection[errorKey] / intersection.count}
@@ -214,7 +273,7 @@
               />)
             </div></SliceMetricBar
           >
-        </div>
+        </button>
       {/each}
     </div>
   </div>

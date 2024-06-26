@@ -155,23 +155,25 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
         self.score_weights = score_weights
         
+        df = pd.DataFrame(discrete_data.df, columns=np.arange(discrete_data.df.shape[1])).astype('category')
+        self.discrete_vector_rep = pd.get_dummies(df).values.astype(np.uint8)
+
         if "map_layout" in kwargs:
             self.map_layout = kwargs["map_layout"]
         else:
             from sklearn.manifold import TSNE
 
-            eval_df = self.slice_finder.results.eval_df
-            df = pd.DataFrame(eval_df, columns=np.arange(eval_df.shape[1])).astype('category')
-            dummy_matrix = pd.get_dummies(df).values.astype(np.uint8)
-
-            self.map_layout = TSNE(verbose=False).fit_transform(dummy_matrix)
+            self.map_layout = TSNE(verbose=False, metric='cosine').fit_transform(self.discrete_vector_rep[self.slice_finder.results.eval_indexes])
         self.map_layout = (self.map_layout - self.map_layout.min(axis=0)) / (self.map_layout.max(axis=0) - self.map_layout.min(axis=0))
             
         neighbors = NearestNeighbors(n_neighbors=min(int(len(discrete_data) * 0.02), 1000), 
                                                 metric="euclidean").fit(self.map_layout)
         self.map_neighbor_dists, self.map_neighbors = neighbors.radius_neighbors(self.map_layout, radius=0.05, sort_results=True)
+        self.discovery_neighbors = NearestNeighbors(metric="cosine").fit(self.discrete_vector_rep[self.slice_finder.discovery_mask])
         
+        # this is in the combined discovery and eval sets
         self.search_scope_mask = None
+        self.map_clusters = None
         
         super().__init__(*args, **kwargs)
         self.positive_only = self.slice_finder.positive_only
@@ -306,6 +308,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if not search_info:
             self.slice_finder = self.original_slice_finder
             self.score_weights = {s: w for s, w in self.score_weights.items() if s != "Search Scope"}
+            self.search_scope_mask = None
             self._slice_description_cache = {}
             self.rerank_results()
             return
@@ -313,16 +316,53 @@ class SliceFinderWidget(anywidget.AnyWidget):
         base_finder = self.original_slice_finder
         new_score_fns = {}
         initial_slice = base_finder.initial_slice
-        new_source_mask = base_finder.source_mask.copy()
+        new_source_mask = (base_finder.source_mask.copy() 
+                           if base_finder.source_mask is not None 
+                           else np.ones_like(base_finder.discovery_mask))
         exclusion_criteria = None
         
         if "within_slice" in search_info:
             contained_in_slice = base_finder.results.encode_slice(search_info["within_slice"])
             if contained_in_slice.feature != SliceFeatureBase():
                 raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-                ref_mask = contained_in_slice.make_mask(raw_inputs)
+                ref_mask = contained_in_slice.make_mask(raw_inputs).cpu().numpy()
                 new_score_fns["Search Scope"] = OutcomeRateScore(ref_mask)
                 new_source_mask &= ref_mask
+                self.search_scope_mask = ref_mask
+        elif "within_selection" in search_info and not search_info.get("partial", False):
+            if self.map_clusters is None:
+                print("Can't perform a selection-based search without map_clusters")
+                return
+            ids = search_info["within_selection"] # in grouped layout
+            if not ids: return
+            mask = self.map_clusters.isin(ids)
+            if mask.sum() > 0:
+                # convert this to the full dataset by finding the nearest
+                # neighbors in the discovery set to the points in the evaluation set
+                selection_vectors = self.discrete_vector_rep[self.slice_finder.results.eval_indexes][mask]
+                nearest_discovery_points = self.discovery_neighbors.kneighbors(selection_vectors, 
+                                                                               n_neighbors=int(np.ceil((1 - self.slice_finder.holdout_fraction) / self.slice_finder.holdout_fraction)) * 5,
+                                                                               return_distance=False).flatten()
+                uniques, counts = np.unique(nearest_discovery_points, return_counts=True)
+                # these indexes are in the discovery mask space
+                topk = uniques[np.flip(np.argsort(counts))[:int(mask.sum() * (1 - self.slice_finder.holdout_fraction) / self.slice_finder.holdout_fraction)]]
+                disc_mask = np.zeros(base_finder.discovery_mask.sum(), dtype=np.uint8)
+                disc_mask[topk] = 1
+                print(f"Found {len(topk)} nearest neighbors for a selection with {mask.sum()} points in eval set")
+                
+                all_mask = np.zeros_like(base_finder.discovery_mask)
+                all_mask[base_finder.discovery_mask] = disc_mask
+                all_mask[self.slice_finder.results.eval_indexes] = mask
+                print(f"All mask has {all_mask.sum()}/{len(all_mask)}")
+                self.search_scope_mask = all_mask
+                
+                new_score_fns["Search Scope"] = OutcomeRateScore(self.search_scope_mask)
+                new_source_mask &= self.search_scope_mask
+            else:
+                print("No clusters in ID set:", ids, self.map_clusters, np.unique(self.map_clusters))
+                return
+        else:
+            return
 
         new_filter = base_finder.group_filter
         if exclusion_criteria is not None:
@@ -332,10 +372,11 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 new_filter = exclusion_criteria
         new_finder = base_finder.copy_spec(
             score_fns={**base_finder.score_fns, **new_score_fns},
-            source_mask=base_finder.source_mask & new_source_mask,
+            source_mask=new_source_mask,
             group_filter=new_filter,
             initial_slice=initial_slice,
         )
+        print(new_finder, new_source_mask.sum(), new_score_fns)
         self.slice_finder = new_finder
         self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},
                               **{n: self.slice_finder.max_weight for n in new_score_fns}}
@@ -381,93 +422,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             self.metric_expression_response = {"success": True}
         
-    # @traitlets.observe("search_spec_stack")
-    # def search_spec_stack_changed(self, change=None):
-    #     search_specs = change.new if change is not None else self.search_spec_stack
-    #     if len(search_specs) < len(self.finder_stack):
-    #         self.finder_stack = self.finder_stack[:len(search_specs)]
-    #         self.slice_finder = self.finder_stack[-1]
-    #         self.score_weights = self._base_score_weights_for_spec(search_specs, search_specs[-1], self.slice_finder)
-    #         self._slice_description_cache = {}
-    #         self.rerank_results()
-    #         return
-    #     elif len(search_specs) == len(self.finder_stack): return
-        
-    #     assert len(search_specs) <= len(self.finder_stack) + 1
-    #     base_finder = self.finder_stack[0]
-    #     new_spec = search_specs[-1]
-    #     assert "type" in new_spec
-    #     assert "score_weights" in new_spec
-        
-    #     new_score_weights = self._base_score_weights_for_spec(search_specs, new_spec, base_finder)
-        
-    #     if new_spec["type"] == "default":
-    #         new_finder = base_finder.copy_spec()
-    #     elif new_spec["type"] == "subslice":
-    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-    #         new_finder = base_finder.copy_spec(
-    #             initial_slice=initial_slice
-    #         )
-    #     elif new_spec["type"] == "related":
-    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-    #         raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-    #         ref_mask = initial_slice.make_mask(raw_inputs)
-    #         assert False, "TODO fix this implementation with new slice structure"
-    #         new_filter = ExcludeIfAll([
-    #             ExcludeFeatureValue(f, v)
-    #             for f, v in initial_slice.feature_values.items()
-    #         ])
-    #         if base_finder.group_filter is not None:
-    #             new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
-    #         new_finder = base_finder.copy_spec(
-    #             score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask)},
-    #             source_mask=base_finder.source_mask & ref_mask,
-    #             group_filter=new_filter,
-    #             similarity_threshold=1.0
-    #         )
-    #         new_score_weights = {"Similarity": 1.0}
-    #     elif new_spec["type"] == "exclude":
-    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-    #         assert False, "TODO fix this implementation with new slice structure"
-    #         new_filter = ExcludeIfAny([
-    #             ExcludeFeatureValue(f, v)
-    #             for f, v in initial_slice.feature_values.items()
-    #         ])
-    #         if base_finder.group_filter is not None:
-    #             new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
-    #         new_finder = base_finder.copy_spec(
-    #             group_filter=new_filter,
-    #         )       
-    #     elif new_spec["type"] == "counterfactual":
-    #         initial_slice = self.slice_finder.results.encode_slice(new_spec["base_slice"])
-    #         raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
-    #         ref_mask = initial_slice.make_mask(raw_inputs)
-    #         assert False, "TODO fix this implementation with new slice structure"
-            
-    #         new_filter = ExcludeIfAny([
-    #             ExcludeFeatureValue(f, v)
-    #             for f, v in initial_slice.feature_values.items()
-    #         ])
-    #         if base_finder.group_filter is not None:
-    #             new_filter = ExcludeIfAny([base_finder.group_filter, new_filter])
-
-    #         new_finder = base_finder.copy_spec(
-    #             score_fns={**base_finder.score_fns, "Similarity": SliceSimilarityScore(ref_mask, metric='superslice')},
-    #             group_filter=new_filter,
-    #             similarity_threshold=1.0
-    #         )     
-    #         new_score_weights = {"Similarity": 1.0}
-    #     else:
-    #         assert False
-            
-    #     self.finder_stack.append(new_finder)
-    #     self.slice_finder = new_finder
-    #     self.score_weights = {**new_score_weights,
-    #                           **{n: 0.0 for n in self.slice_finder.score_fns if n not in new_score_weights}}
-    #     self._slice_description_cache = {}
-    #     self.rerank_results()
-    #     # self.should_rerun = True
-        
     @traitlets.observe("overlap_plot_metric")
     def overlap_plot_metric_changed(self, change):
         self.update_selected_slices(change=None, overlap_metric=change.new)
@@ -484,9 +438,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
         for s in selected:
             slice_obj = manager.encode_slice(s['feature'])
             slice_masks[slice_obj] = manager.slice_mask(slice_obj).cpu().numpy()
-            # for feature in slice_obj.feature_values.keys():
-            #     univ_slice = Slice({feature: slice_obj.feature_values[feature]})
-            #     slice_masks[univ_slice] = manager.slice_mask(univ_slice)
                     
         slice_order = list(slice_masks.keys())
         labels = [self.get_slice_description(s) for s in slice_order]
@@ -520,48 +471,24 @@ class SliceFinderWidget(anywidget.AnyWidget):
         calculate_intersection_counts([], np.ones(manager.eval_df.shape[0], dtype=bool))
         self.slice_intersection_counts = intersect_counts 
         self.slice_intersection_labels = labels
-        # for slice_combo in powerset(slice_masks.keys()):
-        #     if len(slice_combo) == 0: continue
-        #     combined_slice = slice_combo[0]
-        #     for s in slice_combo[1:]:
-        #         combined_slice = combined_slice.intersect(s)
-        #     if combined_slice in intersect_counts: continue
-        #     combined_mask = slice_masks[slice_combo[0]].copy()
-        #     for s in slice_combo[1:]:
-        #         combined_mask &= slice_masks[s]
-        #     # print(slice_combo, combined_mask.sum())
-        #     intersect_counts[combined_slice] = combined_mask.sum()
-        # print(intersect_counts)
-        # self.slice_intersection_counts = [
-        #     {"slice": self.get_slice_description(s), "count": count}
-        #      for s, count in intersect_counts.items()
-        #      if count > 0
-        # ]
-        
+
         if self.map_layout is not None and overlap_metric:
             error_metric = self.derived_metrics[overlap_metric]
             if isinstance(error_metric, dict): error_metric = error_metric["data"]
             error_metric = error_metric[self.slice_finder.results.eval_indexes]
-            point_identity_mat = np.vstack([error_metric, *list(slice_masks.values())]).T
-
-            # nonequal_threshold = 0.1 # 10 of the points in the radius are allowed to be different
-            # min_grouping = max(4, int(len(self.map_layout) * 0.005))
-            # first_nonequal_idxs = np.zeros(len(self.map_layout), dtype=np.uint32)
-            # for i, (point_identity, idxs) in enumerate(zip(point_identity_mat, self.map_neighbors)):
-            #     nonequal = ((np.cumsum((point_identity_mat[idxs] != point_identity).sum(axis=1) > 0) / (np.arange(len(idxs)) + 1)) >= nonequal_threshold)[min_grouping:]
-            #     if not nonequal.shape[0]: 
-            #         first_nonequal_idxs[i] = len(idxs)
-            #         continue
-            #     first_nonequal = nonequal.argmax() + min_grouping
-            #     if first_nonequal < nonequal.shape[0] and nonequal[first_nonequal]:
-            #         first_nonequal_idxs[i] = first_nonequal
-            #     else:
-            #         first_nonequal_idxs[i] = len(idxs)
+            
+            # The point identity is a matrix with as many rows as points in the
+            # eval set, where the columns are any values that should be identical
+            # in order for the points to be merged in the grouped scatterplot.
+            point_identity_mat = np.vstack([error_metric, 
+                                            *([self.search_scope_mask[self.slice_finder.results.eval_indexes]] 
+                                              if self.search_scope_mask is not None else []), 
+                                            *list(slice_masks.values())]).T
 
             cluster_labels = np.ones(len(self.map_layout), dtype=np.int32) * -1
             seen_idxs = set()
             clust_idx = 0
-            for point_identity, neighbors in zip(point_identity_mat, self.map_neighbors): # np.flip(np.argsort(first_nonequal_idxs)):
+            for point_identity, neighbors in zip(point_identity_mat, self.map_neighbors):
                 cluster_idxs = [x for x in neighbors if x not in seen_idxs and (point_identity_mat[x] == point_identity).all()]
                 if not cluster_idxs: continue
                 cluster_labels[cluster_idxs] = clust_idx
@@ -574,18 +501,33 @@ class SliceFinderWidget(anywidget.AnyWidget):
             print(error_metric.shape, self.map_layout.shape, [slice_masks[o].shape for i, o in enumerate(slice_order)])
             metadata = (pd.DataFrame({'outcome': error_metric, 
                                       'point_index': np.arange(self.map_layout.shape[0]),
+                                      'cluster': cluster_labels,
                                      **{'slice_' + str(i): slice_masks[o] for i, o in enumerate(slice_order)}})
                         .groupby(cluster_labels)
                         .agg('first'))
             sizes = pd.Series(cluster_labels).groupby(cluster_labels).size()
             centroids['outcome'] = metadata['outcome']
             centroids['slices'] = metadata[['slice_' + str(i) for i in range(len(slice_order))]].values.tolist()
+            centroids['cluster'] = metadata['cluster']
             centroids['size'] = sizes
             self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,
                 'labels': labels,
                 'layout': centroids.set_index(metadata['point_index'], drop=True).to_dict(orient='index')
             }
+            self.map_clusters = pd.Series(cluster_labels)
+            if "within_selection" in self.search_scope_info and self.search_scope_mask is not None:
+                # Rewrite the cluster indexes to match the new values based on the existing search scope mask
+                print("Old search scope info", self.search_scope_info)
+                self.search_scope_info = {
+                    **self.search_scope_info, 
+                    "within_selection": np.unique(self.map_clusters[self.search_scope_mask[self.slice_finder.results.eval_indexes]]).tolist(),
+                    "partial": True # this means that the clusters have been rewritten due to layout, so don't update the search
+                }
+                print("Edited search scope info", self.search_scope_info)
+            else:
+                print("Not changing search scope info", self.search_scope_info, self.search_scope_mask)
+                
              #Ungrouped version
             '''self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,
@@ -604,3 +546,4 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 'labels': self.slice_intersection_labels,
                 'layout': {}
             }
+            self.map_clusters = None

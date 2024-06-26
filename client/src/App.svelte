@@ -75,11 +75,6 @@
     'slice_intersection_labels',
     []
   );
-  let selectedIntersectionIndex = traitlet(
-    model,
-    'selected_intersection_index',
-    -1
-  );
   let overlapPlotMetric = traitlet(model, 'overlap_plot_metric', '');
   let groupedMapLayout = traitlet(model, 'grouped_map_layout', {});
 
@@ -342,8 +337,9 @@
         {#if $overlapPlotMetric != null}
           <SliceOverlapPlot
             bind:errorKey={$overlapPlotMetric}
-            errorKeyOptions={binaryMetrics}
             bind:selectedSlices={$selectedSlices}
+            bind:searchScopeInfo={$searchScopeInfo}
+            errorKeyOptions={binaryMetrics}
             savedSlices={$savedSlices}
             sliceColorMap={$sliceColorMap}
             intersectionCounts={$sliceIntersectionCounts}

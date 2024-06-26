@@ -7,6 +7,7 @@ export enum OutcomeColors {
 }
 
 export const GlyphBorderColor = '#cbd5e1';
+export const GlyphOutlineColor = '#7dd3fc';
 
 export function drawSliceGlyphCanvas(
   ctx: CanvasRenderingContext2D,
@@ -15,16 +16,17 @@ export function drawSliceGlyphCanvas(
   radius: number = 12,
   outcome: boolean = false,
   alpha: number = 1.0,
-  numSlices: number | null = null
+  numSlices: number | null = null,
+  outlineWidth: number = 0
 ) {
   if (numSlices == null) numSlices = slices.reduce((a, b) => a + b, 0);
   if (alpha < 0.001) return;
   ctx.globalAlpha = alpha;
 
   ctx.beginPath();
+  ctx.arc(0, 0, radius * (numSlices > 0 ? 0.4 : 0.5), 0, 2 * Math.PI, false);
   ctx.strokeStyle = GlyphBorderColor;
   ctx.lineWidth = 1;
-  ctx.arc(0, 0, radius * (numSlices > 0 ? 0.4 : 0.5), 0, 2 * Math.PI, false);
   ctx.stroke();
   ctx.fillStyle = outcome ? OutcomeColors.True : OutcomeColors.False;
   ctx.fill();
@@ -47,6 +49,21 @@ export function drawSliceGlyphCanvas(
       ctx.stroke();
       sliceIdx++;
     });
+  }
+
+  if (outlineWidth > 0) {
+    ctx.beginPath();
+    ctx.arc(
+      0,
+      0,
+      Math.ceil(radius * (numSlices > 0 ? 0.7 : 0.5) + 2),
+      0,
+      2 * Math.PI,
+      false
+    );
+    ctx.strokeStyle = GlyphOutlineColor;
+    ctx.lineWidth = outlineWidth;
+    ctx.stroke();
   }
 }
 

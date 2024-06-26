@@ -13,12 +13,14 @@
     faScaleBalanced,
     faSearch,
   } from '@fortawesome/free-solid-svg-icons';
+  import * as d3 from 'd3';
   import { areSetsEqual, sortMetrics } from '../utils/utils';
   import { createEventDispatcher } from 'svelte';
   import SliceTable from './SliceTable.svelte';
   import SliceFeatureEditor from './SliceFeatureEditor.svelte';
   import { featureToString, parseFeature } from '../utils/slice_parsing';
   import SliceFeature from './SliceFeature.svelte';
+  import SliceLegendGlyph from '../overlap_views/SliceLegendGlyph.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -45,7 +47,12 @@
 
   export let valueNames: any = {};
 
-  export let searchScopeInfo: { within_slice?: any; point_ids?: number[] } = {};
+  export let searchScopeInfo: {
+    within_slice?: any;
+    within_selection?: number[];
+    intersection?: { slices: number[] };
+    proportion?: number;
+  } = {};
   let editingSearchScope: boolean = false;
 
   export let selectedSlices: Slice[] = [];
@@ -207,7 +214,7 @@
     sizeObserver.observe(searchViewHeader);
   }
 
-  let savedSliceRequests: { [key: string]: any } = {};
+  /*let savedSliceRequests: { [key: string]: any } = {};
   let savedSliceRequestResults: { [key: string]: Slice } = {};
 
   $: {
@@ -228,6 +235,12 @@
     Object.entries(sliceRequestResults)
       .filter(([k, v]) => k.startsWith('saved:'))
       .map(([k, v]) => [k.slice('saved:'.length), v])
+  );*/
+
+  // show slices that are selected but not in the main table here
+  let selectedInvisibleSlices: Slice[] = [];
+  $: selectedInvisibleSlices = selectedSlices.filter(
+    (s) => !slices.find((s2) => s2.stringRep === s.stringRep)
   );
 </script>
 
@@ -258,15 +271,15 @@
       />
     </div>
   {/if}
-  {#if Object.keys(savedSlices).length > 0}
+  {#if selectedSlices.length > 0}
     <SliceTable
-      slices={savedSlices}
+      slices={selectedSlices}
       {savedSlices}
       {sliceColorMap}
       bind:selectedSlices
       showHeader={false}
-      bind:sliceRequests={savedSliceRequests}
-      bind:sliceRequestResults={savedSliceRequestResults}
+      bind:sliceRequests
+      bind:sliceRequestResults
       {positiveOnly}
       {valueNames}
       {allowedValues}
@@ -313,6 +326,30 @@
           <div class="text-slate-500 font-bold flex-auto text-base">
             Slice Search
           </div>
+          {#if !!searchScopeInfo.within_slice}
+            <button
+              style="padding-left: 1rem;"
+              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
+              on:click={() => (searchScopeInfo = {})}
+              ><Fa icon={faMinus} class="inline mr-1" />
+              Within Slice</button
+            >
+            <div class="text-slate-600">
+              {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
+            </div>
+          {:else if !!searchScopeInfo.within_selection}
+            <button
+              style="padding-left: 1rem;"
+              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
+              on:click={() => (searchScopeInfo = {})}
+              ><Fa icon={faMinus} class="inline mr-1" />
+              Within Selection</button
+            >
+            <div class="text-slate-600">
+              {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
+            </div>
+          {/if}
+
           <div>
             <input
               class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
@@ -330,67 +367,6 @@
             on:click={() => dispatch('runsampler')}>Find Slices</button
           >
         </div>
-        {#if !!searchScopeInfo.within_slice}
-          <div class="flex items-center pb-3 w-full">
-            <button
-              style="padding-left: 1rem;"
-              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-              on:click={() => (searchScopeInfo = {})}
-              ><Fa icon={faMinus} class="inline mr-1" />
-              Within Slice</button
-            >
-            {#if editingSearchScope}
-              <SliceFeatureEditor
-                featureText={featureToString(
-                  searchScopeInfo.within_slice,
-                  false,
-                  positiveOnly
-                )}
-                {positiveOnly}
-                {allowedValues}
-                on:cancel={(e) => {
-                  editingSearchScope = false;
-                }}
-                on:save={(e) => {
-                  let newFeature = parseFeature(e.detail, allowedValues);
-                  searchScopeInfo = { within_slice: newFeature };
-                  editingSearchScope = false;
-                }}
-              />
-            {:else}
-              <div
-                class="overflow-x-auto whitespace-nowrap"
-                style="flex: 0 1 auto;"
-              >
-                <SliceFeature
-                  feature={searchScopeInfo.within_slice}
-                  currentFeature={searchScopeInfo.within_slice}
-                  canToggle={false}
-                  {positiveOnly}
-                />
-              </div>
-              <button
-                class="bg-transparent hover:opacity-60 pr-1 pl-2 py-3 text-slate-600"
-                on:click={() => {
-                  editingSearchScope = true;
-                }}
-                title="Modify the slice definition"
-                ><Fa icon={faPencil} /></button
-              >
-            {/if}
-          </div>
-        {:else if !!searchScopeInfo.point_ids}
-          <button
-            style="padding-left: 1rem;"
-            class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-            on:click={() => (searchScopeInfo = {})}
-            ><Fa icon={faMinus} class="inline mr-1" />
-            Within Selection</button
-          >
-          <div class="text-slate-600">
-            {searchScopeInfo.point_ids.length} point{searchScopeInfo.point_ids}
-          </div>
-        {/if}
       {/if}
     </div>
   </div>

@@ -9,12 +9,14 @@
   import { onMount } from 'svelte';
   import AxisX from './AxisX.svelte';
 
-  export let width = 100;
+  export let width: number | null = 100;
 
   export let histValues: Histogram;
   export let mean = null;
   export let title: string | null = null;
   export let horizontalLayout = false;
+
+  export let noParent = false;
 
   export let color = '#3b82f6';
 
@@ -54,17 +56,14 @@
   }
 </script>
 
-<div
-  class:flex={horizontalLayout}
-  class:my-0.5={horizontalLayout}
-  class="gap-1 items-center"
->
+<!-- duplicate template for whether or not a parent element is needed -->
+{#if noParent}
   {#if !!title}
-    <div class="font-bold text-xs truncate text-right" style="width: 96px;">
+    <div class="font-bold text-xs truncate text-right">
       {title}
     </div>
   {/if}
-  <div style="width: {width}px; height: 16px;">
+  <div style="width: {width == null ? '100%' : `${width}px`}; height: 16px;">
     {#if loaded && histBins.length > 0}
       <LayerCake
         padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
@@ -102,4 +101,54 @@
       <slot name="caption" />
     {/if}
   </div>
-</div>
+{:else}
+  <div
+    class:flex={horizontalLayout}
+    class:my-0.5={horizontalLayout}
+    class="gap-1 items-center"
+  >
+    {#if !!title}
+      <div class="font-bold text-xs truncate text-right" style="width: 96px;">
+        {title}
+      </div>
+    {/if}
+    <div style="width: {width == null ? '100%' : `${width}px`}; height: 16px;">
+      {#if loaded && histBins.length > 0}
+        <LayerCake
+          padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+          x="bin"
+          y="count"
+          xScale={scaleBand().round(true)}
+          xDomain={histBins}
+          yScale={scaleLinear()}
+          yDomain={[0, null]}
+          {data}
+          custom={{
+            hoveredGet: (d) => d.bin == hoveredBin,
+          }}
+        >
+          <Svg>
+            <Column
+              fill={color}
+              on:hover={(e) =>
+                (hoveredBin = e.detail != null ? e.detail.bin : null)}
+            />
+            <AxisX ticks={[]} baseline gridlines={false} />
+          </Svg>
+        </LayerCake>
+      {/if}
+    </div>
+    <div class:mt-1={!horizontalLayout} class="text-xs text-slate-800 truncate">
+      {#if !$$slots.caption}
+        {#if hoveredBin != null}
+          {makeTooltipText(data.find((d) => d.bin == hoveredBin))}
+        {:else if mean != null}
+          M = <strong>{format('.3')(mean)}</strong>
+        {:else}
+          &nbsp;{/if}
+      {:else}
+        <slot name="caption" />
+      {/if}
+    </div>
+  </div>
+{/if}

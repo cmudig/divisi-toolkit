@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getContext, onDestroy } from 'svelte';
+  import { createEventDispatcher, getContext, onDestroy } from 'svelte';
   import * as d3 from 'd3';
   import { scaleCanvas } from 'layercake';
   import { areObjectsEqual, createWebWorker } from '../utils/utils';
@@ -13,17 +13,25 @@
     markBox,
   } from 'counterpoint-vis';
   import { drawSliceGlyphCanvas } from './slice_glyphs';
+  import SliceFeature from '../slice_table/SliceFeature.svelte';
 
   const { data, width, height } = getContext('LayerCake');
   const { ctx } = getContext('canvas');
+  const dispatch = createEventDispatcher();
 
   export let pointRadius = 7; // 4;
   export let hoveredSlices = null;
 
   export let hoveredMousePosition = null;
   export let hoveredPointIndex = null;
+  export let selectedClusters: number[] = [];
 
   export let sliceColors: string[] = [];
+
+  let mouseDown = false;
+  let isMultiselecting = false;
+  let disableClick = false;
+  let multiselectPath: Attribute<[number, number][]> = new Attribute([]);
 
   const layoutWidth = 800;
   const layoutHeight = 800;
@@ -81,21 +89,38 @@
       slices: [],
       numSlices: 0,
       outcome: false,
+      outlineWidth: (mark) =>
+        (selectedClusters.length > 0 &&
+        selectedClusters.includes(mark.represented)
+          ? 2
+          : 0) +
+        (hoveredPointIndex != null && hoveredPointIndex == mark.id ? 1 : 0),
       alpha: (mark) => {
         let slices = mark.attr('slices');
+        let base = mark.attr('entranceProgress');
+        // if (selectedClusters.length > 0) {
+        //   return (
+        //     base *
+        //     (selectedClusters.includes(mark.represented) ||
+        //     (hoveredPointIndex != null && hoveredPointIndex == mark.id)
+        //       ? 1.0
+        //       : 0.4)
+        //   );
+        // }
+
         return (
-          mark.attr('entranceProgress') *
+          base *
           (hoveredSlices !== null &&
           (slices.length != hoveredSlices.length ||
             !slices.every((s, i) => hoveredSlices[i] == s))
-            ? 0.2
+            ? 0.4
             : 1.0)
         );
       },
     });
   }
 
-  let ticker = new Ticker([markSet, scales]).onChange(() => {
+  let ticker = new Ticker([markSet, scales, multiselectPath]).onChange(() => {
     positionMap.invalidate();
     draw();
   });
@@ -105,10 +130,16 @@
   let zoom = d3
     .zoom()
     .scaleExtent([0.1, 10])
+    .filter(
+      (event) =>
+        (!event.ctrlKey || event.type === 'wheel') &&
+        !event.button &&
+        !event.shiftKey &&
+        !isMultiselecting
+    )
     .on('zoom', (e) => {
       // important to make sure the source event exists, filtering out our
       // programmatic changes
-      console.log('zoom');
       if (e.sourceEvent != null) scales.transform(e.transform);
     });
 
@@ -121,30 +152,31 @@
     cleanUp();
   }
 
-  $: $width,
-    $height,
-    (() => {
-      scales
-        .xDomain([-layoutWidth * 0.6, layoutWidth * 0.6])
-        .yDomain([-layoutHeight * 0.6, layoutHeight * 0.6])
-        .xRange([0, $width])
-        .yRange([0, $height])
-        .makeSquareAspect()
-        .reset();
-      if (!!$ctx) draw();
-    })();
+  let oldW = 0;
+  let oldH = 0;
+  $: if (oldW != $width || oldH != $height) {
+    scales
+      .xDomain([-layoutWidth * 0.6, layoutWidth * 0.6])
+      .yDomain([-layoutHeight * 0.6, layoutHeight * 0.6])
+      .xRange([0, $width])
+      .yRange([0, $height])
+      .makeSquareAspect()
+      .reset();
+    if (!!$ctx) draw();
+    oldW = $width;
+    oldH = $height;
+  }
 
   let oldCtx = null;
   $: if (!!$ctx && $ctx !== oldCtx) {
     // set up the d3 zoom object
     console.log('setting up canvas');
     d3.select($ctx.canvas as Element)
-      .on('mousemove', handleMouseover)
-      .on('mouseleave', () => {
-        hoveredMousePosition = null;
-        hoveredPointIndex = null;
-        hoveredSlices = null;
-      })
+      .on('pointerdown', (e) => (mouseDown = true))
+      .on('pointermove', handleMouseover)
+      .on('pointerup', handleMouseup)
+      .on('click', handleClick)
+      .on('dblclick', handleDoubleClick)
       .call(zoom);
     oldCtx = $ctx;
   }
@@ -231,6 +263,7 @@
     Object.values(ds).forEach((d, i) => {
       if (!markSet.has(d.id)) {
         let mark = makeMark(d.id);
+        mark.represented = d.cluster;
         let pos = !!d.x
           ? {
               x: d.x * layoutWidth - layoutWidth * 0.5,
@@ -241,6 +274,7 @@
         markSet.addMark(mark);
       } else markSet.get(d.id).animate('radius');
       let mark = markSet.get(d.id);
+      mark.represented = d.cluster;
       if (!!d.x) {
         mark.animateTo('x', d.x * layoutWidth - layoutWidth * 0.5);
         mark.animateTo('y', -d.y * layoutHeight + layoutHeight * 0.5);
@@ -293,6 +327,7 @@
       let alpha = mark.attr('alpha');
       let radius = mark.attr('radius');
       let outcome = mark.attr('outcome');
+      let outlineWidth = mark.attr('outlineWidth');
       // if (hovered != null && i == hoveredPointIndex) radius *= 1.5;
 
       let numSlices = mark.attr('numSlices');
@@ -306,15 +341,47 @@
         radius,
         outcome,
         alpha,
-        numSlices
+        numSlices,
+        outlineWidth
       );
       $ctx.restore();
     });
+
+    if (isMultiselecting) {
+      $ctx.save();
+      $ctx.fillStyle = '#30cdfc44';
+      $ctx.strokeStyle = '#30cdfc99';
+
+      $ctx.beginPath();
+      let path = multiselectPath.get();
+      $ctx.moveTo(path[path.length - 1][0], path[path.length - 1][1]);
+      path
+        .slice()
+        .reverse()
+        .forEach((point) => $ctx.lineTo(point[0], point[1]));
+      $ctx.fill();
+      $ctx.lineWidth = 2;
+      $ctx.setLineDash([3, 3]);
+      $ctx.stroke();
+      $ctx.restore();
+    }
   }
 
-  function handleMouseover(e: MouseEvent) {
+  function handleMouseover(e: PointerEvent) {
     let rect = e.target.getBoundingClientRect();
+    $ctx.canvas.setPointerCapture(e.pointerId);
     hoveredMousePosition = [e.clientX - rect.left, e.clientY - rect.top];
+    if (mouseDown && (e.shiftKey || isMultiselecting)) {
+      console.log('multiselecting');
+      isMultiselecting = true;
+      multiselectPath.set([...multiselectPath.get(), hoveredMousePosition]);
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      disableClick = true;
+      return;
+    }
+
+    isMultiselecting = false;
     let closest = positionMap.hitTest(hoveredMousePosition);
     if (!!closest) {
       hoveredPointIndex = closest.id;
@@ -325,14 +392,129 @@
     }
   }
 
+  function handleMouseup(e: PointerEvent) {
+    console.log('mouseup');
+    if (isMultiselecting) {
+      let polygon = multiselectPath.get();
+      let newSelection = markSet
+        .filter((m) => d3.polygonContains(polygon, [m.attr('x'), m.attr('y')]))
+        .map((m) => m.represented);
+      console.log('selection', newSelection);
+      dispatch('selectClusters', {
+        ids: newSelection,
+        num_instances:
+          newSelection.length == 0
+            ? 0
+            : $data.reduce(
+                (sum, d) =>
+                  sum + (newSelection.includes(d.cluster) ? d.size : 0),
+                0
+              ),
+      });
+
+      isMultiselecting = false;
+      multiselectPath.set([]);
+    }
+    mouseDown = false;
+  }
+
+  function handleClick(e: MouseEvent) {
+    mouseDown = false;
+    if (disableClick) {
+      disableClick = false;
+      return;
+    }
+    let rect = e.target.getBoundingClientRect();
+    let pos = [e.clientX - rect.left, e.clientY - rect.top];
+    let closest = positionMap.hitTest(pos);
+    let newSelection = [...selectedClusters];
+    if (!!closest) {
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        let idx = selectedClusters.indexOf(closest.represented);
+        if (idx >= 0) newSelection.splice(idx, 1);
+        else newSelection.push(closest.represented);
+      } else newSelection = [closest.represented];
+    } else {
+      newSelection = [];
+    }
+    selectedClusters = newSelection;
+    setTimeout(
+      () =>
+        dispatch('selectClusters', {
+          ids: newSelection,
+          num_instances:
+            newSelection.length == 0
+              ? 0
+              : $data.reduce(
+                  (sum, d) =>
+                    sum + (newSelection.includes(d.cluster) ? d.size : 0),
+                  0
+                ),
+        }),
+      200
+    );
+  }
+
+  function handleDoubleClick(e: MouseEvent) {
+    mouseDown = false;
+    let rect = e.target.getBoundingClientRect();
+    let pos = [e.clientX - rect.left, e.clientY - rect.top];
+    let closest = positionMap.hitTest(pos);
+    let newSelection = [...selectedClusters];
+    if (!!closest) {
+      let newSlices = closest.attr('slices');
+      let matchingClusters: Set<number> = new Set(
+        $data
+          .filter((d) => d.slices.every((s, i) => newSlices[i] == s))
+          .map((d) => d.cluster)
+      );
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        let containsSlices = selectedClusters.find((c) =>
+          matchingClusters.has(c)
+        );
+        if (containsSlices) {
+          newSelection = newSelection.filter((c) => !matchingClusters.has(c));
+        } else newSelection = [...newSelection, ...matchingClusters];
+      } else newSelection = [...matchingClusters];
+    } else {
+      return;
+    }
+    dispatch('selectClusters', {
+      ids: newSelection,
+      num_instances:
+        newSelection.length == 0
+          ? 0
+          : $data.reduce(
+              (sum, d) => sum + (newSelection.includes(d.cluster) ? d.size : 0),
+              0
+            ),
+    });
+    e.stopImmediatePropagation();
+  }
+
   let oldHoverIdx = null;
   let oldHoverSlices = null;
   $: if (
     oldHoverIdx != hoveredPointIndex ||
     !areObjectsEqual(hoveredSlices, oldHoverSlices)
   ) {
-    markSet.animate('alpha', { duration: 500 });
+    markSet
+      .animate('alpha', { duration: 500 })
+      .animate('outlineWidth', { duration: 200 });
     oldHoverIdx = hoveredPointIndex;
     oldHoverSlices = hoveredSlices;
+  }
+
+  let oldSelectedClusters: number[] = [];
+  // let oldSelectedSlices: number[] | null = null;
+  $: if (
+    oldSelectedClusters !== selectedClusters
+    // oldSelectedSlices !== selectedSlices
+  ) {
+    markSet
+      // .animate('alpha', { duration: 200 })
+      .animate('outlineWidth', { duration: 200 });
+    oldSelectedClusters = selectedClusters;
+    // oldSelectedSlices = selectedSlices;
   }
 </script>
