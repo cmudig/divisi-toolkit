@@ -6,7 +6,7 @@ import postcss from './postcss.config.js';
 // https://vitejs.dev/config/
 export default defineConfig({
   build: {
-    outDir: '../slice_finding/static',
+    outDir: '../divisi/static',
     lib: {
       entry: ['src/widget-main.js'],
       formats: ['es'],

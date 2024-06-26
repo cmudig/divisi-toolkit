@@ -1,14 +1,13 @@
-# slice-finding
+# Divisi - Interactive Slice Finding
 
 ## Demo Quickstart
 
-Clone the repository, then optionally create a virtual environment with Python >3.7 
-to run the demo.
+Optionally create a virtual environment with Python >3.7 to run the demo.
 
-Install dependencies by cd'ing into the repo and running:
+Install the package:
 
 ```bash
-pip install -e .
+pip install divisi-toolkit
 ```
 
 Install Jupyter Notebook or Jupyter Lab if not already installed. Then start a

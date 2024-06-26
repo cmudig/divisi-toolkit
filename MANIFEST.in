@@ -1,0 +1,12 @@
+include LICENSE
+include README.md
+
+graft divisi/static
+
+# Patterns to exclude from any directory
+global-exclude *~
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude .DS_Store
+global-exclude .git
+prune **/.ipynb_checkpoints
