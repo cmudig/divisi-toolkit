@@ -1,6 +1,6 @@
 import importlib.metadata
 
-__version__ = importlib.metadata.version("slice_finding")
+__version__ = importlib.metadata.version("divisi")
 
 from .widget import SliceFinderWidget
 from .sampling import find_slices_by_sampling
