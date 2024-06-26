@@ -149,18 +149,20 @@ export function featuresHaveSameTree(
   return true;
 }
 
-export async function createWebWorker(url: URL): Promise<Worker> {
-  // first try using the regular URL approach
-  try {
-    return new Worker(url, { type: 'module' });
-  } catch (e) {
-    // if in dev mode, we need to just fetch the URL from the HMR server and serve it to web worker ourselves
-    let blob = new Blob([await (await fetch(url)).text()], {
-      type: 'text/javascript',
-    });
+export function createWebWorker(script: string): {
+  worker: Worker;
+  url: string;
+} {
+  // serve it ourselves as a blob
+  let blob = new Blob([script], {
+    type: 'text/javascript',
+  });
 
-    return new Worker(window.URL.createObjectURL(blob), { type: 'module' });
-  }
+  let url = window.URL.createObjectURL(blob);
+  return {
+    worker: new Worker(url, { type: 'module' }),
+    url,
+  };
 }
 
 const prefixMetrics = ['count'];

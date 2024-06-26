@@ -1,5 +1,4 @@
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
-import forceMagnetic from 'https://cdn.jsdelivr.net/npm/d3-force-magnetic/+esm';
 
 class ForceLayout {
   /** @type {Array<{ numSlices: number }>} */
@@ -151,6 +150,7 @@ class ForceLayout {
 }
 
 onmessage = (e) => {
+  console.log('d3:', d3);
   let task = e.data;
   let layout = new ForceLayout(task.w ?? 400, task.h ?? 400, task.data);
   let id = task.id;

@@ -13,7 +13,7 @@
     markBox,
   } from 'counterpoint-vis';
   import { drawSliceGlyphCanvas } from './slice_glyphs';
-  import SliceFeature from '../slice_table/SliceFeature.svelte';
+  import WorkerScript from './force_layout_worker?raw';
 
   const { data, width, height } = getContext('LayerCake');
   const { ctx } = getContext('canvas');
@@ -187,16 +187,16 @@
 
   let worker = null;
   let currentWorkerID = null;
+  let workerURL: string | null = null;
 
   async function getWorker() {
     if (!!worker) worker.terminate();
+    if (!!workerURL) window.URL.revokeObjectURL(workerURL);
+    workerURL = null;
 
-    let workerURL = new URL(
-      import.meta.url.substring(0, import.meta.url.lastIndexOf('/')) +
-        '/force_layout_worker.js'
-    );
-
-    worker = await createWebWorker(workerURL);
+    let workerInfo = createWebWorker(WorkerScript);
+    worker = workerInfo.worker;
+    workerURL = workerInfo.url;
 
     worker.onmessage = (e) => {
       if (e.data.id != currentWorkerID) {
