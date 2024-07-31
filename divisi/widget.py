@@ -205,7 +205,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             return
         if not os.path.isdir(self.state_path):
             raise ValueError("State path should be a directory")
-        
+        print("Reading state")
         if os.path.exists(os.path.join(self.state_path, "projection.pkl")):
             with open(os.path.join(self.state_path, "projection.pkl"), "rb") as file:
                 self.projection = Projection.from_dict(pickle.load(file))
@@ -270,8 +270,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if not self.slice_finder or not self.slice_finder.results: return
         self._slice_description_cache = {}
         self.slices = []
-        ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
-        self.update_slices(ranked_results)
+        self.rerank_results()
         self.update_selected_slices()
             
     @traitlets.observe("should_rerun")
@@ -302,8 +301,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 
                 results, sampled_idxs = self.slice_finder.sample(min(sample_step, self.num_samples - i))
                 self.num_samples_drawn += len(sampled_idxs)
-                ranked_results = results.rank(self.score_weights, n_slices=self.num_slices)
-                self.update_slices(ranked_results)
+                self.rerank_results()
                 base_progress += len(sampled_idxs) / self.num_samples
                 i += sample_step
                 if self.should_cancel:
@@ -323,7 +321,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if not self.slice_finder or not self.slice_finder.results: 
             self.update_slices([])
         else:    
-            ranked_results = self.slice_finder.results.rank(self.score_weights, n_slices=self.num_slices)
+            weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.score_functions}
+            # add weights for interaction effect scores
+            for n, config in self.score_function_config.items():
+                if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRateScore":
+                    weights_to_use[f"{n}_interaction"] = weights_to_use[n]
+            ranked_results = self.slice_finder.results.rank(weights_to_use, 
+                                                            n_slices=self.num_slices)
             self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results):
@@ -438,12 +442,16 @@ class SliceFinderWidget(anywidget.AnyWidget):
 
     @traitlets.observe("score_function_config")
     def update_score_functions(self, change=None):
-        
-        self.score_functions = {
-            n: ScoreFunctionBase.from_configuration(config, self.derived_metrics) 
-            if config.get("editable", True) else self.score_functions.get("n", None)
-            for n, config in self.score_function_config.items()
-        }
+        print("Updating score functions")
+        sf = {}
+        for n, config in self.score_function_config.items():
+            if config.get("editable", True):
+                sf[n] = ScoreFunctionBase.from_configuration(config, self.derived_metrics) 
+            elif 'n' in self.score_functions:
+                sf[n] = self.score_functions[n]
+            if n in sf and config['type'] == 'OutcomeRateScore':
+                sf[f"{n}_interaction"] = InteractionEffectScore((1 - sf[n].data) if sf[n].inverse else sf[n].data)
+        self.score_functions = sf
         if self.slice_finder is not None:
             self.slice_finder.rescore(self.score_functions)
             self.rerank_results()

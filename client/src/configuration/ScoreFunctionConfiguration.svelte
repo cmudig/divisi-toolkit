@@ -42,7 +42,7 @@
   let wasEditing = false;
   $: if (!wasEditing && editing) {
     editingName = name;
-    editingConfig = config;
+    editingConfig = { ...config };
     editingConfig.inverse = editingConfig.inverse ?? false;
     wasEditing = true;
   } else if (!editing) {
@@ -159,6 +159,12 @@
           max={1}
           step={0.01}
           bind:value={editingConfig.ideal_fraction}
+          on:input={() =>
+            (editingConfig.spread =
+              Math.min(
+                editingConfig.ideal_fraction,
+                1 - editingConfig.ideal_fraction
+              ) * 0.5)}
           class="w-full"
         />
       {:else if editingConfig.type == 'NumFeaturesScore'}

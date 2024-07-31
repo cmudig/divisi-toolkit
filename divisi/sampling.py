@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from .utils import RankedList
+from .utils import RankedList, powerset
 from .slices import *
 from .scores import ScoreFunctionBase
 import tqdm
@@ -558,7 +558,6 @@ class SamplingSliceFinder:
                 self.seen_slices[new_slice] = new_slice.score_values
             else:
                 self.seen_slices[old_slice] = None
-        print(self.all_scores[0])
                 
         self.score_fns = new_score_fns
         self.results = RankedSliceList(list(set(self.all_scores)),
@@ -682,6 +681,17 @@ class SamplingSliceFinder:
         slices_to_score = set()
         for ranking in best_groups.values():
             slices_to_score |= set(ranking.items)
+                
+        print("Before adding superslices:", len(slices_to_score))
+        for slice_obj in list(slices_to_score):
+            univariate = slice_obj.univariate_features()
+            for superslice_features in powerset(univariate):
+                if len(superslice_features) == 0 or len(superslice_features) == len(univariate):
+                    continue
+                superslice = IntersectionSlice(superslice_features)
+                if superslice in slices_to_score: continue
+                slices_to_score.add(superslice)
+        print("After adding superslices:", len(slices_to_score))
                 
         if sample_size < 1.0:
             print("Scoring collected slices", len(slices_to_score))

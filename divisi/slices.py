@@ -455,7 +455,7 @@ class RankedSliceList:
         original_score_indexes = np.arange(len(score_df), dtype=np.uint32)
         weighted_score = np.zeros(len(score_df))
         for w_name, w in weights.items():
-            weighted_score += w * score_df[w_name]
+            weighted_score += w * (score_df[w_name] / score_df[w_name].max())
         original_score_indexes = original_score_indexes[~np.isnan(weighted_score)]
         weighted_score = weighted_score[~np.isnan(weighted_score)]
         results = np.flip(np.argsort(weighted_score.values))
