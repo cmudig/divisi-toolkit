@@ -147,10 +147,10 @@
         class="p-2 whitespace-nowrap shrink-0 grid auto-rows-max text-xs gap-x-2 gap-y-0 items-center"
         style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 96px;"
       >
-        {#each metricNames as name, i}
+        {#each metricNames as name, i (name)}
           {@const metric = sliceForScores.metrics[name]}
 
-          {#if !!metricInfo[name] && metricInfo[name].visible}
+          {#if !!metric && !!metricInfo[name] && metricInfo[name].visible}
             {#if metric.type == 'binary'}
               <div class="font-bold text-right">{name}</div>
               <SliceMetricBar

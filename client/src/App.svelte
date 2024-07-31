@@ -189,21 +189,6 @@
     ignoreFullScreenEvent = false;
   }
 
-  $: updateViewingTab(viewingTab);
-
-  function updateViewingTab(tab) {
-    if (tab == 0) {
-      $selectedSlices = [];
-    } else {
-      $selectedSlices = $savedSlices;
-    }
-  }
-
-  $: {
-    console.log('selected slices from App.svelte');
-    console.log($selectedSlices);
-  }
-
   function assignColorToSlice(selectedSlices) {
     $sliceColorMap = Object.fromEntries(
       selectedSlices.map((slice, ind) => [slice.stringRep, colorScale(ind)])

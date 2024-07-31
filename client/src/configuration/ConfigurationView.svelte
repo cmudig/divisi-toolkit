@@ -9,6 +9,7 @@
     faPlus,
     faPlusCircle,
   } from '@fortawesome/free-solid-svg-icons';
+  import { sortMetrics } from '../utils/utils';
 
   export let metricInfo: {
     [key: string]: {
@@ -75,7 +76,7 @@
     >
     <div class="flex-auto shrink-0">Count</div>
   </div>
-  {#each Object.entries(derivedMetricConfigs).sort() as [metricName, config], i (metricName)}
+  {#each Object.entries(derivedMetricConfigs).sort( (a, b) => sortMetrics(a[0], b[0]) ) as [metricName, config], i (metricName)}
     <MetricConfiguration
       {metricName}
       {config}

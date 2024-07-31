@@ -367,6 +367,8 @@ class SamplingSliceFinder:
             self.discovery_mask = (np.random.uniform(size=self.raw_inputs.shape[0]) >= self.holdout_fraction)
         else:
             self.discovery_mask = discovery_mask
+        self.discovery_data = self.inputs.filter(self.discovery_mask)
+        self.eval_data = self.inputs.filter(~self.discovery_mask) if self.holdout_fraction > 0.0 else None
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
@@ -398,6 +400,30 @@ class SamplingSliceFinder:
             scoring_fraction=kwargs.get("scoring_fraction", self.scoring_fraction),
             discovery_mask=kwargs.get("discovery_mask", self.discovery_mask)
         )
+        
+    def state_dict(self):
+        return {
+            "source_mask": self.source_mask, 
+            "group_filter": self.group_filter, 
+            "max_features": self.max_features, 
+            "min_items": self.min_items, 
+            "num_candidates": self.num_candidates,
+            "final_num_candidates": self.final_num_candidates,
+            "positive_only": self.positive_only,
+            "holdout_fraction": self.holdout_fraction,
+            "min_weight": self.min_weight,
+            "max_weight": self.max_weight,
+            "similarity_threshold": self.similarity_threshold,
+            "show_progress": self.show_progress,
+            "n_workers": self.n_workers,
+            "initial_slice": self.initial_slice,
+            "scoring_fraction": self.scoring_fraction,
+            "discovery_mask": self.discovery_mask
+        }
+        
+    @classmethod
+    def from_state_dict(self, inputs, score_fns, data):
+        return SamplingSliceFinder(inputs, score_fns, **data)
         
     def _create_worker_initializer(self, discovery_inputs, discovery_score_fns, sample_size=None):
         """
