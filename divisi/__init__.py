@@ -1,15 +1,13 @@
 import importlib.metadata
 
-__version__ = importlib.metadata.version("divisi")
+__version__ = importlib.metadata.version("divisi-toolkit")
 
 from .widget import SliceFinderWidget
 from .sampling import find_slices_by_sampling
 from .recursive import find_slices_recursive
 from .scores import *
 from .filters import *
-from .discretization import DiscretizedData
-from scipy import sparse as sps
-import numpy as np
+from .discretization import DiscretizedData, discretize_data, discretize_token_sets
 
 def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=5.0, algorithm='recursive', **kwargs):
     """
@@ -39,6 +37,7 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
     """
     import pandas as pd
     import numpy as np
+    from scipy import sparse as sps
     
     if isinstance(df, DiscretizedData):
         df_to_run = df.df
