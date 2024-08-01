@@ -131,7 +131,8 @@
     class="slice-row w-full py-1 px-2 {rowClass
       ? rowClass
       : 'bg-white'} inline-flex items-center justify-center flex-wrap-reverse"
-    style="margin-left: {indentAmount * (maxIndent - indent)}px;"
+    style="padding-left: calc(0.5rem + {indentAmount *
+      (maxIndent - indent)}px);"
     on:mouseenter={() => (hovering = true)}
     on:mouseleave={() => (hovering = false)}
   >
@@ -145,7 +146,7 @@
     {:else}
       <div
         class="p-2 whitespace-nowrap shrink-0 grid auto-rows-max text-xs gap-x-2 gap-y-0 items-center"
-        style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 96px;"
+        style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 108px;"
       >
         {#each metricNames as name, i (name)}
           {@const metric = sliceForScores.metrics[name]}
@@ -163,6 +164,11 @@
               />
               <div>
                 <strong>{format('.1%')(metric.mean)}</strong>
+                {#if hovering && !!metric.share}
+                  <span style="font-size: 0.7rem;" class="italic text-gray-700"
+                    >({format('.0%')(metric.share)} of total)</span
+                  >
+                {/if}
               </div>
             {:else if metric.type == 'count'}
               <div class="font-bold text-right">{name}</div>
@@ -176,9 +182,11 @@
               />
               <div>
                 <strong>{format(',')(metric.count)}</strong>
-                <span style="font-size: 0.7rem;" class="italic text-gray-700"
-                  >({format('.1%')(metric.share)})</span
-                >
+                {#if hovering}
+                  <span style="font-size: 0.7rem;" class="italic text-gray-700"
+                    >({format('.0%')(metric.share)})</span
+                  >
+                {/if}
               </div>
             {:else if metric.type == 'continuous'}
               <SliceMetricHistogram

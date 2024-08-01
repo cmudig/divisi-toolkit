@@ -293,86 +293,11 @@
       on:saveslice
     />
   {/if}
-  <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
-    <div class="bg-slate-200 text-gray-700">
-      {#if runningSampler}
-        <div class="flex items-center px-4 py-3">
-          <div class="flex-auto">
-            <div class="text-sm">
-              {#if shouldCancel}
-                Canceling...
-              {:else}
-                Running sampler ({(samplerRunProgress * 100).toFixed(1)}%
-                complete)...
-              {/if}
-            </div>
-            <div
-              class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
-            >
-              <div
-                class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
-                style="width: {(samplerRunProgress * 100).toFixed(1)}%"
-              />
-            </div>
-          </div>
-          <button
-            class="ml-2 btn btn-blue disabled:opacity-50"
-            disabled={shouldCancel}
-            on:click={() => (shouldCancel = true)}>Stop</button
-          >
-        </div>
-      {:else}
-        <div class="flex px-4 items-center whitespace-nowrap gap-3">
-          <div class="text-slate-500 font-bold flex-auto text-base">
-            Slice Search
-          </div>
-          {#if !!searchScopeInfo.within_slice}
-            <button
-              style="padding-left: 1rem;"
-              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-              on:click={() => (searchScopeInfo = {})}
-              ><Fa icon={faMinus} class="inline mr-1" />
-              Within Slice</button
-            >
-            <div class="text-slate-600">
-              {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
-            </div>
-          {:else if !!searchScopeInfo.within_selection}
-            <button
-              style="padding-left: 1rem;"
-              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-              on:click={() => (searchScopeInfo = {})}
-              ><Fa icon={faMinus} class="inline mr-1" />
-              Within Selection</button
-            >
-            <div class="text-slate-600">
-              {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
-            </div>
-          {/if}
-
-          <div>
-            <input
-              class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
-              type="number"
-              min="0"
-              max="500"
-              step="5"
-              bind:value={numSamples}
-            />
-            samples
-          </div>
-          <button
-            class="my-3 ml-1 btn btn-blue disabled:opacity-50"
-            disabled={runningSampler}
-            on:click={() => dispatch('runsampler')}>Find Slices</button
-          >
-        </div>
-      {/if}
-    </div>
-  </div>
   <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
     <SliceTable
-      {slices}
+      slices={slices.filter(
+        (s) => !selectedSlices.find((s2) => s.stringRep == s2.stringRep)
+      )}
       {savedSlices}
       {sliceColorMap}
       bind:selectedSlices

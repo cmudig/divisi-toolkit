@@ -171,6 +171,7 @@
   {/if}
   {#if !!baseSlice}
     <SliceRow
+      rowClass="mb-2 mx-2 p-2"
       slice={baseSlice}
       {sliceColorMap}
       {scoreNames}
@@ -212,44 +213,43 @@
   {/if}
   {#each slices as slice, i (slice.stringRep || i)}
     {@const sliceToShow = sliceRequestResults[slice.stringRep] || slice}
-    <SliceRow
-      {slice}
-      {sliceColorMap}
-      {scoreNames}
-      {positiveOnly}
-      scoreCellWidth={100}
-      {scoreWidthScalers}
-      {showScores}
-      {metricNames}
-      {metricInfo}
-      {valueNames}
-      {allowedValues}
-      {fixedFeatureOrder}
-      rowClass={!!searchBaseSlice &&
-      areObjectsEqual(searchBaseSlice, slice.feature)
-        ? 'bg-indigo-100 hover:bg-indigo-200'
-        : 'hover:bg-slate-100'}
-      isSaved={!!savedSlices.find((s) =>
-        areObjectsEqual(s.feature, slice.feature)
-      )}
-      isSelected={!!selectedSlices.find((s) =>
-        areObjectsEqual(s.feature, slice.feature)
-      )}
-      temporarySlice={tempRevertedSlice == slice.stringRep
-        ? slice
-        : sliceToShow}
-      isEditing={slice.stringRep == editingSlice}
-      on:beginedit={(e) => (editingSlice = slice.stringRep)}
-      on:endedit={(e) => (editingSlice = null)}
-      on:edit={(e) => editSliceFeature(slice, e.detail)}
-      on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
-      on:reset={(e) => resetSlice(slice)}
-      on:temprevert={(e) =>
-        (tempRevertedSlice = e.detail ? slice.stringRep : null)}
-      on:newsearch
-      on:saveslice={(e) => saveSlice(e.detail)}
-      on:select={(e) => selectSlice(sliceToShow, e.detail)}
-    />
+    <div class="w-full mx-2 mb-2">
+      <SliceRow
+        {slice}
+        {sliceColorMap}
+        {scoreNames}
+        {positiveOnly}
+        scoreCellWidth={100}
+        {scoreWidthScalers}
+        {showScores}
+        {metricNames}
+        {metricInfo}
+        {valueNames}
+        {allowedValues}
+        {fixedFeatureOrder}
+        rowClass="rounded hover:bg-slate-100 shadow border border-slate-100"
+        isSaved={!!savedSlices.find((s) =>
+          areObjectsEqual(s.feature, slice.feature)
+        )}
+        isSelected={!!selectedSlices.find((s) =>
+          areObjectsEqual(s.feature, slice.feature)
+        )}
+        temporarySlice={tempRevertedSlice == slice.stringRep
+          ? slice
+          : sliceToShow}
+        isEditing={slice.stringRep == editingSlice}
+        on:beginedit={(e) => (editingSlice = slice.stringRep)}
+        on:endedit={(e) => (editingSlice = null)}
+        on:edit={(e) => editSliceFeature(slice, e.detail)}
+        on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+        on:reset={(e) => resetSlice(slice)}
+        on:temprevert={(e) =>
+          (tempRevertedSlice = e.detail ? slice.stringRep : null)}
+        on:newsearch
+        on:saveslice={(e) => saveSlice(e.detail)}
+        on:select={(e) => selectSlice(sliceToShow, e.detail)}
+      />
+    </div>
   {/each}
 </div>
 

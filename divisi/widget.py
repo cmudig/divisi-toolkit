@@ -124,8 +124,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
             if not provided_score_weights:
                 score_weights[name] = 1.0
         if not score_fn_configs:
-            score_fn_configs["Large Slice"] = {"type": "SliceSizeScore", "ideal_fraction": 0.2, "spread": 0.1}
-            score_weights["Large Slice"] = 0.5
+            score_fn_configs["Slice Size"] = {"type": "SliceSizeScore", "ideal_fraction": 0.1, "spread": 0.05}
+            score_weights["Slice Size"] = 0.5
             score_fn_configs["Simple Rule"] = {"type": "NumFeaturesScore"}
             score_weights["Simple Rule"] = 0.5
             
@@ -149,6 +149,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.score_function_config = score_fn_configs
         self._slice_description_cache = {}
         self.score_weights = score_weights
+        self._score_cache = {}
         
         self.state_path = kwargs.get("state_path", None)
         self._read_state()
@@ -164,6 +165,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 positive_only=self.positive_only,
                 similarity_threshold=0.9
             )
+            self.slice_finder.results.score_cache = self._score_cache
         
         if not hasattr(self, "projection") or self.projection is None:
             if "projection" in kwargs:
@@ -222,6 +224,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             with open(os.path.join(self.state_path, "slice_finder.pkl"), "rb") as file:
                 sf_state = pickle.load(file)
             self.slice_finder = SamplingSliceFinder.from_state_dict(self.discrete_data, self.score_functions, sf_state)
+            self.slice_finder.results.score_cache = self._score_cache
         
     @traitlets.observe("metric_info", "derived_metric_config", "score_function_config", "saved_slices", "selected_slices", "overlap_plot_metric")
     def _write_state(self, change=None):
@@ -300,6 +303,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 self.slice_finder.progress_fn = update_sampler_progress
                 
                 results, sampled_idxs = self.slice_finder.sample(min(sample_step, self.num_samples - i))
+                results.score_cache = self._score_cache
                 self.num_samples_drawn += len(sampled_idxs)
                 self.rerank_results()
                 base_progress += len(sampled_idxs) / self.num_samples
@@ -328,6 +332,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                     weights_to_use[f"{n}_interaction"] = weights_to_use[n]
             ranked_results = self.slice_finder.results.rank(weights_to_use, 
                                                             n_slices=self.num_slices)
+            print(ranked_results)
             self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results):

@@ -6,10 +6,13 @@
   import {
     faBookBookmark,
     faChevronLeft,
+    faChevronRight,
     faCompress,
     faExpand,
     faHeart,
     faSearch,
+    faStop,
+    faWrench,
   } from '@fortawesome/free-solid-svg-icons';
   import ConfigurationView from './configuration/ConfigurationView.svelte';
   import SliceOverlapPlot from './overlap_views/SliceOverlapPlot.svelte';
@@ -121,6 +124,8 @@
   let isFullScreen = false;
   let ignoreFullScreenEvent = false;
 
+  let showConfiguration = true;
+
   function enterFullScreen() {
     let fn;
     if (parentElement.requestFullscreen) {
@@ -207,14 +212,58 @@
   bind:this={parentElement}
 >
   <div
-    class="h-12 bg-slate-500 text-white flex items-center px-4"
+    class="h-12 bg-slate-400 text-slate-900 flex items-center px-3 gap-3"
     class:rounded-t={!isFullScreen}
   >
-    <div class="font-bold text-lg">DIVISI</div>
-
-    <div class="flex-1" />
     <button
-      class="p-3 rounded indigo:hover:bg-indigo-500 bg-transparent hover:opacity-50"
+      class="px-3 py-1 text-sm font-bold rounded {showConfiguration
+        ? 'bg-slate-600 text-white hover:bg-slate-700'
+        : 'bg-transparent hover:bg-slate-500/50'}"
+      on:click={() => (showConfiguration = !showConfiguration)}
+    >
+      {#if showConfiguration}
+        <Fa icon={faChevronLeft} class="inline mr-1" />
+        Hide
+      {:else}
+        <Fa icon={faWrench} class="inline mr-1" />
+        Configure
+      {/if}
+    </button>
+
+    {#if $runningSampler}
+      <div
+        class="h-full px-3 bg-slate-300 flex items-center flex-auto gap-3 relative"
+      >
+        <div
+          class="absolute top-0 left-0 bg-slate-400 h-full duration-100"
+          style="width: {($samplerRunProgress * 100).toFixed(1)}%"
+        />
+        <button
+          class="px-3 py-1 font-bold text-sm text-white rounded bg-slate-600 hover:opacity-50 disabled:opacity-50 z-10"
+          disabled={$shouldCancel}
+          on:click={() => ($shouldCancel = true)}
+          ><Fa icon={faStop} class="inline mr-2" />Stop</button
+        >
+        <div class="text-sm z-10">
+          {#if $shouldCancel}
+            Canceling...
+          {:else}
+            Finding slices ({($samplerRunProgress * 100).toFixed(1)}%
+            complete)...
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <button
+        class="px-3 py-1 font-bold text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+        disabled={$shouldRerun}
+        on:click={() => ($shouldRerun = true)}
+        ><Fa icon={faSearch} class="inline mr-2" />Find Slices</button
+      >
+      <div class="flex-1" />
+    {/if}
+    <button
+      class="p-3 rounded bg-transparent hover:opacity-50"
       on:click={isFullScreen ? exitFullScreen : enterFullScreen}
     >
       <span class="my-0.5 block">
@@ -222,29 +271,34 @@
       >
     </button>
   </div>
-  <div class="flex flex-1 w-full min-h-0">
-    <ResizablePanel
-      rightResizable
-      minWidth={240}
-      maxWidth="70%"
-      height="100%"
-      width={260}
-      class="border-x border-b border-slate-500 {!isFullScreen
-        ? 'rounded-bl'
-        : ''}"
-    >
-      <div class="w-full h-full overflow-y-auto">
-        <ConfigurationView
-          metricInfo={$metricInfo}
-          bind:derivedMetricConfigs={$derivedMetricConfigs}
-          bind:hiddenMetrics
-          bind:scoreFunctionConfigs={$scoreFunctionConfigs}
-          bind:scoreWeights={$scoreWeights}
-          bind:metricExpressionRequest={$metricExpressionRequest}
-          bind:metricExpressionResponse={$metricExpressionResponse}
-        />
-      </div>
-    </ResizablePanel>
+  <div
+    class="flex flex-1 w-full min-h-0 border-b border-slate-400 overflow-hidden border-l {!isFullScreen
+      ? 'rounded-bl'
+      : ''}"
+  >
+    {#if showConfiguration}
+      <ResizablePanel
+        rightResizable
+        collapsible={false}
+        minWidth={240}
+        maxWidth="70%"
+        height="100%"
+        width={320}
+        class="border-r border-slate-400"
+      >
+        <div class="w-full h-full overflow-y-auto">
+          <ConfigurationView
+            metricInfo={$metricInfo}
+            bind:derivedMetricConfigs={$derivedMetricConfigs}
+            bind:hiddenMetrics
+            bind:scoreFunctionConfigs={$scoreFunctionConfigs}
+            bind:scoreWeights={$scoreWeights}
+            bind:metricExpressionRequest={$metricExpressionRequest}
+            bind:metricExpressionResponse={$metricExpressionResponse}
+          />
+        </div>
+      </ResizablePanel>
+    {/if}
 
     <div
       class="flex-1 h-full overflow-auto"
@@ -314,7 +368,7 @@
       maxWidth="70%"
       height="100%"
       width={500}
-      class="border-x border-b border-slate-500 {!isFullScreen
+      class="border-x border-b border-slate-400 {!isFullScreen
         ? 'rounded-br'
         : ''}"
     >
