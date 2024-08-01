@@ -11,7 +11,7 @@
 </script>
 
 <button
-  class="mr-1 checkbox rounded flex items-center justify-center text-white {colorClass !=
+  class="mr-1 checkbox rounded align-middle inline-flex items-center justify-center text-white {colorClass !=
   null
     ? colorClass
     : color != null

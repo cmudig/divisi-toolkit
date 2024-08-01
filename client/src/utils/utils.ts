@@ -64,40 +64,50 @@ export function cumulativeSum(arr: Array<number>): Array<number> {
 export function withToggledFeature(
   featureToCopy: SliceFeatureBase,
   referenceFeature: SliceFeatureBase,
-  searchFeature: SliceFeatureBase
+  searchFeature: SliceFeatureBase,
+  replaceFeature: SliceFeatureBase = null
 ): SliceFeatureBase {
   if (areObjectsEqual(searchFeature, referenceFeature)) {
-    if (areObjectsEqual(searchFeature, featureToCopy)) return { type: 'base' };
-    return Object.assign({}, referenceFeature);
+    if (replaceFeature == null) {
+      if (areObjectsEqual(searchFeature, featureToCopy))
+        return { type: 'base' };
+      return Object.assign({}, referenceFeature);
+    }
+    return replaceFeature;
   }
   let copied = Object.assign({}, featureToCopy);
   if (referenceFeature.type == 'negation') {
     (copied as SliceFeatureNegation).feature = withToggledFeature(
       (copied as SliceFeatureNegation).feature,
       (referenceFeature as SliceFeatureNegation).feature,
-      searchFeature
+      searchFeature,
+      replaceFeature
     );
   } else if (referenceFeature.type == 'and') {
     (copied as SliceFeatureAnd).lhs = withToggledFeature(
       (copied as SliceFeatureAnd).lhs,
       (referenceFeature as SliceFeatureAnd).lhs,
-      searchFeature
+      searchFeature,
+      replaceFeature
     );
     (copied as SliceFeatureAnd).rhs = withToggledFeature(
       (copied as SliceFeatureAnd).rhs,
       (referenceFeature as SliceFeatureAnd).rhs,
-      searchFeature
+      searchFeature,
+      replaceFeature
     );
   } else if (referenceFeature.type == 'or') {
     (copied as SliceFeatureOr).lhs = withToggledFeature(
       (copied as SliceFeatureOr).lhs,
       (referenceFeature as SliceFeatureOr).lhs,
-      searchFeature
+      searchFeature,
+      replaceFeature
     );
     (copied as SliceFeatureOr).rhs = withToggledFeature(
       (copied as SliceFeatureOr).rhs,
       (referenceFeature as SliceFeatureOr).rhs,
-      searchFeature
+      searchFeature,
+      replaceFeature
     );
   }
   return copied;
@@ -120,29 +130,38 @@ export function featureNeedsParentheses(
 // features being substituted by an empty SliceFeatureBase
 export function featuresHaveSameTree(
   feature: SliceFeatureBase,
-  otherFeature: SliceFeatureBase
+  otherFeature: SliceFeatureBase,
+  allowValueDifferences: boolean = false
 ): boolean {
   if (feature.type != otherFeature.type) {
     return feature.type == 'base' || otherFeature.type == 'base';
   }
   if (feature.type == 'feature') {
+    if (allowValueDifferences)
+      return (
+        otherFeature.type == 'feature' &&
+        (feature as SliceFeature).col == (otherFeature as SliceFeature).col
+      );
     return areObjectsEqual(feature, otherFeature);
   }
   if (feature.type == 'negation') {
     return featuresHaveSameTree(
       (feature as SliceFeatureNegation).feature,
-      (otherFeature as SliceFeatureNegation).feature
+      (otherFeature as SliceFeatureNegation).feature,
+      allowValueDifferences
     );
   }
   if (feature.type == 'and' || feature.type == 'or') {
     return (
       featuresHaveSameTree(
         (feature as SliceFeatureAnd).lhs,
-        (otherFeature as SliceFeatureAnd).lhs
+        (otherFeature as SliceFeatureAnd).lhs,
+        allowValueDifferences
       ) &&
       featuresHaveSameTree(
         (feature as SliceFeatureAnd).rhs,
-        (otherFeature as SliceFeatureAnd).rhs
+        (otherFeature as SliceFeatureAnd).rhs,
+        allowValueDifferences
       )
     );
   }

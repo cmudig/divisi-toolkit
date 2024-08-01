@@ -18,6 +18,7 @@
   import { TableWidths } from './tablewidths';
   import { createEventDispatcher } from 'svelte';
   import type { SliceFeature } from '../utils/slice.type';
+  import SliceFeature from './SliceFeature.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -101,12 +102,16 @@
     return false;
   }
 
-  function toggleSliceFeature(slice: Slice, feature: SliceFeature) {
+  function setSliceFeatureValues(
+    slice: Slice,
+    feature: SliceFeature,
+    newFeature: SliceFeature
+  ) {
     let allRequests = Object.assign({}, sliceRequests);
     let r;
     if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
     else r = slice.feature;
-    r = withToggledFeature(r, slice.feature, feature);
+    r = withToggledFeature(r, slice.feature, feature, newFeature);
     allRequests[slice.stringRep] = r;
     sliceRequests = allRequests;
     console.log('slice requests:', sliceRequests);
@@ -170,6 +175,7 @@
     </div>
   {/if}
   {#if !!baseSlice}
+    {@const sliceToShow = sliceRequestResults[baseSlice.stringRep] ?? baseSlice}
     <SliceRow
       rowClass="mb-2 mx-2 p-2"
       slice={baseSlice}
@@ -192,13 +198,14 @@
       )}
       temporarySlice={tempRevertedSlice == baseSlice.stringRep
         ? baseSlice
-        : sliceRequestResults[baseSlice.stringRep]}
+        : sliceToShow}
       {fixedFeatureOrder}
       isEditing={baseSlice.stringRep == editingSlice}
       on:beginedit={(e) => (editingSlice = baseSlice.stringRep)}
       on:endedit={(e) => (editingSlice = null)}
       on:edit={(e) => editSliceFeature(baseSlice, e.detail)}
-      on:toggle={(e) => toggleSliceFeature(baseSlice, e.detail)}
+      on:toggle={(e) =>
+        setSliceFeatureValues(baseSlice, e.detail.old, e.detail.new)}
       on:reset={(e) => resetSlice(baseSlice)}
       on:temprevert={(e) =>
         (tempRevertedSlice = e.detail ? baseSlice.stringRep : null)}
@@ -241,7 +248,8 @@
         on:beginedit={(e) => (editingSlice = slice.stringRep)}
         on:endedit={(e) => (editingSlice = null)}
         on:edit={(e) => editSliceFeature(slice, e.detail)}
-        on:toggle={(e) => toggleSliceFeature(slice, e.detail)}
+        on:toggle={(e) =>
+          setSliceFeatureValues(slice, e.detail.old, e.detail.new)}
         on:reset={(e) => resetSlice(slice)}
         on:temprevert={(e) =>
           (tempRevertedSlice = e.detail ? slice.stringRep : null)}

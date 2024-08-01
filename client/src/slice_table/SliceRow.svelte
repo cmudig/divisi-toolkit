@@ -84,34 +84,6 @@
   let sliceForScores: Slice;
   $: sliceForScores = revertedScores ? customSlice || slice : sliceToShow;
 
-  function searchContainsSlice() {
-    dispatch('newsearch', {
-      type: 'containsSlice',
-      base_slice: sliceToShow.feature,
-    });
-  }
-
-  function searchContainedInSlice() {
-    dispatch('newsearch', {
-      type: 'containedInSlice',
-      base_slice: sliceToShow.feature,
-    });
-  }
-
-  function searchSubslices() {
-    dispatch('newsearch', {
-      type: 'subsliceOfSlice',
-      base_slice: sliceToShow.feature,
-    });
-  }
-
-  function searchSimilarSlices() {
-    dispatch('newsearch', {
-      type: 'similarToSlice',
-      base_slice: sliceToShow.feature,
-    });
-  }
-
   let revertedScores = false;
   function temporaryRevertSlice(revert) {
     revertedScores = revert;
@@ -136,136 +108,142 @@
     on:mouseenter={() => (hovering = true)}
     on:mouseleave={() => (hovering = false)}
   >
-    {#if sliceForScores.isEmpty}
-      <div
-        class="p-2 pt-3 whitespace-nowrap shrink-0 text-slate-600"
-        style="width: {TableWidths.AllMetrics}px;"
-      >
-        Empty
-      </div>
-    {:else}
-      <div
-        class="p-2 whitespace-nowrap shrink-0 grid auto-rows-max text-xs gap-x-2 gap-y-0 items-center"
-        style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 108px;"
-      >
-        {#each metricNames as name, i (name)}
-          {@const metric = sliceForScores.metrics[name]}
-
-          {#if !!metric && !!metricInfo[name] && metricInfo[name].visible}
-            {#if metric.type == 'binary'}
-              <div class="font-bold text-right">{name}</div>
-              <SliceMetricBar
-                value={metric.mean}
-                color={ColorWheel[i]}
-                width={null}
-                showFullBar
-                horizontalLayout
-                showTooltip={false}
-              />
-              <div>
-                <strong>{format('.1%')(metric.mean)}</strong>
-                {#if hovering && !!metric.share}
-                  <span style="font-size: 0.7rem;" class="italic text-gray-700"
-                    >({format('.0%')(metric.share)} of total)</span
-                  >
-                {/if}
-              </div>
-            {:else if metric.type == 'count'}
-              <div class="font-bold text-right">{name}</div>
-              <SliceMetricBar
-                value={metric.share}
-                width={null}
-                color={ColorWheel[i]}
-                showFullBar
-                horizontalLayout
-                showTooltip={false}
-              />
-              <div>
-                <strong>{format(',')(metric.count)}</strong>
-                {#if hovering}
-                  <span style="font-size: 0.7rem;" class="italic text-gray-700"
-                    >({format('.0%')(metric.share)})</span
-                  >
-                {/if}
-              </div>
-            {:else if metric.type == 'continuous'}
-              <SliceMetricHistogram
-                noParent
-                title={name}
-                width={null}
-                horizontalLayout
-                mean={metric.mean}
-                color={ColorWheel[i]}
-                histValues={metric.hist}
-              />
-            {:else if metric.type == 'categorical'}
-              <SliceMetricCategoryBar
-                noParent
-                width={null}
-                title={name}
-                horizontalLayout
-                colorScale={makeCategoricalColorScale(ColorWheel[i])}
-                order={metricInfo[name].order}
-                counts={metric.counts}
-              />
-            {/if}
-          {/if}
-        {/each}
-      </div>
-    {/if}
-    <div class="ml-2 flex flex-auto items-center" style="width: 200px;">
-      <div class="grow-0 shrink-0">
-        <Checkbox
-          checked={isSelected}
-          on:change={(e) => dispatch('select', !isSelected)}
-          color={isSelected ? sliceColorMap[slice.stringRep] : null}
+    {#if isEditing}
+      <div class="py-1 pr-2 w-full h-full">
+        <SliceFeatureEditor
+          featureText={featureToString(
+            featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
+              slice.feature.type != 'base'
+              ? slice.feature
+              : sliceToShow.feature,
+            false,
+            positiveOnly
+          )}
+          {positiveOnly}
+          {allowedValues}
+          on:cancel={(e) => {
+            isEditing = false;
+            dispatch('endedit');
+          }}
+          on:save={(e) => {
+            let newFeature = parseFeature(e.detail, allowedValues);
+            console.log('new feature:', newFeature);
+            isEditing = false;
+            dispatch('endedit');
+            dispatch('edit', newFeature);
+          }}
         />
       </div>
+    {:else}
+      {#if sliceForScores.isEmpty}
+        <div
+          class="p-2 pt-3 whitespace-nowrap shrink-0 text-slate-600"
+          style="width: {TableWidths.AllMetrics}px;"
+        >
+          Empty
+        </div>
+      {:else}
+        <div
+          class="p-2 whitespace-nowrap shrink-0 grid auto-rows-max text-xs gap-x-2 gap-y-0 items-center"
+          style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 108px;"
+        >
+          {#each metricNames as name, i (name)}
+            {@const metric = sliceForScores.metrics[name]}
 
-      <div
-        class="py-2 text-xs overflow-x-auto min-w-0"
-        class:opacity-50={revertedScores}
-      >
-        {#if isEditing}
-          <SliceFeatureEditor
-            featureText={featureToString(
-              featuresHaveSameTree(slice.feature, sliceToShow.feature) &&
-                slice.feature.type != 'base'
-                ? slice.feature
-                : sliceToShow.feature,
-              false,
-              positiveOnly
-            )}
-            {positiveOnly}
-            {allowedValues}
-            on:cancel={(e) => {
-              isEditing = false;
-              dispatch('endedit');
-            }}
-            on:save={(e) => {
-              let newFeature = parseFeature(e.detail, allowedValues);
-              console.log('new feature:', newFeature);
-              isEditing = false;
-              dispatch('endedit');
-              dispatch('edit', newFeature);
-            }}
+            {#if !!metric && !!metricInfo[name] && metricInfo[name].visible}
+              {#if metric.type == 'binary'}
+                <div class="font-bold text-right">{name}</div>
+                <SliceMetricBar
+                  value={metric.mean}
+                  color={ColorWheel[i]}
+                  width={null}
+                  showFullBar
+                  horizontalLayout
+                  showTooltip={false}
+                />
+                <div>
+                  <strong>{format('.1%')(metric.mean)}</strong>
+                  {#if hovering && !!metric.share}
+                    <span
+                      style="font-size: 0.7rem;"
+                      class="italic text-gray-700"
+                      >({format('.0%')(metric.share)} of total)</span
+                    >
+                  {/if}
+                </div>
+              {:else if metric.type == 'count'}
+                <div class="font-bold text-right">{name}</div>
+                <SliceMetricBar
+                  value={metric.share}
+                  width={null}
+                  color={ColorWheel[i]}
+                  showFullBar
+                  horizontalLayout
+                  showTooltip={false}
+                />
+                <div>
+                  <strong>{format(',')(metric.count)}</strong>
+                  {#if hovering}
+                    <span
+                      style="font-size: 0.7rem;"
+                      class="italic text-gray-700"
+                      >({format('.0%')(metric.share)})</span
+                    >
+                  {/if}
+                </div>
+              {:else if metric.type == 'continuous'}
+                <SliceMetricHistogram
+                  noParent
+                  title={name}
+                  width={null}
+                  horizontalLayout
+                  mean={metric.mean}
+                  color={ColorWheel[i]}
+                  histValues={metric.hist}
+                />
+              {:else if metric.type == 'categorical'}
+                <SliceMetricCategoryBar
+                  noParent
+                  width={null}
+                  title={name}
+                  horizontalLayout
+                  colorScale={makeCategoricalColorScale(ColorWheel[i])}
+                  order={metricInfo[name].order}
+                  counts={metric.counts}
+                />
+              {/if}
+            {/if}
+          {/each}
+        </div>
+      {/if}
+      <div class="ml-2 flex flex-auto items-center" style="width: 200px;">
+        <div class="grow-0 shrink-0">
+          <Checkbox
+            checked={isSelected}
+            on:change={(e) => dispatch('select', !isSelected)}
+            color={isSelected ? sliceColorMap[slice.stringRep] : null}
           />
-        {:else}
+        </div>
+
+        <div class="py-2 text-xs min-w-0" class:opacity-50={revertedScores}>
           <div class="flex items-center h-full whitespace-nowrap">
-            <div style="flex: 0 1 auto;" class="overflow-x-auto">
+            <div style="flex: 0 1 auto;" class="overflow-auto">
               <SliceFeature
                 feature={featuresHaveSameTree(
                   slice.feature,
-                  sliceToShow.feature
+                  sliceToShow.feature,
+                  true
                 ) && slice.feature.type != 'base'
                   ? slice.feature
                   : sliceToShow.feature}
                 currentFeature={sliceToShow.feature}
                 canToggle={featuresHaveSameTree(
                   slice.feature,
-                  sliceToShow.feature
+                  sliceToShow.feature,
+                  true
                 )}
                 {positiveOnly}
+                {allowedValues}
                 on:toggle
               />
             </div>
@@ -310,75 +288,9 @@
               {/if}
             {/if}
           </div>
-        {/if}
-        <!-- {#each featureOrder as col, i}
-        {@const featureDisabled =
-          !sliceToShow.featureValues.hasOwnProperty(col) &&
-          baseSlice.featureValues.hasOwnProperty(col)}
-        {#if col.length > 0}
-          <div class="pt-1">
-            {#if positiveOnly}
-              <button
-                class="bg-transparent hover:opacity-70 font-mono text-sm text-left"
-                class:opacity-30={featureDisabled}
-                class:line-through={featureDisabled}
-                title={featureDisabled
-                  ? 'Reset slice'
-                  : 'Test effect of removing this feature from the slice'}
-                on:click={() => dispatch('toggle', col)}>{col}</button
-              >
-            {:else}
-              <button
-                class="bg-transparent mr-1 text-sm font-mono hover:opacity-70"
-                class:opacity-50={featureDisabled}
-                title={featureDisabled
-                  ? 'Reset slice'
-                  : 'Test effect of removing this feature from the slice'}
-                on:click={() => dispatch('toggle', col)}>{col}</button
-              >
-            {/if}
-            <div class="flex items-center">
-              {#if !positiveOnly}
-                {#if featureDisabled}
-                  <span class="mt-1 mb-1 opacity-50">(any value)</span>
-                {:else if !customSlice}
-                  <span class="mt-1 text-gray-600 mb-1"
-                    >{sliceToShow.featureValues[col]}</span
-                  >
-                {/if}
-                {#if !slice}
-                  <button
-                    class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                    on:click={() => (editingColumn = i)}
-                    title="Choose a different feature to slice by"
-                    ><Fa icon={faPencil} /></button
-                  >
-                  <button
-                    class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                    on:click={() => deleteFeatureValue(col)}
-                    ><Fa icon={faTrash} /></button
-                  >
-                  {#if i == Object.keys(baseSlice.featureValues).length - 1}
-                    <button
-                      class="bg-transparent hover:opacity-60 mx-1 text-slate-600"
-                      title="Slice by an additional feature"
-                      on:click={() => {
-                        editingColumn = i + 1;
-                        dispatch('beginedit', i + 1);
-                      }}><Fa icon={faPlus} /></button
-                    >
-                  {/if}
-                {/if}
-              {/if}
-            </div>
-          </div>
-          {#if !featureOrder.slice(i + 1).every((f) => f.length == 0)}
-            <div class="w-0.5 mx-3 h-1/3 bg-slate-300 rounded-full" />
-          {/if}
-        {/if}
-      {/each} -->
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 {/if}
 
