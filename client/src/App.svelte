@@ -277,6 +277,11 @@
       <div class="flex-1" />
     {/if}
     <button
+      class="btn {viewingTab == 1 ? 'btn-dark-slate' : 'btn-slate'}"
+      on:click={() => (viewingTab = 1 - viewingTab)}
+      ><Fa icon={faHeart} class="inline mr-2" />Favorites</button
+    >
+    <button
       class="p-3 rounded bg-transparent hover:opacity-50"
       on:click={isFullScreen ? exitFullScreen : enterFullScreen}
     >
@@ -364,7 +369,8 @@
           slices={$savedSlices}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
-          {valueNames}
+          allowDragAndDrop={$interfaceMode == 'B'}
+          {allowedValues}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
