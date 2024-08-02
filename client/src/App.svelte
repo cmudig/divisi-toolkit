@@ -10,6 +10,7 @@
     faCompress,
     faExpand,
     faHeart,
+    faMinus,
     faPlus,
     faSearch,
     faStop,
@@ -27,12 +28,9 @@
   import ResizablePanel from './utils/ResizablePanel.svelte';
   import * as d3 from 'd3';
 
-  // const sliceColorScale = d3.scaleOrdinal(d3.schemeCategory10);
-  // export let sliceColorMap = writable({});
   export let model;
 
-  // export const sliceColorMap = writable({});
-  let sliceColorMap = traitlet(model, 'slice_color_map', {});
+  let interfaceMode = traitlet(model, 'interface', 'B');
 
   let numSlices = traitlet(model, 'num_slices', 10);
   let numSamples = traitlet(model, 'num_samples', 50);
@@ -49,6 +47,7 @@
   let selectedSlices = traitlet(model, 'selected_slices', []);
   let baseSlice = traitlet(model, 'base_slice', {});
   let positiveOnly = traitlet(model, 'positive_only', false);
+  let sliceColorMap = traitlet(model, 'slice_color_map', {});
 
   let metricInfo = traitlet(model, 'metric_info', {});
   let derivedMetricConfigs = traitlet(model, 'derived_metric_config', {});
@@ -122,6 +121,16 @@
         hiddenMetrics.push(n);
       }
     });
+  }
+
+  let allowedValues;
+  $: if (!!$valueNames) {
+    allowedValues = {};
+    Object.entries($valueNames).forEach((item) => {
+      allowedValues[item[1][0]] = Object.values(item[1][1]);
+    });
+  } else {
+    allowedValues = null;
   }
 
   let parentElement: Element;
@@ -277,8 +286,8 @@
     </button>
   </div>
   <div
-    class="flex flex-1 w-full min-h-0 border-b border-slate-400 overflow-hidden border-l {!isFullScreen
-      ? 'rounded-bl'
+    class="flex flex-1 w-full min-h-0 border-b border-slate-400 overflow-hidden border-x {!isFullScreen
+      ? 'rounded-b'
       : ''}"
   >
     {#if showConfiguration}
@@ -294,6 +303,10 @@
         <div class="w-full h-full overflow-y-auto">
           <ConfigurationView
             metricInfo={$metricInfo}
+            showSearchScopeConfig={$interfaceMode == 'B'}
+            {allowedValues}
+            positiveOnly={$positiveOnly}
+            bind:searchScopeInfo={$searchScopeInfo}
             bind:derivedMetricConfigs={$derivedMetricConfigs}
             bind:hiddenMetrics
             bind:scoreFunctionConfigs={$scoreFunctionConfigs}
@@ -324,7 +337,8 @@
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
           sliceColorMap={$sliceColorMap}
-          {valueNames}
+          allowDragAndDrop={$interfaceMode == 'B'}
+          {allowedValues}
           baseSlice={$baseSlice}
           bind:hiddenMetrics
           bind:sliceRequests={$sliceScoreRequests}
@@ -369,32 +383,34 @@
       {/if}
     </div>
 
-    <ResizablePanel
-      leftResizable
-      minWidth={300}
-      maxWidth="70%"
-      height="100%"
-      width={500}
-      class="border-x border-b border-slate-400 {!isFullScreen
-        ? 'rounded-br'
-        : ''}"
-    >
-      <div class="w-full h-full relative">
-        {#if $overlapPlotMetric != null}
-          <SliceOverlapPlot
-            bind:errorKey={$overlapPlotMetric}
-            bind:selectedSlices={$selectedSlices}
-            bind:searchScopeInfo={$searchScopeInfo}
-            errorKeyOptions={binaryMetrics}
-            savedSlices={$savedSlices}
-            bind:sliceColorMap={$sliceColorMap}
-            intersectionCounts={$sliceIntersectionCounts}
-            labels={$sliceIntersectionLabels}
-            groupedLayout={$groupedMapLayout}
-          />
-        {/if}
-      </div></ResizablePanel
-    >
+    {#if $interfaceMode == 'B'}
+      <ResizablePanel
+        leftResizable
+        minWidth={300}
+        maxWidth="70%"
+        height="100%"
+        width={500}
+        class="border-l border-b border-slate-400 {!isFullScreen
+          ? 'rounded-br'
+          : ''}"
+      >
+        <div class="w-full h-full relative">
+          {#if $overlapPlotMetric != null}
+            <SliceOverlapPlot
+              bind:errorKey={$overlapPlotMetric}
+              bind:selectedSlices={$selectedSlices}
+              bind:searchScopeInfo={$searchScopeInfo}
+              errorKeyOptions={binaryMetrics}
+              savedSlices={$savedSlices}
+              bind:sliceColorMap={$sliceColorMap}
+              intersectionCounts={$sliceIntersectionCounts}
+              labels={$sliceIntersectionLabels}
+              groupedLayout={$groupedMapLayout}
+            />
+          {/if}
+        </div></ResizablePanel
+      >
+    {/if}
   </div>
 </main>
 

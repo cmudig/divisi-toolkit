@@ -86,6 +86,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
     
     state_path = traitlets.Unicode(None, allow_none=True)
     
+    # for the user study
+    interface = traitlets.Unicode("B").tag(sync=True)
+    
     def __init__(self, discrete_data, *args, **kwargs):
         try:
             self._esm = DEV_ESM_URL if kwargs.get('dev', False) else (BUNDLE_DIR / "widget-main.js").read_text()
@@ -145,6 +148,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.metrics = kwargs.get("metrics", {})
         self.derived_metrics = {**self.metrics}
         self.derived_metric_config = {k: { "expression": f"{{{k}}}" } for k in self.metrics}
+        print(kwargs.get("score_functions", {}), score_fn_configs)
         self.score_functions = kwargs.get("score_functions", {})
         self.score_function_config = score_fn_configs
         self._slice_description_cache = {}
@@ -155,6 +159,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self._read_state()
         
         if self.slice_finder is None:
+            print("Setting slice fidner", self.score_functions)
             self.slice_finder = SamplingSliceFinder(
                 self.discrete_data,
                 self.score_functions,
@@ -224,10 +229,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if os.path.exists(os.path.join(self.state_path, "slice_finder.pkl")):
             with open(os.path.join(self.state_path, "slice_finder.pkl"), "rb") as file:
                 sf_state = pickle.load(file)
+            print("Setting slice fidner from state file", self.score_functions)
             self.slice_finder = SamplingSliceFinder.from_state_dict(self.discrete_data, self.score_functions, sf_state)
             self.slice_finder.results.score_cache = self._score_cache
+            self.original_slice_finder = self.slice_finder
+            if self.search_scope_info: self.update_search_scopes()
         
-    @traitlets.observe("metric_info", "derived_metric_config", "score_function_config", "saved_slices", "selected_slices", "overlap_plot_metric")
+    @traitlets.observe("metric_info", "derived_metric_config", "score_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
     def _write_state(self, change=None):
         if self.slice_finder is None: return
         
@@ -247,15 +255,17 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 "metric_info": self.metric_info,
                 "derived_metric_config": self.derived_metric_config,
                 "score_function_config": self.score_function_config,
+                "search_scope_info": self.search_scope_info,
                 "saved_slices": self.saved_slices,
                 "selected_slices": self.selected_slices,   
                 "overlap_plot_metric": self.overlap_plot_metric,
                 "custom_slices": self.custom_slices
             }, file)
 
-        with open(os.path.join(self.state_path, "slice_finder.pkl"), "wb") as file:
-            pickle.dump(self.slice_finder.state_dict(), file)
-        
+        if self.original_slice_finder is not None:
+            with open(os.path.join(self.state_path, "slice_finder.pkl"), "wb") as file:
+                pickle.dump(self.original_slice_finder.state_dict(), file)
+            
     def get_slice_description(self, slice_obj):
         """
         Retrieves a description of the given slice (either from a cache or from
@@ -328,7 +338,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if not self.slice_finder or not self.slice_finder.results: 
             self.update_slices([])
         else:    
-            weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.score_functions}
+            weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.slice_finder.score_fns}
             # add weights for interaction effect scores
             for n, config in self.score_function_config.items():
                 if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRateScore":
@@ -368,6 +378,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("search_scope_info")        
     def update_search_scopes(self, change=None):
+        if not self.slice_finder: return
+        
         search_info = self.search_scope_info
         
         if not search_info:
@@ -394,6 +406,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 new_score_fns["Search Scope"] = OutcomeRateScore(ref_mask)
                 new_source_mask &= ref_mask
                 self.search_scope_mask = ref_mask
+            self.update_selected_slices()
         elif "within_selection" in search_info and not search_info.get("partial", False):
             if self.map_clusters is None:
                 print("Can't perform a selection-based search without map_clusters")
@@ -436,6 +449,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 new_filter = ExcludeIfAny([new_filter, exclusion_criteria])
             else:
                 new_filter = exclusion_criteria
+        # subslice any outcomes 
+        # adjusted_score_fns = {n: fn.with_data(fn.data & self.search_scope_mask)
+        #                       for n, fn in base_finder.score_fns.items()
+        #                       if hasattr(fn, "with_data")}
         new_finder = base_finder.copy_spec(
             score_fns={**base_finder.score_fns, **new_score_fns},
             source_mask=new_source_mask,
@@ -445,7 +462,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         print(new_finder, new_source_mask.sum(), new_score_fns)
         self.slice_finder = new_finder
         self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},
-                              **{n: self.slice_finder.max_weight for n in new_score_fns}}
+                              **{n: 1.0 for n in new_score_fns}}
         self._slice_description_cache = {}
         self.rerank_results()
 
@@ -456,7 +473,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         for n, config in self.score_function_config.items():
             if config.get("editable", True):
                 sf[n] = ScoreFunctionBase.from_configuration(config, self.derived_metrics) 
-            elif 'n' in self.score_functions:
+            elif n in self.score_functions:
                 sf[n] = self.score_functions[n]
             if n in sf and config['type'] == 'OutcomeRateScore':
                 sf[f"{n}_interaction"] = InteractionEffectScore((1 - sf[n].data) if sf[n].inverse else sf[n].data)
@@ -560,13 +577,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
             }
             self.map_clusters = cluster_labels
 
-            if "within_selection" in self.search_scope_info and self.search_scope_mask is not None:
+            if self.search_scope_mask is not None:
                 # Rewrite the cluster indexes to match the new values based on the existing search scope mask
                 print("Old search scope info", self.search_scope_info)
                 self.search_scope_info = {
                     **self.search_scope_info, 
                     "within_selection": np.unique(self.map_clusters[self.search_scope_mask[self.slice_finder.results.eval_indexes]]).tolist(),
-                    "partial": True # this means that the clusters have been rewritten due to layout, so don't update the search
+                    "partial": True, # this means that the clusters have been rewritten due to layout, so don't update the search
+                    "proportion": self.search_scope_mask[self.slice_finder.results.eval_indexes].sum() / len(self.search_scope_mask[self.slice_finder.results.eval_indexes])
                 }
                 print("Edited search scope info", self.search_scope_info)
                 

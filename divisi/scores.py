@@ -304,6 +304,10 @@ class OutcomeRateScore(ScoreFunctionBase):
             return (self.eps + self._mean) / (self.eps + mean)
         return (self.eps + mean) / (self.eps + self._mean)
     
+    # def within_mask(self, new_data):
+    #     return OutcomeRateScore(self.data & new_data if not self.inverse else
+    #                             self., inverse=self.inverse, eps=self.eps).to(self.device)
+    
     def subslice(self, indexes):
         return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps).to(self.device)
 
@@ -346,6 +350,9 @@ class OutcomeShareScore(ScoreFunctionBase):
     def subslice(self, indexes):
         return OutcomeShareScore(self.data[indexes]).to(self.device)
 
+    # def within_mask(self, new_data):
+    #     return OutcomeShareScore(new_data).to(self.device)
+    
     def meta_dict(self):
         base = super().meta_dict()
         return base
@@ -442,6 +449,9 @@ class InteractionEffectScore(ScoreFunctionBase):
     def subslice(self, indexes):
         return InteractionEffectScore(self.data[indexes]).to(self.device)
 
+    # def within_mask(self, new_data):
+    #     return InteractionEffectScore(new_data, eps=self.eps).to(self.device)
+    
     def meta_dict(self):
         base = super().meta_dict()
         base["eps"] = self.eps

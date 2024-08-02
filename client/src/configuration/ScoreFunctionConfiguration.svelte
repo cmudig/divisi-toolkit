@@ -16,6 +16,7 @@
     ideal_fraction?: number;
     spread?: number;
     inverse?: boolean;
+    editable?: boolean;
   };
   export let weight: number;
 
@@ -52,12 +53,13 @@
 
 <button
   on:click={(e) => (editing = true)}
+  disabled={!(config?.editable ?? true)}
   class="bg-transparent w-full text-left rounded {editing
     ? 'outline outline-1 outline-slate-400 mb-2'
     : 'hover:bg-slate-100'}"
 >
   <div
-    class="px-2 py-1 flex flex-wrap items-center text-sm w-full cursor-pointer"
+    class="px-2 py-1 flex flex-wrap items-center text-sm w-full cursor-pointer pointer-events-auto"
   >
     <div class="flex-auto shrink-0 mr-2">
       {#if editing}

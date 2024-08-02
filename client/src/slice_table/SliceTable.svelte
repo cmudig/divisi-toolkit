@@ -30,6 +30,7 @@
   export let savedSlices: Array<Slice> = [];
   export let customSlices: Array<Slice> = [];
   export let custom: boolean = false; // if true, all slices will be considered custom slices
+  export let allowDragAndDrop: boolean = true;
 
   export let sliceColorMap: { [key: string]: string } = {};
 
@@ -202,6 +203,7 @@
         {valueNames}
         {allowedValues}
         showFavoriteButton={false}
+        showEditButtons={false}
         isSaved={!!savedSlices.find((s) =>
           areObjectsEqual(s.feature, baseSlice.feature)
         )}
@@ -255,7 +257,7 @@
         {valueNames}
         {allowedValues}
         {fixedFeatureOrder}
-        draggable
+        draggable={allowDragAndDrop}
         rowClass="rounded hover:bg-slate-100 shadow border border-slate-100"
         isSaved={!!savedSlices.find((s) =>
           areObjectsEqual(s.feature, slice.feature)

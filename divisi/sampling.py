@@ -403,27 +403,40 @@ class SamplingSliceFinder:
         
     def state_dict(self):
         return {
-            "source_mask": self.source_mask, 
-            "group_filter": self.group_filter, 
-            "max_features": self.max_features, 
-            "min_items": self.min_items, 
-            "num_candidates": self.num_candidates,
-            "final_num_candidates": self.final_num_candidates,
-            "positive_only": self.positive_only,
-            "holdout_fraction": self.holdout_fraction,
-            "min_weight": self.min_weight,
-            "max_weight": self.max_weight,
-            "similarity_threshold": self.similarity_threshold,
-            "show_progress": self.show_progress,
-            "n_workers": self.n_workers,
-            "initial_slice": self.initial_slice,
-            "scoring_fraction": self.scoring_fraction,
-            "discovery_mask": self.discovery_mask
+            "config": {
+                "source_mask": self.source_mask, 
+                "group_filter": self.group_filter, 
+                "max_features": self.max_features, 
+                "min_items": self.min_items, 
+                "num_candidates": self.num_candidates,
+                "final_num_candidates": self.final_num_candidates,
+                "positive_only": self.positive_only,
+                "holdout_fraction": self.holdout_fraction,
+                "min_weight": self.min_weight,
+                "max_weight": self.max_weight,
+                "similarity_threshold": self.similarity_threshold,
+                "show_progress": self.show_progress,
+                "n_workers": self.n_workers,
+                "initial_slice": self.initial_slice,
+                "scoring_fraction": self.scoring_fraction,
+                "discovery_mask": self.discovery_mask
+            },
+            "results": {
+                "sampled_idxs": self.sampled_idxs.tolist(),
+                "all_scores": [s.to_dict() for s in self.all_scores]
+            }
         }
         
     @classmethod
     def from_state_dict(self, inputs, score_fns, data):
-        return SamplingSliceFinder(inputs, score_fns, **data)
+        sf = SamplingSliceFinder(inputs, score_fns, **data["config"])
+        sf.sampled_idxs = np.array(data["results"]["sampled_idxs"])
+        all_scores = []
+        for s in data["results"]["all_scores"]:
+            slice_obj = Slice.from_dict(s)
+            all_scores.append(IntersectionSlice(slice_obj.univariate_features(), slice_obj.score_values))
+        sf.all_scores = all_scores
+        return sf
         
     def _create_worker_initializer(self, discovery_inputs, discovery_score_fns, sample_size=None):
         """

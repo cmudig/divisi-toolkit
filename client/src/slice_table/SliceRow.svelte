@@ -64,6 +64,7 @@
   export let showButtons = false;
   export let showCreateSliceButton = false;
   export let showFavoriteButton = true;
+  export let showEditButtons = true;
 
   /*let featureOrder = [];
   $: {
@@ -284,33 +285,36 @@
                   ><Fa icon={faPlus} /></button
                 >
               {/if}
-              <button
-                class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
-                on:click={() => {
-                  isEditing = true;
-                  dispatch('beginedit');
-                }}
-                title="Temporarily modify the slice definition"
-                ><Fa icon={faPencil} /></button
-              >
-              {#if !!temporarySlice && !areObjectsEqual(temporarySlice.feature, slice.feature)}
+              {#if showEditButtons}
+                <button
+                  class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
+                  on:click={() => {
+                    isEditing = true;
+                    dispatch('beginedit');
+                  }}
+                  title="Temporarily modify the slice definition"
+                  ><Fa icon={faPencil} /></button
+                >
+                {#if !!temporarySlice && !areObjectsEqual(temporarySlice.feature, slice.feature)}
+                  <button
+                    class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
+                    on:click={() => {
+                      temporaryRevertSlice(false);
+                      dispatch('reset');
+                    }}
+                    on:mouseenter={() => temporaryRevertSlice(true)}
+                    on:mouseleave={() => temporaryRevertSlice(false)}
+                    title="Reset the slice definition"
+                    ><Fa icon={faRotateRight} /></button
+                  >
+                {/if}
                 <button
                   class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
-                  on:click={() => {
-                    temporaryRevertSlice(false);
-                    dispatch('reset');
-                  }}
-                  on:mouseenter={() => temporaryRevertSlice(true)}
-                  on:mouseleave={() => temporaryRevertSlice(false)}
-                  title="Reset the slice definition"
-                  ><Fa icon={faRotateRight} /></button
+                  on:click={() => dispatch('duplicate')}
+                  title="Create a copy of this slice"
+                  ><Fa icon={faCopy} /></button
                 >
               {/if}
-              <button
-                class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
-                on:click={() => dispatch('duplicate')}
-                title="Create a copy of this slice"><Fa icon={faCopy} /></button
-              >
               {#if custom}
                 <button
                   class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"

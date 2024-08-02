@@ -151,18 +151,18 @@
       };
       console.log('Setting search scope to slice');
       searchScopeInfo = {
-        // within_slice: labels.slice(1).reduce(
-        //   (prev, curr, i) => ({
-        //     type: 'and',
-        //     lhs: prev,
-        //     rhs: negateIfNeeded(curr, i + 1),
-        //   }),
-        //   negateIfNeeded(labels[0], 0)
-        // ),
-        within_selection: pointData
-          .filter((d) => d.slices.every((s, i) => intersection.slices[i] == s))
-          .map((d) => d.cluster),
-        proportion: intersection.count / totalInstances,
+        within_slice: labels.slice(1).reduce(
+          (prev, curr, i) => ({
+            type: 'and',
+            lhs: prev,
+            rhs: negateIfNeeded(curr, i + 1),
+          }),
+          negateIfNeeded(labels[0], 0)
+        ),
+        // within_selection: pointData
+        //   .filter((d) => d.slices.every((s, i) => intersection.slices[i] == s))
+        //   .map((d) => d.cluster),
+        // proportion: intersection.count / totalInstances,
       };
     } else searchScopeInfo = {};
     // searchScopeInfo = { within_slice}
@@ -359,7 +359,7 @@
               </div>
               <button
                 class:invisible={!hovering}
-                class="p-1 hover:opacity-50 text-slate-600"
+                class="bg-transparent p-1 hover:opacity-50 text-slate-600"
                 on:click={(e) => {
                   selectedSlices = [
                     ...selectedSlices.slice(0, sliceIndex),

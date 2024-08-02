@@ -43,10 +43,12 @@
   export let fixedFeatureOrder: Array<any> = [];
   export let searchBaseSlice: any = null;
 
+  export let allowDragAndDrop: boolean = true;
+
   export let showScores = false;
   export let positiveOnly = false;
 
-  export let valueNames: any = {};
+  export let allowedValues: { [key: string]: string[] } = {};
 
   export let searchScopeInfo: {
     within_slice?: any;
@@ -111,16 +113,6 @@
     scoreWidthScalers = {};
     metricNames = [];
     metricInfo = {};
-  }
-
-  let allowedValues;
-  $: if (!!valueNames && valueNames.hasOwnProperty('subscribe')) {
-    allowedValues = {};
-    Object.entries($valueNames).forEach((item) => {
-      allowedValues[item[1][0]] = Object.values(item[1][1]);
-    });
-  } else {
-    allowedValues = null;
   }
 
   function updateMetricInfo(testMetrics) {
@@ -232,10 +224,10 @@
       bind:selectedSlices
       bind:customSlices
       {baseSlice}
+      {allowDragAndDrop}
       bind:sliceRequests
       bind:sliceRequestResults
       {positiveOnly}
-      {valueNames}
       {allowedValues}
       showHeader={false}
       bind:metricInfo
@@ -267,8 +259,8 @@
       showHeader={false}
       bind:sliceRequests
       bind:sliceRequestResults
+      {allowDragAndDrop}
       {positiveOnly}
-      {valueNames}
       {allowedValues}
       bind:metricInfo
       bind:metricNames
@@ -305,8 +297,8 @@
       bind:customSlices
       bind:sliceRequests
       bind:sliceRequestResults
+      {allowDragAndDrop}
       {positiveOnly}
-      {valueNames}
       {allowedValues}
       showHeader={false}
       bind:metricInfo
