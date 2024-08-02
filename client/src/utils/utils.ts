@@ -214,3 +214,10 @@ export function shuffle<T>(array: T[]): T[] {
 
   return array;
 }
+
+export function randomStringRep(): string {
+  return `custom-${new Array(20)
+    .fill(0)
+    .map((_) => Math.floor(Math.random() * 10))
+    .join('')}`;
+}

@@ -10,6 +10,7 @@
     faCompress,
     faExpand,
     faHeart,
+    faPlus,
     faSearch,
     faStop,
     faWrench,
@@ -17,12 +18,15 @@
   import ConfigurationView from './configuration/ConfigurationView.svelte';
   import SliceOverlapPlot from './overlap_views/SliceOverlapPlot.svelte';
   import SliceSearchView from './slice_table/SliceSearchView.svelte';
-  import { areObjectsEqual, areSetsEqual } from './utils/utils';
+  import {
+    areObjectsEqual,
+    areSetsEqual,
+    randomStringRep,
+  } from './utils/utils';
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
   import ResizablePanel from './utils/ResizablePanel.svelte';
   import * as d3 from 'd3';
 
-  export const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
   // const sliceColorScale = d3.scaleOrdinal(d3.schemeCategory10);
   // export let sliceColorMap = writable({});
   export let model;
@@ -40,7 +44,7 @@
 
   let slices = traitlet(model, 'slices', []);
   let customSlices = traitlet(model, 'custom_slices', []);
-  let customSliceResults = traitlet(model, 'custom_slice_results', []);
+  let customSliceResults = traitlet(model, 'custom_slice_results', {});
   let savedSlices = traitlet(model, 'saved_slices', []);
   let selectedSlices = traitlet(model, 'selected_slices', []);
   let baseSlice = traitlet(model, 'base_slice', {});
@@ -193,22 +197,11 @@
     console.log('is full screen', isFullScreen);
     ignoreFullScreenEvent = false;
   }
-
-  function assignColorToSlice(selectedSlices) {
-    $sliceColorMap = Object.fromEntries(
-      selectedSlices.map((slice, ind) => [slice.stringRep, colorScale(ind)])
-    );
-  }
-
-  $: {
-    assignColorToSlice($selectedSlices);
-    console.log($sliceColorMap);
-  }
 </script>
 
 <main
   class="w-full flex flex-col bg-white"
-  style={isFullScreen ? 'height: 100vh;' : 'height: 640px; max-height: 90vh;'}
+  style={isFullScreen ? 'height: 100vh;' : 'height: 720px; max-height: 90vh;'}
   bind:this={parentElement}
 >
   <div
@@ -216,9 +209,7 @@
     class:rounded-t={!isFullScreen}
   >
     <button
-      class="px-3 py-1 text-sm font-bold rounded {showConfiguration
-        ? 'bg-slate-600 text-white hover:bg-slate-700'
-        : 'bg-transparent hover:bg-slate-500/50'}"
+      class="btn bg-slate-600 text-white hover:bg-slate-700"
       on:click={() => (showConfiguration = !showConfiguration)}
     >
       {#if showConfiguration}
@@ -230,6 +221,20 @@
       {/if}
     </button>
 
+    <button
+      class="btn bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50"
+      on:click={() => {
+        $customSlices = [
+          ...$customSlices,
+          {
+            stringRep: randomStringRep(),
+            feature: { type: 'base' },
+            scoreValues: {},
+            metrics: {},
+          },
+        ];
+      }}><Fa icon={faPlus} class="inline mr-2" />New Slice</button
+    >
     {#if $runningSampler}
       <div
         class="h-full px-3 bg-slate-300 flex items-center flex-auto gap-3 relative"
@@ -255,7 +260,7 @@
       </div>
     {:else}
       <button
-        class="px-3 py-1 font-bold text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+        class="btn btn-blue"
         disabled={$shouldRerun}
         on:click={() => ($shouldRerun = true)}
         ><Fa icon={faSearch} class="inline mr-2" />Find Slices</button
@@ -301,7 +306,7 @@
     {/if}
 
     <div
-      class="flex-1 h-full overflow-auto"
+      class="flex-1 h-full flex flex-col"
       class:pl-2={isFullScreen}
       class:py-2={isFullScreen}
     >
@@ -314,6 +319,8 @@
           bind:scoreWeights={$scoreWeights}
           samplerRunProgress={$samplerRunProgress}
           slices={$slices}
+          bind:customSlices={$customSlices}
+          customSliceResults={$customSliceResults}
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
           sliceColorMap={$sliceColorMap}
@@ -380,7 +387,7 @@
             bind:searchScopeInfo={$searchScopeInfo}
             errorKeyOptions={binaryMetrics}
             savedSlices={$savedSlices}
-            sliceColorMap={$sliceColorMap}
+            bind:sliceColorMap={$sliceColorMap}
             intersectionCounts={$sliceIntersectionCounts}
             labels={$sliceIntersectionLabels}
             groupedLayout={$groupedMapLayout}

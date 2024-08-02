@@ -64,7 +64,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     
     slices = traitlets.List([]).tag(sync=True)
     custom_slices = traitlets.List([]).tag(sync=True)
-    custom_slice_results = traitlets.List([]).tag(sync=True)
+    custom_slice_results = traitlets.Dict({}).tag(sync=True)
     base_slice = traitlets.Dict({}).tag(sync=True)
     
     value_names = traitlets.Dict({}).tag(sync=True)
@@ -219,6 +219,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             if "score_function_config" in state: self.score_function_config = state["score_function_config"]
             if "saved_slices" in state: self.saved_slices = state["saved_slices"]
             if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
+            if "custom_slices" in state: self.custom_slices = state["custom_slices"]
             if "overlap_plot_metric" in state: self.overlap_plot_metric = state["overlap_plot_metric"]
         if os.path.exists(os.path.join(self.state_path, "slice_finder.pkl")):
             with open(os.path.join(self.state_path, "slice_finder.pkl"), "rb") as file:
@@ -248,7 +249,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 "score_function_config": self.score_function_config,
                 "saved_slices": self.saved_slices,
                 "selected_slices": self.selected_slices,   
-                "overlap_plot_metric": self.overlap_plot_metric
+                "overlap_plot_metric": self.overlap_plot_metric,
+                "custom_slices": self.custom_slices
             }, file)
 
         with open(os.path.join(self.state_path, "slice_finder.pkl"), "wb") as file:
@@ -275,6 +277,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.slices = []
         self.rerank_results()
         self.update_selected_slices()
+        self.slice_score_request()
             
     @traitlets.observe("should_rerun")
     def rerun_flag_changed(self, change):
@@ -345,13 +348,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):
-        encoded_slices = [self.slice_finder.results.encode_slice(s) 
+        if not self.slice_finder or not self.slice_finder.results: return
+        encoded_slices = [self.slice_finder.results.encode_slice(s['feature']) 
                           for s in self.custom_slices]
-        self.custom_slice_results = [self.get_slice_description(s)
-                                     for s in encoded_slices]
+        self.custom_slice_results = {s['stringRep']: {**self.get_slice_description(enc), "stringRep": s['stringRep']}
+                                     for s, enc in zip(self.custom_slices, encoded_slices)}
 
     @traitlets.observe("slice_score_requests")
-    def slice_score_request(self, change):
+    def slice_score_request(self, change=None):
         if not self.slice_finder or not self.slice_finder.results: return
         self.slice_score_results = {k: self.get_slice_description(self.slice_finder.results.encode_slice(f)) 
                                     for k, f in self.slice_score_requests.items()}

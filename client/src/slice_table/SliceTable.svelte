@@ -13,6 +13,7 @@
   import {
     areObjectsEqual,
     areSetsEqual,
+    randomStringRep,
     withToggledFeature,
   } from '../utils/utils';
   import { TableWidths } from './tablewidths';
@@ -27,6 +28,8 @@
   export let slices: Array<Slice> = [];
   export let selectedSlices: Array<Slice> = [];
   export let savedSlices: Array<Slice> = [];
+  export let customSlices: Array<Slice> = [];
+  export let custom: boolean = false; // if true, all slices will be considered custom slices
 
   export let sliceColorMap: { [key: string]: string } = {};
 
@@ -124,6 +127,15 @@
   }
 
   function editSliceFeature(slice: Slice, newFeature: SliceFeatureBase) {
+    if (custom) {
+      // edit the slice directly
+      let index = slices.indexOf(slice);
+      dispatch('customize', {
+        index,
+        slice: Object.assign({ ...slice, feature: newFeature }),
+      });
+      return;
+    }
     let allRequests = Object.assign({}, sliceRequests);
     let r;
     if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
@@ -176,53 +188,9 @@
   {/if}
   {#if !!baseSlice}
     {@const sliceToShow = sliceRequestResults[baseSlice.stringRep] ?? baseSlice}
-    <SliceRow
-      rowClass="mb-2 mx-2 p-2"
-      slice={baseSlice}
-      {sliceColorMap}
-      {scoreNames}
-      {positiveOnly}
-      scoreCellWidth={100}
-      {scoreWidthScalers}
-      {showScores}
-      {metricNames}
-      {metricInfo}
-      {valueNames}
-      {allowedValues}
-      showFavoriteButton={false}
-      isSaved={!!savedSlices.find((s) =>
-        areObjectsEqual(s.feature, baseSlice.feature)
-      )}
-      isSelected={!!selectedSlices.find((s) =>
-        areObjectsEqual(s.feature, baseSlice.feature)
-      )}
-      temporarySlice={tempRevertedSlice == baseSlice.stringRep
-        ? baseSlice
-        : sliceToShow}
-      {fixedFeatureOrder}
-      isEditing={baseSlice.stringRep == editingSlice}
-      on:beginedit={(e) => (editingSlice = baseSlice.stringRep)}
-      on:endedit={(e) => (editingSlice = null)}
-      on:edit={(e) => editSliceFeature(baseSlice, e.detail)}
-      on:toggle={(e) =>
-        setSliceFeatureValues(baseSlice, e.detail.old, e.detail.new)}
-      on:reset={(e) => resetSlice(baseSlice)}
-      on:temprevert={(e) =>
-        (tempRevertedSlice = e.detail ? baseSlice.stringRep : null)}
-      on:newsearch
-      on:saveslice={(e) => saveSlice(e.detail)}
-      on:select={(e) =>
-        selectSlice(
-          sliceRequestResults[baseSlice.stringRep] || baseSlice,
-          e.detail
-        )}
-    />
-  {/if}
-  {#each slices as slice, i (slice.stringRep || i)}
-    {@const sliceToShow = sliceRequestResults[slice.stringRep] || slice}
-    <div class="w-full mx-2 mb-2">
+    <div class="w-full px-2 mb-2">
       <SliceRow
-        {slice}
+        slice={baseSlice}
         {sliceColorMap}
         {scoreNames}
         {positiveOnly}
@@ -233,7 +201,61 @@
         {metricInfo}
         {valueNames}
         {allowedValues}
+        showFavoriteButton={false}
+        isSaved={!!savedSlices.find((s) =>
+          areObjectsEqual(s.feature, baseSlice.feature)
+        )}
+        isSelected={!!selectedSlices.find((s) =>
+          areObjectsEqual(s.feature, baseSlice.feature)
+        )}
+        temporarySlice={tempRevertedSlice == baseSlice.stringRep
+          ? baseSlice
+          : sliceToShow}
         {fixedFeatureOrder}
+        isEditing={baseSlice.stringRep == editingSlice}
+        on:beginedit={(e) => (editingSlice = baseSlice.stringRep)}
+        on:endedit={(e) => (editingSlice = null)}
+        on:edit={(e) => editSliceFeature(baseSlice, e.detail)}
+        on:toggle={(e) =>
+          setSliceFeatureValues(baseSlice, e.detail.old, e.detail.new)}
+        on:reset={(e) => resetSlice(baseSlice)}
+        on:temprevert={(e) =>
+          (tempRevertedSlice = e.detail ? baseSlice.stringRep : null)}
+        on:newsearch
+        on:saveslice={(e) => saveSlice(e.detail)}
+        on:select={(e) =>
+          selectSlice(
+            sliceRequestResults[baseSlice.stringRep] || baseSlice,
+            e.detail
+          )}
+      />
+    </div>
+  {/if}
+  {#each slices as slice, i (slice.stringRep || i)}
+    {@const sliceToShow =
+      !!sliceRequestResults[slice.stringRep] &&
+      areObjectsEqual(
+        sliceRequestResults[slice.stringRep].feature,
+        sliceRequests[slice.stringRep]
+      )
+        ? sliceRequestResults[slice.stringRep]
+        : slice}
+    <div class="w-full px-2 mb-2">
+      <SliceRow
+        {slice}
+        {sliceColorMap}
+        {scoreNames}
+        {positiveOnly}
+        {custom}
+        scoreCellWidth={100}
+        {scoreWidthScalers}
+        {showScores}
+        {metricNames}
+        {metricInfo}
+        {valueNames}
+        {allowedValues}
+        {fixedFeatureOrder}
+        draggable
         rowClass="rounded hover:bg-slate-100 shadow border border-slate-100"
         isSaved={!!savedSlices.find((s) =>
           areObjectsEqual(s.feature, slice.feature)
@@ -256,6 +278,30 @@
         on:newsearch
         on:saveslice={(e) => saveSlice(e.detail)}
         on:select={(e) => selectSlice(sliceToShow, e.detail)}
+        on:duplicate={(e) => {
+          customSlices = [
+            ...customSlices,
+            {
+              rawFeature: sliceToShow.rawFeature,
+              isEmpty: sliceToShow.isEmpty,
+              stringRep: randomStringRep(),
+              feature: sliceToShow.feature,
+              scoreValues: {},
+              metrics: {},
+            },
+          ];
+        }}
+        on:delete={(e) => {
+          if (!custom) return;
+          let idx = customSlices.findIndex((s) =>
+            areObjectsEqual(s.stringRep, slice.stringRep)
+          );
+          if (idx >= 0)
+            customSlices = [
+              ...customSlices.slice(0, idx),
+              ...customSlices.slice(idx + 1),
+            ];
+        }}
       />
     </div>
   {/each}

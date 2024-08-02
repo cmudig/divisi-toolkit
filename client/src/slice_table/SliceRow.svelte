@@ -14,6 +14,8 @@
     faDownload,
     faSearch,
     faHeart,
+    faTrash,
+    faCopy,
   } from '@fortawesome/free-solid-svg-icons';
   import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
   import ActionMenuButton from '../utils/ActionMenuButton.svelte';
@@ -37,10 +39,11 @@
   export let positiveOnly = false;
   export let valueNames: any = {}; // svelte store
   export let allowedValues: any = null;
+  export let draggable: boolean = false;
+  export let custom: boolean = false;
 
   export let fixedFeatureOrder: Array<any> = [];
 
-  export let customSlice: Slice = null; // if the slice is custom-created
   export let temporarySlice: Slice = null; // if a variable is adjusted dynamically
 
   export let scoreCellWidth = 100;
@@ -76,13 +79,11 @@
     });
   }*/
 
-  let baseSlice: Slice;
-  $: baseSlice = customSlice || slice;
   let sliceToShow: Slice;
-  $: sliceToShow = temporarySlice || customSlice || slice;
+  $: sliceToShow = temporarySlice || slice;
 
   let sliceForScores: Slice;
-  $: sliceForScores = revertedScores ? customSlice || slice : sliceToShow;
+  $: sliceForScores = revertedScores ? slice : sliceToShow;
 
   let revertedScores = false;
   function temporaryRevertSlice(revert) {
@@ -96,17 +97,41 @@
       return scale(v * 0.9);
     };
   }
+
+  let dragging = false;
+
+  let justMounted = false;
+  onMount(() => (justMounted = true));
+  $: if (
+    justMounted &&
+    custom &&
+    !!sliceToShow &&
+    areObjectsEqual(sliceToShow.feature, { type: 'base' })
+  ) {
+    isEditing = true;
+    dispatch('beginedit');
+    justMounted = false;
+  }
 </script>
 
 {#if !!sliceToShow}
   <div
-    class="slice-row w-full py-1 px-2 {rowClass
+    class="slice-row w-full py-1 px-2 {draggable ? 'cursor-grab' : ''} {rowClass
       ? rowClass
-      : 'bg-white'} inline-flex items-center justify-center flex-wrap-reverse"
+      : 'bg-white'} inline-flex items-center justify-center flex-wrap-reverse relative overflow-hidden"
     style="padding-left: calc(0.5rem + {indentAmount *
-      (maxIndent - indent)}px);"
-    on:mouseenter={() => (hovering = true)}
+      (maxIndent - indent)}px); {!!sliceColorMap[slice.stringRep]
+      ? `border: 3px solid ${sliceColorMap[slice.stringRep]};`
+      : ''}"
+    on:mouseenter={() => (hovering = !dragging)}
     on:mouseleave={() => (hovering = false)}
+    {draggable}
+    on:dragstart={(e) => {
+      e.dataTransfer.setData('slice', JSON.stringify(sliceToShow));
+      hovering = false;
+      dragging = true;
+    }}
+    on:dragend={() => (dragging = false)}
   >
     {#if isEditing}
       <div class="py-1 pr-2 w-full h-full">
@@ -217,17 +242,20 @@
         </div>
       {/if}
       <div class="ml-2 flex flex-auto items-center" style="width: 200px;">
-        <div class="grow-0 shrink-0">
-          <Checkbox
-            checked={isSelected}
-            on:change={(e) => dispatch('select', !isSelected)}
-            color={isSelected ? sliceColorMap[slice.stringRep] : null}
-          />
+        <div class="grow-0 shrink-0" style="width: {TableWidths.Checkbox}px;">
+          {#if showFavoriteButton}
+            <button
+              class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
+              title="Add a new custom slice"
+              on:click={() => dispatch('saveslice', slice)}
+              ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
+            >
+          {/if}
         </div>
 
         <div class="py-2 text-xs min-w-0" class:opacity-50={revertedScores}>
           <div class="flex items-center h-full whitespace-nowrap">
-            <div style="flex: 0 1 auto;" class="overflow-auto">
+            <div style="flex: 0 1 auto;" class="overflow-auto text-sm">
               <SliceFeature
                 feature={featuresHaveSameTree(
                   slice.feature,
@@ -247,14 +275,6 @@
                 on:toggle
               />
             </div>
-            {#if showButtons || hovering || isSaved}
-              <button
-                class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
-                title="Add a new custom slice"
-                on:click={() => dispatch('saveslice', slice)}
-                ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
-              >
-            {/if}
             {#if showButtons || hovering}
               {#if showCreateSliceButton}
                 <button
@@ -273,7 +293,7 @@
                 title="Temporarily modify the slice definition"
                 ><Fa icon={faPencil} /></button
               >
-              {#if !!temporarySlice && !areObjectsEqual(temporarySlice, slice)}
+              {#if !!temporarySlice && !areObjectsEqual(temporarySlice.feature, slice.feature)}
                 <button
                   class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
                   on:click={() => {
@@ -284,6 +304,18 @@
                   on:mouseleave={() => temporaryRevertSlice(false)}
                   title="Reset the slice definition"
                   ><Fa icon={faRotateRight} /></button
+                >
+              {/if}
+              <button
+                class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
+                on:click={() => dispatch('duplicate')}
+                title="Create a copy of this slice"><Fa icon={faCopy} /></button
+              >
+              {#if custom}
+                <button
+                  class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
+                  on:click={() => dispatch('delete')}
+                  title="Delete this custom slice"><Fa icon={faTrash} /></button
                 >
               {/if}
             {/if}

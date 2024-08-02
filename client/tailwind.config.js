@@ -1,5 +1,6 @@
+import lineClamp from '@tailwindcss/line-clamp';
 export default {
-  plugins: [],
+  plugins: [lineClamp],
   theme: {
     extend: {},
   },

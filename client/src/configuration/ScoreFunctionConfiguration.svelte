@@ -74,7 +74,7 @@
     {#if !editing}
       <div class="flex items-center">
         <Checkbox
-          colorClass={weight > 0.0 ? 'bg-blue-600' : null}
+          colorClass={weight > 0.0 ? 'bg-slate-500' : null}
           checked={weight > 0.0}
           on:change={(e) => {
             if (!e.detail) {

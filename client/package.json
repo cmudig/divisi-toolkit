@@ -12,6 +12,7 @@
   "devDependencies": {
     "@anywidget/vite": "^0.1.1",
     "@sveltejs/vite-plugin-svelte": "^2.0.2",
+    "@tailwindcss/line-clamp": "^0.4.4",
     "@tsconfig/svelte": "^3.0.0",
     "anywidget": "^0.1.2",
     "autoprefixer": "^10.4.13",

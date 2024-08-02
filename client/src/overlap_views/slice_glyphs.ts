@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 
 export enum OutcomeColors {
   False = '#fff',
-  True = '#94a3b8',
+  True = '#172554',
 }
 
 export const GlyphBorderColor = '#cbd5e1';

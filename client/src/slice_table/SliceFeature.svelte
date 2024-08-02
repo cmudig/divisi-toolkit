@@ -16,7 +16,7 @@
   export let currentFeature: SliceFeatureBase;
   export let needsParentheses = false;
   export let canToggle = true;
-  export let allowedValues: any = {}; // svelte store
+  export let allowedValues: any | null = null; // svelte store
 
   let featureDisabled = false;
 
@@ -91,7 +91,7 @@
     <div class="px-2">
       {#if positiveOnly}
         <button
-          class="bg-transparent hover:opacity-70 font-mono text-sm font-normal text-black text-left break-words whitespace-normal"
+          class="bg-transparent hover:opacity-70 font-mono font-normal text-black text-left break-words whitespace-normal"
           style="max-width: 240px;"
           disabled={!canToggle}
           class:opacity-30={featureDisabled}
@@ -103,7 +103,7 @@
         >
       {:else}
         <button
-          class="bg-transparent text-sm font-mono text-slate-800 font-normal hover:opacity-70"
+          class="bg-transparent font-mono text-slate-800 font-normal hover:opacity-70"
           disabled={!canToggle}
           class:opacity-50={featureDisabled}
           title={featureDisabled
@@ -120,7 +120,7 @@
             currentFeature.vals.length == allowedValues[feature.col].length)
             ? '(any value)'
             : currentFeature.vals.join(', ')}
-        <div class="text-xs font-normal">
+        <div class="font-normal" style="font-size: 0.875em;">
           {#if !allowedValues || !allowedValues[feature.col]}
             <span class="text-slate-500 font-bold">{valueText}</span>
           {:else}
@@ -163,7 +163,8 @@
                 {#if !areObjectsEqual(feature, currentFeature)}
                   <div class="flex justify-end w-full px-2 py-1">
                     <button
-                      class="text-xs px-2 py-0.5 text-slate-500 font-bold rounded hover:bg-slate-100"
+                      class="px-2 py-0.5 text-slate-500 font-bold rounded hover:bg-slate-100"
+                      style="font-size: 0.875em;"
                       on:click={() =>
                         dispatch('toggle', { old: feature, new: feature })}
                       ><Fa icon={faRotateRight} class="inline mr-1" /> Reset Feature</button

@@ -175,6 +175,10 @@
       .on('pointerdown', (e) => (mouseDown = true))
       .on('pointermove', handleMouseover)
       .on('pointerup', handleMouseup)
+      .on('pointerleave', (e) => {
+        hoveredPointIndex = null;
+        hoveredSlices = null;
+      })
       .on('click', handleClick)
       .on('dblclick', handleDoubleClick)
       .call(zoom);
