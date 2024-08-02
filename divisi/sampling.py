@@ -19,6 +19,8 @@ worker_seen_slices = None
 FLOAT_SCORE_DTYPE = np.dtype(np.float64)
 INT_SCORE_DTYPE = np.dtype(np.int64)
 
+torch.set_num_threads(1)
+
 def worker_global_init(device,
                        seen_slices,
                        double_score_data, 

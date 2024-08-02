@@ -168,8 +168,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 holdout_fraction=0.5,
                 max_features=self.max_features,
                 positive_only=self.positive_only,
-                similarity_threshold=0.9,
-                n_workers=1
+                similarity_threshold=0.9
             )
             self.slice_finder.results.score_cache = self._score_cache
         
