@@ -14,7 +14,12 @@
     faSearch,
   } from '@fortawesome/free-solid-svg-icons';
   import * as d3 from 'd3';
-  import { areObjectsEqual, areSetsEqual, sortMetrics } from '../utils/utils';
+  import {
+    areObjectsEqual,
+    areSetsEqual,
+    randomStringRep,
+    sortMetrics,
+  } from '../utils/utils';
   import { createEventDispatcher } from 'svelte';
   import SliceTable from './SliceTable.svelte';
   import SliceFeatureEditor from './SliceFeatureEditor.svelte';
@@ -37,6 +42,8 @@
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
   export let customSliceResults: Slice[] = [];
+
+  export let hoveredSlice: Slice | null = null;
 
   export let scoreWeights: any = {};
 
@@ -213,37 +220,63 @@
   $: selectedInvisibleSlices = selectedSlices.filter(
     (s) => !slices.find((s2) => s2.stringRep === s.stringRep)
   );
+
+  let dragOver = false;
 </script>
 
-{#if !!baseSlice}
-  <div class="bg-white w-full" bind:this={searchViewHeader}>
-    <SliceTable
-      slices={[]}
-      {savedSlices}
-      {sliceColorMap}
-      bind:selectedSlices
-      bind:customSlices
-      {baseSlice}
-      {allowDragAndDrop}
-      bind:sliceRequests
-      bind:sliceRequestResults
-      {positiveOnly}
-      {allowedValues}
-      showHeader={false}
-      bind:metricInfo
-      bind:metricNames
-      bind:scoreNames
-      bind:scoreWidthScalers
-      bind:showScores
-      on:newsearch={(e) => {
-        searchScopeInfo = { within_slice: e.detail.base_slice };
-      }}
-      on:saveslice
-    />
-  </div>
-{/if}
-<div class="flex-auto min-h-0 h-full min-w-full overflow-auto relative">
-  {#if customSlices.length > 0}
+<div
+  class="w-full h-full flex flex-col relative {dragOver
+    ? 'border-4 border-blue-400'
+    : ''}"
+  on:dragover|preventDefault={(e) => {
+    dragOver = true;
+    e.dataTransfer.dropEffect = 'copy';
+  }}
+  on:dragleave|preventDefault={() => (dragOver = false)}
+  on:drop={(e) => {
+    dragOver = false;
+    if (!e.dataTransfer.getData('slice')) return;
+    console.log(e.dataTransfer.getData('slice'));
+    e.preventDefault();
+    e.stopPropagation();
+    let newSlice = JSON.parse(e.dataTransfer.getData('slice'));
+    customSlices = [
+      ...customSlices,
+      {
+        ...newSlice,
+        stringRep: randomStringRep(),
+      },
+    ];
+  }}
+>
+  {#if !!baseSlice}
+    <div class="bg-white w-full" bind:this={searchViewHeader}>
+      <SliceTable
+        slices={[]}
+        {savedSlices}
+        {sliceColorMap}
+        bind:selectedSlices
+        bind:customSlices
+        {baseSlice}
+        {allowDragAndDrop}
+        bind:sliceRequests
+        bind:sliceRequestResults
+        {positiveOnly}
+        {allowedValues}
+        showHeader={false}
+        bind:metricInfo
+        bind:metricNames
+        bind:scoreNames
+        bind:scoreWidthScalers
+        bind:showScores
+        on:newsearch={(e) => {
+          searchScopeInfo = { within_slice: e.detail.base_slice };
+        }}
+        on:saveslice
+      />
+    </div>
+  {/if}
+  <div class="flex-auto min-h-0 h-full min-w-full overflow-auto relative">
     <SliceTable
       slices={customSlices.map((s, i) =>
         !!customSliceResults[s.stringRep] &&
@@ -275,50 +308,52 @@
         newCustom[e.detail.index] = e.detail.slice;
         customSlices = newCustom;
       }}
-    />
-  {/if}
-  {#if slices.length > 0}
-    <div
-      class="mx-2 mb-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded sticky top-0 z-10"
-    >
-      Search Results
-    </div>
-  {:else}
-    <div class="text-center text-slate-500 my-8 mx-6">
-      Click Find Slices to begin an automatic search.
-    </div>
-  {/if}
-  <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
-    <SliceTable
-      {slices}
-      {savedSlices}
-      {sliceColorMap}
-      bind:selectedSlices
-      bind:customSlices
-      bind:sliceRequests
-      bind:sliceRequestResults
-      {allowDragAndDrop}
-      {positiveOnly}
-      {allowedValues}
-      showHeader={false}
-      bind:metricInfo
-      bind:metricNames
-      bind:scoreNames
-      bind:scoreWidthScalers
-      bind:showScores
-      on:newsearch={(e) => {
-        searchScopeInfo = { within_slice: e.detail.base_slice };
-      }}
-      on:saveslice
+      on:hover={(e) => (hoveredSlice = e.detail)}
     />
     {#if slices.length > 0}
-      <div class="m-2">
-        <button
-          class="btn btn-blue disabled:opacity-50"
-          on:click={() => dispatch('loadmore')}>Load More</button
-        >
+      <div
+        class="mx-2 mb-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded sticky top-0 z-10"
+      >
+        Search Results
+      </div>
+    {:else}
+      <div class="text-center text-slate-500 my-8 mx-6">
+        Click Find Slices to begin an automatic search.
       </div>
     {/if}
+    <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
+      <SliceTable
+        {slices}
+        {savedSlices}
+        {sliceColorMap}
+        bind:selectedSlices
+        bind:customSlices
+        bind:sliceRequests
+        bind:sliceRequestResults
+        {allowDragAndDrop}
+        {positiveOnly}
+        {allowedValues}
+        showHeader={false}
+        bind:metricInfo
+        bind:metricNames
+        bind:scoreNames
+        bind:scoreWidthScalers
+        bind:showScores
+        on:newsearch={(e) => {
+          searchScopeInfo = { within_slice: e.detail.base_slice };
+        }}
+        on:saveslice
+        on:hover={(e) => (hoveredSlice = e.detail)}
+      />
+      {#if slices.length > 0}
+        <div class="m-2">
+          <button
+            class="btn btn-blue disabled:opacity-50"
+            on:click={() => dispatch('loadmore')}>Load More</button
+          >
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
 

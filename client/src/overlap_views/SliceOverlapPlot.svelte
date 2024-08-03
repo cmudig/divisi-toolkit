@@ -9,13 +9,21 @@
   import type { Slice } from '../utils/slice.type';
   import Hoverable from '../utils/Hoverable.svelte';
   import Fa from 'svelte-fa';
-  import { faTrash } from '@fortawesome/free-solid-svg-icons';
+  import {
+    faChevronDown,
+    faChevronUp,
+    faHeart,
+    faTrash,
+  } from '@fortawesome/free-solid-svg-icons';
+  import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
+
   import { OutcomeColors } from './slice_glyphs';
 
   export let intersectionCounts: any[] = [];
   export let labels: { stringRep: string; feature: any }[] = [];
 
   export let searchScopeInfo: any = {};
+  export let searchScopeEnrichedFeatures: string[] = [];
 
   export let selectedSlices = [];
   export let savedSlices = [];
@@ -36,11 +44,14 @@
         y: number;
       };
     };
+    enriched_cluster_features: { [key: string]: string[] };
   } = {};
 
   export let hoveredSlices = null;
+  export let hoveredClusters: Set<number> = new Set();
   let hoveredMousePosition = null;
   let hoveredSliceInfo = null;
+  let hoveredPointIndex: number | null = null;
 
   let selectedClusters: number[] = [];
 
@@ -134,6 +145,18 @@
     selectedSlices = savedSlices;
   }
 
+  function clustersMatchingSlice(sliceIndex: number): {
+    ids: number[];
+    size: number;
+  } {
+    let matchingPoints = pointData.filter((d) => d.slices[sliceIndex] > 0);
+    console.log(matchingPoints);
+    return {
+      ids: matchingPoints.map((d) => d.cluster),
+      size: matchingPoints.reduce((a, b) => a + b.size, 0),
+    };
+  }
+
   function setSearchScopeToSlice(intersection: {
     slices: number[];
     count: number;
@@ -172,10 +195,6 @@
 
   let oldSearchScopeInfo: any = {};
   $: if (oldSearchScopeInfo !== searchScopeInfo) {
-    console.log(
-      '(Selected clusters) setting search scope info:',
-      searchScopeInfo
-    );
     if (!!searchScopeInfo.within_selection)
       selectedClusters = searchScopeInfo.within_selection;
     // else if (!!searchScopeInfo.intersection) {
@@ -222,6 +241,8 @@
   let container: HTMLElement;
   let sizeObserver: ResizeObserver | null = null;
   let wideMode: boolean = true;
+  let collapseIntersections: boolean = false;
+  let collapseSlices: boolean = false;
   $: if (!!container) {
     if (!!sizeObserver) {
       sizeObserver.disconnect();
@@ -238,10 +259,11 @@
 
   let dragOriginIndex: number | null = null;
   let dragOverSliceIndex: number | null = null;
+  let draggingOverContainer: boolean = false;
 
   function handleDrop(e: DragEvent) {
+    draggingOverContainer = false;
     if (!!e.dataTransfer.getData('slice')) {
-      e.preventDefault();
       e.stopPropagation();
       let slice = JSON.parse(e.dataTransfer.getData('slice'));
       let existingIdx = selectedSlices.findIndex((s) =>
@@ -249,6 +271,11 @@
       );
       console.log(slice, selectedSlices, existingIdx);
       if (existingIdx >= 0) {
+        if (dragOriginIndex == null) {
+          dragOverSliceIndex = null;
+          return;
+        }
+        e.preventDefault();
         // swap the slices if the dragged one is already in the selection
         let newSlices = [...selectedSlices];
         let swapped = newSlices[existingIdx];
@@ -259,6 +286,7 @@
         dragOverSliceIndex != null &&
         dragOverSliceIndex < selectedSlices.length
       ) {
+        e.preventDefault();
         // replace the item at the index
         selectedSlices = [
           ...selectedSlices.slice(0, dragOverSliceIndex),
@@ -266,6 +294,7 @@
           ...selectedSlices.slice(dragOverSliceIndex + 1),
         ];
       } else {
+        e.preventDefault();
         // add the new selection
         selectedSlices = [...selectedSlices, slice];
       }
@@ -273,180 +302,261 @@
     }
     dragOverSliceIndex = null;
   }
+
+  function formatEnrichedFeature(feature: string): string {
+    return feature.replace(
+      /^([^=]*) = (.*)$/,
+      "<span class='font-mono'>$1</span> = <strong>$2</strong>"
+    );
+  }
 </script>
 
 {#if pointData.length > 0}
   <div
-    class="w-full h-full relative bg-slate-100"
+    class="w-full h-full relative bg-slate-100 {draggingOverContainer
+      ? 'border-2 border-blue-400'
+      : ''}"
     bind:this={container}
     on:dragover={(e) => {
       if (dragOriginIndex != null) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
+      draggingOverContainer = true;
     }}
+    on:dragleave|preventDefault={(e) => (draggingOverContainer = false)}
     on:drop={handleDrop}
   >
     {#if loaded}
-      <div class="w-full h-full select-none">
-        <LayerCake
-          padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
-          data={pointData}
-        >
-          <Canvas>
-            <ForceScatterPlot
-              bind:hoveredSlices
-              {selectedClusters}
-              on:selectClusters={(e) => {
-                console.log(
-                  'Select clusters from force scatter plot',
-                  e.detail
-                );
-                if (e.detail.ids.length > 0)
-                  searchScopeInfo = {
-                    within_selection: e.detail.ids,
-                    proportion: e.detail.num_instances / totalInstances,
-                  };
-                else searchScopeInfo = {};
-              }}
-              {sliceColors}
-              {hoveredMousePosition}
-            />
-          </Canvas>
-        </LayerCake>
-      </div>
+      <ForceScatterPlot
+        {pointData}
+        {hoveredClusters}
+        bind:hoveredPointIndex
+        bind:hoveredSlices
+        {selectedClusters}
+        on:selectClusters={(e) => {
+          console.log('Select clusters from force scatter plot', e.detail);
+          if (e.detail.ids.length > 0)
+            searchScopeInfo = {
+              within_selection: e.detail.ids,
+              proportion: e.detail.num_instances / totalInstances,
+            };
+          else searchScopeInfo = {};
+        }}
+        {sliceColors}
+        {hoveredMousePosition}
+      />
     {/if}
-    <div
-      class="absolute top-0 left-0 right-0 pt-2 px-2 flex justify-stretch items-stretch flex-wrap gap-2"
-    >
-      {#each d3.range(labels.length + 1) as sliceIndex}
-        <Hoverable class="basis-2/5 grow">
-          <div
-            slot="default"
-            let:hovering
-            class="w-full h-full flex items-center gap-2 rounded-md p-2 select-none {labels.length >
-            sliceIndex
-              ? 'hover:bg-slate-100 cursor-grab'
-              : ''} {labels.length > sliceIndex
-              ? 'bg-white'
-              : 'bg-slate-200/80'} {dragOverSliceIndex == sliceIndex
-              ? 'border-2 border-blue-400'
-              : ''}"
-            style={labels.length > sliceIndex
-              ? `border: 2px solid ${sliceColors[sliceIndex]};`
-              : ''}
-            draggable={labels.length > sliceIndex}
-            on:dragstart={(e) => {
-              dragOriginIndex = sliceIndex;
-              e.dataTransfer.setData(
-                'slice',
-                JSON.stringify(selectedSlices[sliceIndex])
-              );
-            }}
-            on:dragend={() => (dragOriginIndex = null)}
-            on:dragover={(e) => {
-              if (labels.length <= sliceIndex && dragOriginIndex != null)
-                return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'copy';
-              dragOverSliceIndex = sliceIndex;
-            }}
-            on:dragleave|preventDefault={(e) => (dragOverSliceIndex = null)}
-            on:drop={handleDrop}
-          >
-            {#if labels.length > sliceIndex}
-              <div class="flex-auto text-xs line-clamp-3">
-                {@html describeSlice(labels[sliceIndex].feature)}
-              </div>
-              <button
-                class:invisible={!hovering}
-                class="bg-transparent p-1 hover:opacity-50 text-slate-600"
-                on:click={(e) => {
-                  selectedSlices = [
-                    ...selectedSlices.slice(0, sliceIndex),
-                    ...selectedSlices.slice(sliceIndex + 1),
-                  ];
-                }}><Fa icon={faTrash} class="inline" /></button
-              >
-            {:else}
-              <div class="my-1 flex-auto text-xs text-slate-500 text-center">
-                Drag and drop a slice to plot it on the map
-              </div>
-            {/if}
-          </div>
-        </Hoverable>
-      {/each}
+    <div class="absolute top-0 left-0 right-0 pt-2 px-2">
+      <div class="flex items-start flex-wrap gap-2">
+        {#each collapseSlices ? d3.range(labels.length, labels.length + 1) : d3.range(labels.length + 1) as sliceIndex (sliceIndex)}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <Hoverable class={wideMode ? 'basis-2/5 grow' : 'basis-full'}>
+            <div
+              slot="default"
+              let:hovering
+              class="w-full flex items-center gap-2 rounded-md p-2 select-none duration-500 {!!hoveredSlices &&
+              !hoveredSlices[sliceIndex]
+                ? 'opacity-30'
+                : ''} {labels.length > sliceIndex
+                ? 'hover:bg-slate-100 cursor-grab'
+                : ''} {labels.length > sliceIndex
+                ? 'bg-white'
+                : 'bg-slate-200/80'} {dragOverSliceIndex == sliceIndex
+                ? 'border-2 border-blue-400'
+                : ''}"
+              style={labels.length > sliceIndex
+                ? `border: 2px solid ${sliceColors[sliceIndex]};`
+                : ''}
+              on:mouseenter={() => {
+                if (labels.length > sliceIndex)
+                  hoveredClusters = new Set(
+                    clustersMatchingSlice(sliceIndex).ids
+                  );
+              }}
+              on:mouseleave={() => {
+                hoveredClusters = new Set();
+              }}
+              on:click={() => {
+                if (labels.length > sliceIndex) {
+                  let clusters = clustersMatchingSlice(sliceIndex);
+                  searchScopeInfo = {
+                    within_selection: clusters.ids,
+                    proportion: clusters.size / totalInstances,
+                  };
+                }
+              }}
+              draggable={labels.length > sliceIndex}
+              on:dragstart={(e) => {
+                dragOriginIndex = sliceIndex;
+                e.dataTransfer.setData(
+                  'slice',
+                  JSON.stringify(selectedSlices[sliceIndex])
+                );
+              }}
+              on:dragend={() => (dragOriginIndex = null)}
+              on:dragover={(e) => {
+                if (labels.length <= sliceIndex && dragOriginIndex != null)
+                  return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                dragOverSliceIndex = sliceIndex;
+              }}
+              on:dragleave|preventDefault={(e) => (dragOverSliceIndex = null)}
+              on:drop={handleDrop}
+            >
+              {#if labels.length > sliceIndex}
+                <div class="flex-auto text-xs {hovering ? '' : 'line-clamp-1'}">
+                  {@html describeSlice(labels[sliceIndex].feature)}
+                </div>
+                {#if hovering}
+                  {@const saveIdx = savedSlices.findIndex((s) =>
+                    areObjectsEqual(s.feature, labels[sliceIndex].feature)
+                  )}
+                  <button
+                    class="bg-transparent hover:opacity-60 p-1 text-slate-600"
+                    title="Save this slice"
+                    on:click|stopPropagation={() => {
+                      if (saveIdx >= 0)
+                        savedSlices = [
+                          ...savedSlices.slice(0, saveIdx),
+                          ...savedSlices.slice(saveIdx + 1),
+                        ];
+                      else
+                        savedSlices = [
+                          ...savedSlices,
+                          selectedSlices[sliceIndex],
+                        ];
+                    }}
+                    ><Fa
+                      icon={saveIdx >= 0 ? faHeart : faHeartOutline}
+                    /></button
+                  >
+                  <button
+                    class="bg-transparent p-1 hover:opacity-50 text-slate-600"
+                    on:click|stopPropagation={(e) => {
+                      selectedSlices = [
+                        ...selectedSlices.slice(0, sliceIndex),
+                        ...selectedSlices.slice(sliceIndex + 1),
+                      ];
+                    }}><Fa icon={faTrash} class="inline" /></button
+                  >
+                {/if}
+              {:else}
+                <div
+                  class="self-stretch flex-auto text-xs text-slate-500 text-center"
+                >
+                  Drag and drop a slice
+                </div>
+              {/if}
+            </div>
+          </Hoverable>
+        {/each}
+      </div>
+      <button
+        class="bg-transparent p-1 hover:opacity-50 text-slate-600"
+        on:click|stopPropagation={(e) => (collapseSlices = !collapseSlices)}
+        ><Fa
+          icon={collapseSlices ? faChevronDown : faChevronUp}
+          class="inline"
+        /></button
+      >
     </div>
 
     <div
-      class="absolute bottom-0 right-0 mb-2 mr-2 p-1 bg-slate-100/80 rounded"
+      class="absolute bottom-0 right-0 mb-2 mx-2 pointer-events-none {hoveredPointIndex !=
+        null || searchScopeEnrichedFeatures.length > 0
+        ? 'left-0 flex gap-2 justify-between items-end'
+        : ''}"
     >
-      <div class="text-xs font-bold text-slate-500 mb-1">
-        Slice Intersections
-      </div>
-      {#each sortedIntersections as intersection, intIndex}
-        {@const numSlices = intersection.slices.reduce((a, b) => a + b, 0)}
-        {@const errorRateString = d3.format('.1%')(
-          intersection[errorKey] / intersection.count
-        )}
-        <button
-          class="text-left bg-transparent flex items-center w-full justify-end gap-2 transition-opacity duration-700 delay-100"
-          class:opacity-30={!!hoveredSliceInfo &&
-            !hoveredSliceInfo.slices.every(
-              (s, i) => intersection.slices[i] == s
-            )}
-          on:mouseenter={() => {
-            hoveredSlices = intersection.slices;
-          }}
-          on:mouseleave={() => {
-            hoveredSlices = intersection.slices;
-          }}
-          on:click={() => setSearchScopeToSlice(intersection)}
-          title="{intersection.count} points included in {numSlices} slice{numSlices !=
-          1
-            ? 's'
-            : ''}, with an error rate of {errorRateString}"
-        >
-          <SliceLegendGlyph {intersection} {sliceColors} />
-          <!-- <p class="flex-auto">{intersection.slices}</p> -->
-          <div class="flex-auto">
-            <SliceMetricBar
-              value={intersection[errorKey] / intersection.count}
-              color={OutcomeColors.True}
-              width={wideMode ? 64 : null}
-              showFullBar
-              fullBarColor={OutcomeColors.False}
-              horizontalLayout
-              ><div
-                slot="caption"
-                class="ml-1"
-                style="width: {wideMode ? '100px' : '0'};"
-              >
-                {#if wideMode}
-                  {d3.format(',')(intersection.count)} ({errorRateString}
-                  <span
-                    class="inline-block rounded-full w-2 h-2 align-middle"
-                    style="background-color: #94a3b8;"
-                  />)
-                {/if}
-              </div></SliceMetricBar
-            >
-          </div>
-        </button>
-      {/each}
-      {#if errorKeyOptions.length > 0}
-        <div class="mt-2 flex items-center w-full">
-          <div
-            class="rounded-full"
-            style="width: 12px; height: 12px; background-color: {OutcomeColors.True};"
-          />
-          <div>&nbsp;=&nbsp;</div>
-          <select class="flat-select-small flex-auto" bind:value={errorKey}>
-            {#each errorKeyOptions as metric}
-              <option value={metric}>{metric}</option>
-            {/each}
-          </select>
+      {#if hoveredPointIndex != null || searchScopeEnrichedFeatures.length > 0}
+        <div class="p-1 bg-slate-100/80 rounded">
+          <div class="text-xs font-bold text-slate-500 mb-1">Top Feature</div>
+          {#each hoveredPointIndex != null ? groupedLayout.enriched_cluster_features[hoveredPointIndex] : searchScopeEnrichedFeatures as f}
+            <div class="mb-1 text-xs">{@html formatEnrichedFeature(f)}</div>
+          {/each}
         </div>
       {/if}
+      <div class="p-1 bg-slate-100/80 rounded pointer-events-auto">
+        <div class="flex items-center w-full">
+          <div class="flex-auto text-xs font-bold text-slate-500">
+            Slice Intersections
+          </div>
+          <button
+            class="bg-transparent p-1 hover:opacity-50 text-slate-600"
+            on:click|stopPropagation={(e) =>
+              (collapseIntersections = !collapseIntersections)}
+            ><Fa
+              icon={collapseIntersections ? faChevronUp : faChevronDown}
+            /></button
+          >
+        </div>
+        {#if !collapseIntersections}
+          {#each sortedIntersections as intersection, intIndex}
+            {@const numSlices = intersection.slices.reduce((a, b) => a + b, 0)}
+            {@const errorRateString = d3.format('.1%')(
+              intersection[errorKey] / intersection.count
+            )}
+            <button
+              class="text-left bg-transparent flex items-center w-full justify-end gap-2 transition-opacity duration-700 delay-100"
+              class:opacity-30={!!hoveredSliceInfo &&
+                !hoveredSliceInfo.slices.every(
+                  (s, i) => intersection.slices[i] == s
+                )}
+              on:mouseenter={() => {
+                hoveredSlices = intersection.slices;
+              }}
+              on:mouseleave={() => {
+                hoveredSlices = intersection.slices;
+              }}
+              on:click={() => setSearchScopeToSlice(intersection)}
+              title="{intersection.count} points included in {numSlices} slice{numSlices !=
+              1
+                ? 's'
+                : ''}, with an error rate of {errorRateString}"
+            >
+              <SliceLegendGlyph {intersection} {sliceColors} />
+              <!-- <p class="flex-auto">{intersection.slices}</p> -->
+              <div class="flex-auto">
+                <SliceMetricBar
+                  value={intersection[errorKey] / intersection.count}
+                  color={OutcomeColors.True}
+                  width={wideMode ? 64 : null}
+                  showFullBar
+                  fullBarColor={OutcomeColors.False}
+                  horizontalLayout
+                  ><div
+                    slot="caption"
+                    class="ml-1"
+                    style="width: {wideMode ? '100px' : '0'};"
+                  >
+                    {#if wideMode}
+                      {d3.format(',')(intersection.count)} ({errorRateString}
+                      <span
+                        class="inline-block rounded-full w-2 h-2 align-middle"
+                        style="background-color: #94a3b8;"
+                      />)
+                    {/if}
+                  </div></SliceMetricBar
+                >
+              </div>
+            </button>
+          {/each}
+        {/if}
+        {#if errorKeyOptions.length > 0}
+          <div class="mt-1 flex items-center w-full">
+            <div
+              class="rounded-full"
+              style="width: 12px; height: 12px; background-color: {OutcomeColors.True};"
+            />
+            <div>&nbsp;=&nbsp;</div>
+            <select class="flat-select-small flex-auto" bind:value={errorKey}>
+              {#each errorKeyOptions as metric}
+                <option value={metric}>{metric}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}

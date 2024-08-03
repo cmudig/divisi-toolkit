@@ -111,7 +111,7 @@
     </div>
   {:else}
     <div
-      class="w-full h-full flex items-center gap-2 rounded-md p-2 select-none bg-slate-200/80 hover:bg-slate-300/80"
+      class="w-full h-full flex items-center gap-2 rounded-md p-2 select-none bg-slate-200/80"
     >
       <div class="my-1 flex-auto text-xs text-slate-500 text-center">
         Drag and drop a slice or <a

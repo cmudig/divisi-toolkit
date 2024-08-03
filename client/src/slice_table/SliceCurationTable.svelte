@@ -15,6 +15,7 @@
   $: console.log('Current sliceColorMap in SliceCurationTable:', sliceColorMap);
 
   export let baseSlice: Slice = null;
+  export let hoveredSlice: Slice = {};
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
 
@@ -108,6 +109,7 @@
         // toggleSliceControl(e.detail.type, true);
       }}
       on:saveslice
+      on:hover={(e) => (hoveredSlice = e.detail)}
     />
   </div>
 </div>

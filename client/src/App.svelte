@@ -45,6 +45,8 @@
   let customSliceResults = traitlet(model, 'custom_slice_results', {});
   let savedSlices = traitlet(model, 'saved_slices', []);
   let selectedSlices = traitlet(model, 'selected_slices', []);
+  let hoveredSlice = traitlet(model, 'hovered_slice', {});
+  let hoverMapIndexes = traitlet(model, 'hover_map_indexes', {});
   let baseSlice = traitlet(model, 'base_slice', {});
   let positiveOnly = traitlet(model, 'positive_only', false);
   let sliceColorMap = traitlet(model, 'slice_color_map', {});
@@ -68,6 +70,11 @@
   let scoreWeights = traitlet(model, 'score_weights', {});
 
   let searchScopeInfo = traitlet(model, 'search_scope_info', {});
+  let searchScopeEnrichedFeatures = traitlet(
+    model,
+    'search_scope_enriched_features',
+    []
+  );
   let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
   let sliceScoreResults = traitlet(model, 'slice_score_results', {});
 
@@ -349,6 +356,7 @@
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           bind:searchScopeInfo={$searchScopeInfo}
+          bind:hoveredSlice={$hoveredSlice}
           on:runsampler={() => ($shouldRerun = true)}
           on:loadmore={() => ($numSlices += 10)}
           on:saveslice={(e) => {
@@ -367,7 +375,9 @@
         <SliceCurationTable
           positiveOnly={$positiveOnly}
           slices={$savedSlices}
+          sliceColorMap={$sliceColorMap}
           bind:selectedSlices={$selectedSlices}
+          bind:hoveredSlice={$hoveredSlice}
           savedSlices={$savedSlices}
           allowDragAndDrop={$interfaceMode == 'B'}
           {allowedValues}
@@ -406,6 +416,11 @@
               bind:errorKey={$overlapPlotMetric}
               bind:selectedSlices={$selectedSlices}
               bind:searchScopeInfo={$searchScopeInfo}
+              searchScopeEnrichedFeatures={$searchScopeEnrichedFeatures}
+              hoveredClusters={Object.entries($hoveredSlice).length > 0 &&
+              areObjectsEqual($hoveredSlice, $hoverMapIndexes.slice)
+                ? new Set($hoverMapIndexes.clusters)
+                : new Set()}
               errorKeyOptions={binaryMetrics}
               savedSlices={$savedSlices}
               bind:sliceColorMap={$sliceColorMap}

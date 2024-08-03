@@ -50,21 +50,6 @@ export function drawSliceGlyphCanvas(
       sliceIdx++;
     });
   }
-
-  if (outlineWidth > 0) {
-    ctx.beginPath();
-    ctx.arc(
-      0,
-      0,
-      Math.ceil(radius * (numSlices > 0 ? 0.7 : 0.5) + 2),
-      0,
-      2 * Math.PI,
-      false
-    );
-    ctx.strokeStyle = GlyphOutlineColor;
-    ctx.lineWidth = outlineWidth;
-    ctx.stroke();
-  }
 }
 
 export function drawSliceGlyphHTML(

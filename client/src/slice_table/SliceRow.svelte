@@ -113,6 +113,12 @@
     dispatch('beginedit');
     justMounted = false;
   }
+
+  let oldSliceToShow: Slice;
+  $: if (oldSliceToShow !== sliceToShow) {
+    if (hovering) dispatch('hover', sliceToShow);
+    oldSliceToShow = sliceToShow;
+  }
 </script>
 
 {#if !!sliceToShow}
@@ -124,8 +130,14 @@
       (maxIndent - indent)}px); {!!sliceColorMap[slice.stringRep]
       ? `border: 3px solid ${sliceColorMap[slice.stringRep]};`
       : ''}"
-    on:mouseenter={() => (hovering = !dragging)}
-    on:mouseleave={() => (hovering = false)}
+    on:mouseenter={() => {
+      hovering = !dragging;
+      dispatch('hover', sliceToShow);
+    }}
+    on:mouseleave={() => {
+      hovering = false;
+      dispatch('hover', {});
+    }}
     {draggable}
     on:dragstart={(e) => {
       e.dataTransfer.setData('slice', JSON.stringify(sliceToShow));

@@ -114,6 +114,7 @@
       <div class="font-bold">Type</div>
       <select class="flat-select flex-auto" bind:value={editingConfig.type}>
         <option value="OutcomeRateScore">Outcome Rate</option>
+        <option value="OutcomeShareScore">Outcome Share</option>
         <option value="MeanDifferenceScore">Mean Difference</option>
         <option value="SliceSizeScore">Slice Size</option>
         <option value="NumFeaturesScore">Slice Complexity</option>
@@ -129,6 +130,18 @@
             <option value={false}>true</option>
             <option value={true}>false</option>
           </select>:
+        </div>
+        <MetricExpressionEditor
+          bind:metricExpressionRequest
+          bind:metricExpressionResponse
+          bind:expression={editingConfig.metric}
+          placeholder="Type a binary expression using metrics"
+          {metricNames}
+        />
+      {:else if editingConfig.type == 'OutcomeShareScore'}
+        <div class="text-xs text-slate-700 mb-2">
+          Prioritize slices where most of the instances matching the binary
+          expression are included:
         </div>
         <MetricExpressionEditor
           bind:metricExpressionRequest

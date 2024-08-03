@@ -304,6 +304,7 @@
               ...customSlices.slice(idx + 1),
             ];
         }}
+        on:hover
       />
     </div>
   {/each}

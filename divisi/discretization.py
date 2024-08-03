@@ -30,6 +30,7 @@ class DiscretizedData:
             
         self.projections = {} # map from method to Projection object
         self._one_hot_matrix = None
+        self._one_hot_labels = None
         
     def __contains__(self, col_name):
         return col_name in self.inverse_value_mapping
@@ -171,6 +172,16 @@ class DiscretizedData:
                 for i in range(self.df.shape[1])
             ])
         return self._one_hot_matrix
+    
+    @property
+    def one_hot_labels(self):
+        if self._one_hot_labels is None:
+            self._one_hot_labels = [
+                f"{self.value_names[i][0]} = {self.value_names[i][1][x]}"
+                for i in range(self.df.shape[1])
+                for x in sorted(self.value_names[i][1].keys())
+            ]
+        return self._one_hot_labels
     
     def get_projection(self, method='tsne'):
         """
