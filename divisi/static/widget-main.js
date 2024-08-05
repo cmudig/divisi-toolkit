@@ -22010,7 +22010,7 @@ function m3(t, e, n) {
       scoreValues: {},
       metrics: {},
       feature: ke,
-      isEmpty: ke.type != "base"
+      isEmpty: ke.type == "base"
     };
   }
   function U(Q) {

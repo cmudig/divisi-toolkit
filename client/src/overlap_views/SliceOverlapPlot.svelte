@@ -191,7 +191,7 @@
       scoreValues: {},
       metrics: {},
       feature,
-      isEmpty: feature.type != 'base',
+      isEmpty: feature.type == 'base',
     };
   }
 
