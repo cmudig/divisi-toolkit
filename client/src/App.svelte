@@ -112,8 +112,13 @@
         binaryMetrics = metricNames.filter(
           (m) => testSlice.metrics[m].type == 'binary'
         );
-        if (binaryMetrics.length > 0) $overlapPlotMetric = binaryMetrics[0];
-        else $overlapPlotMetric = null;
+        if (
+          !$overlapPlotMetric ||
+          !binaryMetrics.includes($overlapPlotMetric)
+        ) {
+          if (binaryMetrics.length > 0) $overlapPlotMetric = binaryMetrics[0];
+          else $overlapPlotMetric = null;
+        }
       }
     }
     console.log('overlap metric:', $overlapPlotMetric);

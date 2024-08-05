@@ -577,7 +577,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.slice_intersection_counts = intersect_counts 
         self.slice_intersection_labels = labels
 
-        print("Calculated intersection counts", len(slice_masks))
         if self.projection is not None and overlap_metric:
             error_metric = self.derived_metrics[overlap_metric]
             if isinstance(error_metric, dict): error_metric = error_metric["data"]
@@ -597,7 +596,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
             enriched_cluster_features = {cluster: [self.slice_finder.eval_data.one_hot_labels[top_features[i]]]
                                          for i, cluster in enumerate(cluster_sums.index)}
             
-            print("Calculated grouped map layout")
             self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,
                 'labels': labels,
@@ -608,7 +606,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
 
             if self.search_scope_mask is not None:
                 # Rewrite the cluster indexes to match the new values based on the existing search scope mask
-                print("Old search scope info", self.search_scope_info)
                 self.search_scope_info = {
                     **self.search_scope_info, 
                     "within_selection": np.unique(self.map_clusters[self.search_scope_mask[self.slice_finder.results.eval_indexes]]).tolist(),
