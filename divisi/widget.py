@@ -596,6 +596,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             enriched_cluster_features = {cluster: [self.slice_finder.eval_data.one_hot_labels[top_features[i]]]
                                          for i, cluster in enumerate(cluster_sums.index)}
             
+
             self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,
                 'labels': labels,
