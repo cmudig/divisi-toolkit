@@ -327,13 +327,16 @@ class IntersectionSlice(Slice):
     objects, IntersectionSlice instances are order-invariant when testing for
     equality and hashing.
     """
-    def __init__(self, features, score_values=None):
-        if not features:
-            feature = SliceFeatureBase()
+    def __init__(self, features, score_values=None, rule=None):
+        if rule is not None:
+            feature = rule
         else:
-            feature = features[-1]
-            for i in range(len(features) - 2, -1, -1):
-                feature = SliceFeatureAnd(features[i], feature)
+            if not features:
+                feature = SliceFeatureBase()
+            else:
+                feature = features[-1]
+                for i in range(len(features) - 2, -1, -1):
+                    feature = SliceFeatureAnd(features[i], feature)
         super().__init__(feature, score_values=score_values)
         self.base_features = tuple(sorted(features))
         
@@ -356,7 +359,26 @@ class IntersectionSlice(Slice):
         Returns a Slice object with identical feature values but a new dictionary
         of scores.
         """
-        return IntersectionSlice(self.base_features, new_scores)
+        # make sure the order of the slice is preserved
+        return IntersectionSlice(self.base_features, new_scores, rule=self.feature)
+    
+    def sort_features(self, score_fn=None):
+        """
+        Sorts the features in the slice by the amount that they change the value
+        returned by the given score function. The score function should take a
+        Slice object and return a numerical value. The feature that causes the
+        greatest decrease in the score function value relative to the overall
+        slice will be placed first.
+        """
+        base_score = score_fn(self)
+        ablated_slices = [(exclude_feature, IntersectionSlice([f for f in self.base_features if f != exclude_feature]))
+                          for exclude_feature in self.base_features]
+        ablated_scores = [(*s, base_score - score_fn(s[1])) for s in ablated_slices]
+        print(self, ablated_scores, "RESULT:", IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
+                                 self.score_values))
+        return IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
+                                 self.score_values)
+        
 
 def score_slices_batch(slices_to_score, inputs, score_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
     univariate_masks = univariate_masks if univariate_masks is not None else {}
@@ -455,7 +477,7 @@ class RankedSliceList:
         original_score_indexes = np.arange(len(score_df), dtype=np.uint32)
         weighted_score = np.zeros(len(score_df))
         for w_name, w in weights.items():
-            weighted_score += w * score_df[w_name]
+            weighted_score += w * (score_df[w_name] / score_df[w_name].max())
         original_score_indexes = original_score_indexes[~np.isnan(weighted_score)]
         weighted_score = weighted_score[~np.isnan(weighted_score)]
         results = np.flip(np.argsort(weighted_score.values))
@@ -530,7 +552,7 @@ class RankedSliceList:
             return (*result, mask_mat)
         return result
         
-    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None):
+    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None, order_features=True):
         """
         Ranks and returns the top slices according to a given set of weights,
         filtering results that contain a very similar set of instances.
@@ -543,6 +565,8 @@ class RankedSliceList:
         :param n_slices: The number of slices to return.
         :param similarity_threshold: Slices that have a higher Jaccard similarity
             than this threshold to already-returned slices will be omitted.
+        :param order_features: if True (default), sort the features in IntersectionSlices
+            by their contribution to the slice's relevance.
         
         :return: A list of Slice objects with scores from the held-out
             evaluation data.
@@ -570,7 +594,13 @@ class RankedSliceList:
 
         # Return top n_slices results
         ranked_results = [eval_scored_slices[i] for i in ranked_result_idxs]
-        return ranked_results[:min(len(ranked_results), n_slices)]
+        ranked_results = ranked_results[:min(len(ranked_results), n_slices)]
+        def _score(slice_obj):
+            scores = self.score_slice(slice_obj)
+            return sum(scores.get(n, 0) * w for n, w in weights.items())
+        ranked_results = [slice_obj.sort_features(_score) if isinstance(slice_obj, IntersectionSlice) else slice_obj
+                          for slice_obj in ranked_results]
+        return ranked_results
     
     def slice_mask(self, slice_obj):
         """

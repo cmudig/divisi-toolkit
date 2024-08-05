@@ -9,6 +9,13 @@
     faPlus,
     faPlusCircle,
   } from '@fortawesome/free-solid-svg-icons';
+  import { sortMetrics } from '../utils/utils';
+  import SearchScopeConfiguration from './SearchScopeConfiguration.svelte';
+
+  export let showSearchScopeConfig: boolean = true;
+  export let searchScopeInfo: any = {};
+  export let positiveOnly: boolean = false;
+  export let allowedValues: { [key: string]: string[] } | null = null;
 
   export let metricInfo: {
     [key: string]: {
@@ -22,6 +29,7 @@
   export let derivedMetricConfigs: { [key: string]: any };
   export let scoreFunctionConfigs: { [key: string]: any };
   export let scoreWeights: { [key: string]: number };
+  export let showScoreFunctionConfig: boolean = true;
 
   export let creatingNewDerivedMetric: boolean = false;
   export let creatingNewScoreFunction: boolean = false;
@@ -75,7 +83,7 @@
     >
     <div class="flex-auto shrink-0">Count</div>
   </div>
-  {#each Object.entries(derivedMetricConfigs).sort() as [metricName, config], i (metricName)}
+  {#each Object.entries(derivedMetricConfigs).sort( (a, b) => sortMetrics(a[0], b[0]) ) as [metricName, config], i (metricName)}
     <MetricConfiguration
       {metricName}
       {config}
@@ -124,81 +132,101 @@
       bind:metricExpressionResponse
     />
   {/if}
-  <div class="px-2 mb-1 mt-4 justify-between items-center flex">
-    <div>
-      <div class="font-bold">SCORE FUNCTIONS</div>
-      <div class="text-xs text-slate-600">
-        Define and reweight how slices will be ranked.
+
+  {#if showSearchScopeConfig}
+    <div class="px-2 mt-4 mb-2 flex items-center justify-between">
+      <div>
+        <div class="font-bold">SEARCH SCOPE</div>
+        <div class="text-xs text-slate-600">
+          Find slices that are mostly contained within a selection or slice.
+        </div>
       </div>
     </div>
-    <button
-      class="hover:text-slate-600 text-slate-400 bg-transparent text-lg ml-2 py-1 px-1 shrink-0 grow-0"
-      on:click={(e) => (creatingNewScoreFunction = true)}
-      disabled={creatingNewScoreFunction}
-      ><Fa icon={faPlusCircle} class="inline" /></button
-    >
-  </div>
-  {#each Object.keys(scoreFunctionConfigs).sort() as fnName (fnName)}
-    <ScoreFunctionConfiguration
-      name={fnName}
-      config={scoreFunctionConfigs[fnName]}
-      weight={scoreWeights[fnName] ?? 0}
-      on:reweight={(e) => {
-        scoreWeights = { ...scoreWeights, [fnName]: e.detail };
-      }}
-      on:save={(e) => {
-        scoreFunctionConfigs = {
-          ...Object.fromEntries(
+    <SearchScopeConfiguration
+      bind:searchScopeInfo
+      {allowedValues}
+      {positiveOnly}
+    />
+  {/if}
+
+  {#if showScoreFunctionConfig}
+    <div class="px-2 mb-1 mt-4 justify-between items-center flex">
+      <div>
+        <div class="font-bold">SCORE FUNCTIONS</div>
+        <div class="text-xs text-slate-600">
+          Define and reweight how slices will be ranked.
+        </div>
+      </div>
+      <button
+        class="hover:text-slate-600 text-slate-400 bg-transparent text-lg ml-2 py-1 px-1 shrink-0 grow-0"
+        on:click={(e) => (creatingNewScoreFunction = true)}
+        disabled={creatingNewScoreFunction}
+        ><Fa icon={faPlusCircle} class="inline" /></button
+      >
+    </div>
+    {#each Object.keys(scoreFunctionConfigs).sort() as fnName (fnName)}
+      <ScoreFunctionConfiguration
+        name={fnName}
+        config={scoreFunctionConfigs[fnName]}
+        weight={scoreWeights[fnName] ?? 0}
+        on:reweight={(e) => {
+          scoreWeights = { ...scoreWeights, [fnName]: e.detail };
+        }}
+        on:save={(e) => {
+          scoreFunctionConfigs = {
+            ...Object.fromEntries(
+              Object.entries(scoreFunctionConfigs).filter((e) => e[0] != fnName)
+            ),
+            [e.detail.name]: e.detail.config,
+          };
+          scoreWeights = {
+            ...Object.fromEntries(
+              Object.entries(scoreWeights).filter((e) => e[0] != fnName)
+            ),
+            [e.detail.name]:
+              scoreWeights[fnName] > 0 ? scoreWeights[fnName] : 1,
+          };
+        }}
+        on:delete={(e) => {
+          scoreFunctionConfigs = Object.fromEntries(
             Object.entries(scoreFunctionConfigs).filter((e) => e[0] != fnName)
-          ),
-          [e.detail.name]: e.detail.config,
-        };
-        scoreWeights = {
-          ...Object.fromEntries(
+          );
+          scoreWeights = Object.fromEntries(
             Object.entries(scoreWeights).filter((e) => e[0] != fnName)
-          ),
-          [e.detail.name]: scoreWeights[fnName] > 0 ? scoreWeights[fnName] : 1,
-        };
-      }}
-      on:delete={(e) => {
-        scoreFunctionConfigs = Object.fromEntries(
-          Object.entries(scoreFunctionConfigs).filter((e) => e[0] != fnName)
-        );
-        scoreWeights = Object.fromEntries(
-          Object.entries(scoreWeights).filter((e) => e[0] != fnName)
-        );
-      }}
-      bind:metricExpressionRequest
-      bind:metricExpressionResponse
-      metricNames={Object.keys(derivedMetricConfigs)}
-    />
-  {/each}
-  {#if creatingNewScoreFunction}
-    <ScoreFunctionConfiguration
-      name=""
-      editing={true}
-      config={{ type: 'OutcomeRateScore', metric: '' }}
-      weight={1}
-      metricNames={Object.keys(derivedMetricConfigs)}
-      on:save={(e) => {
-        scoreFunctionConfigs = {
-          ...scoreFunctionConfigs,
-          [e.detail.name]: e.detail.config,
-        };
-        scoreWeights = {
-          ...scoreWeights,
-          [e.detail.name]: e.detail.weight,
-        };
-        creatingNewScoreFunction = false;
-      }}
-      on:delete={(e) => {
-        creatingNewScoreFunction = false;
-      }}
-      on:cancel={(e) => {
-        creatingNewScoreFunction = false;
-      }}
-      bind:metricExpressionRequest
-      bind:metricExpressionResponse
-    />
+          );
+        }}
+        bind:metricExpressionRequest
+        bind:metricExpressionResponse
+        metricNames={Object.keys(derivedMetricConfigs)}
+      />
+    {/each}
+    {#if creatingNewScoreFunction}
+      <ScoreFunctionConfiguration
+        name=""
+        editing={true}
+        config={{ type: 'OutcomeRateScore', metric: '' }}
+        weight={1}
+        metricNames={Object.keys(derivedMetricConfigs)}
+        on:save={(e) => {
+          scoreFunctionConfigs = {
+            ...scoreFunctionConfigs,
+            [e.detail.name]: e.detail.config,
+          };
+          scoreWeights = {
+            ...scoreWeights,
+            [e.detail.name]: e.detail.weight,
+          };
+          creatingNewScoreFunction = false;
+        }}
+        on:delete={(e) => {
+          creatingNewScoreFunction = false;
+        }}
+        on:cancel={(e) => {
+          creatingNewScoreFunction = false;
+        }}
+        bind:metricExpressionRequest
+        bind:metricExpressionResponse
+      />
+    {/if}
   {/if}
 </div>

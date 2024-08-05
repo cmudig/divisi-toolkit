@@ -21,10 +21,10 @@
         dispatch('change', stopValue);
       }}
       {disabled}
-      class="{value >= stopValue ? 'bg-blue-600' : 'bg-slate-200'} {value !=
+      class="{value >= stopValue ? 'bg-slate-500' : 'bg-slate-200'} {value !=
       stopValue
         ? value >= stopValue
-          ? 'hover:bg-blue-800'
+          ? 'hover:bg-slate-600'
           : 'hover:bg-slate-300'
         : ''} rounded-none h-full border-slate-400"
       class:opacity-50={disabled}

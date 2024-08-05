@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from .utils import RankedList
+from .utils import RankedList, powerset
 from .slices import *
 from .scores import ScoreFunctionBase
 import tqdm
@@ -18,6 +18,8 @@ worker_seen_slices = None
 
 FLOAT_SCORE_DTYPE = np.dtype(np.float64)
 INT_SCORE_DTYPE = np.dtype(np.int64)
+
+torch.set_num_threads(1)
 
 def worker_global_init(device,
                        seen_slices,
@@ -367,6 +369,8 @@ class SamplingSliceFinder:
             self.discovery_mask = (np.random.uniform(size=self.raw_inputs.shape[0]) >= self.holdout_fraction)
         else:
             self.discovery_mask = discovery_mask
+        self.discovery_data = self.inputs.filter(self.discovery_mask)
+        self.eval_data = self.inputs.filter(~self.discovery_mask) if self.holdout_fraction > 0.0 else None
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
         self.results = RankedSliceList(list(set(self.all_scores)),
                             self.inputs,
@@ -398,6 +402,43 @@ class SamplingSliceFinder:
             scoring_fraction=kwargs.get("scoring_fraction", self.scoring_fraction),
             discovery_mask=kwargs.get("discovery_mask", self.discovery_mask)
         )
+        
+    def state_dict(self):
+        return {
+            "config": {
+                "source_mask": self.source_mask, 
+                "group_filter": self.group_filter, 
+                "max_features": self.max_features, 
+                "min_items": self.min_items, 
+                "num_candidates": self.num_candidates,
+                "final_num_candidates": self.final_num_candidates,
+                "positive_only": self.positive_only,
+                "holdout_fraction": self.holdout_fraction,
+                "min_weight": self.min_weight,
+                "max_weight": self.max_weight,
+                "similarity_threshold": self.similarity_threshold,
+                "show_progress": self.show_progress,
+                "n_workers": self.n_workers,
+                "initial_slice": self.initial_slice,
+                "scoring_fraction": self.scoring_fraction,
+                "discovery_mask": self.discovery_mask
+            },
+            "results": {
+                "sampled_idxs": self.sampled_idxs.tolist(),
+                "all_scores": [s.to_dict() for s in self.all_scores]
+            }
+        }
+        
+    @classmethod
+    def from_state_dict(self, inputs, score_fns, data):
+        sf = SamplingSliceFinder(inputs, score_fns, **data["config"])
+        sf.sampled_idxs = np.array(data["results"]["sampled_idxs"])
+        all_scores = []
+        for s in data["results"]["all_scores"]:
+            slice_obj = Slice.from_dict(s)
+            all_scores.append(IntersectionSlice(slice_obj.univariate_features(), slice_obj.score_values))
+        sf.all_scores = all_scores
+        return sf
         
     def _create_worker_initializer(self, discovery_inputs, discovery_score_fns, sample_size=None):
         """
@@ -532,7 +573,6 @@ class SamplingSliceFinder:
                 self.seen_slices[new_slice] = new_slice.score_values
             else:
                 self.seen_slices[old_slice] = None
-        print(self.all_scores[0])
                 
         self.score_fns = new_score_fns
         self.results = RankedSliceList(list(set(self.all_scores)),
@@ -656,6 +696,17 @@ class SamplingSliceFinder:
         slices_to_score = set()
         for ranking in best_groups.values():
             slices_to_score |= set(ranking.items)
+                
+        print("Before adding superslices:", len(slices_to_score))
+        for slice_obj in list(slices_to_score):
+            univariate = slice_obj.univariate_features()
+            for superslice_features in powerset(univariate):
+                if len(superslice_features) == 0 or len(superslice_features) == len(univariate):
+                    continue
+                superslice = IntersectionSlice(superslice_features)
+                if superslice in slices_to_score: continue
+                slices_to_score.add(superslice)
+        print("After adding superslices:", len(slices_to_score))
                 
         if sample_size < 1.0:
             print("Scoring collected slices", len(slices_to_score))

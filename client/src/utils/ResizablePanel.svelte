@@ -12,6 +12,7 @@
   export let rightResizable: boolean = false;
   export let topResizable: boolean = false;
   export let bottomResizable: boolean = false;
+  export let collapsible: boolean = true;
 
   export let minWidth: number | string | null = 20;
   export let maxWidth: number | string | null = null;
@@ -28,7 +29,7 @@
   let lastX: number | null = null;
   let lastY: number | null = null;
   let draggingDirection: string | null = null;
-  let collapsed: boolean = false;
+  export let collapsed: boolean = false;
 
   function onMousedown(e: PointerEvent, direction: string) {
     lastX = e.pageX;
@@ -92,7 +93,11 @@
     if (!!panelResizer) panelResizer.unobserve(panelElement);
     panelResizer = new ResizeObserver(() => {
       if (!panelElement || !panelElement.clientWidth) return;
-      collapseIfNeeded(panelElement.clientWidth, panelElement.clientHeight);
+      setTimeout(
+        () =>
+          collapseIfNeeded(panelElement.clientWidth, panelElement.clientHeight),
+        10
+      );
     });
     panelResizer.observe(panelElement);
   }
@@ -126,6 +131,20 @@
   }
 
   function collapseIfNeeded(w: number, h: number) {
+    if (!collapsible) {
+      if (
+        lessThanThreshold(w, minWidth, true) ||
+        lessThanThreshold(h, minHeight, false)
+      ) {
+        if ((leftResizable || rightResizable) && minWidth != null)
+          width = convertToNumerical(minWidth, true);
+        if ((topResizable || bottomResizable) && minHeight != null)
+          height = convertToNumerical(minHeight, false);
+        console.log('width', width);
+      }
+      return;
+    }
+
     if (
       (lessThanThreshold(w, minWidth, true) ||
         lessThanThreshold(h, minHeight, false)) &&

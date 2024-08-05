@@ -119,6 +119,8 @@
   let left;
   let top;
 
+  let container;
+
   let options = [];
   let triggerIdx;
 
@@ -197,12 +199,20 @@
 
     const coords = getCaretCoordinates(ref, positionIndex);
     const { top: newTop, left: newLeft } = ref.getBoundingClientRect();
+    const { top: containerTop, left: containerLeft } =
+      container.getBoundingClientRect();
 
     setTimeout(() => {
       active = 0;
-      left = window.scrollX + coords.left + newLeft + ref.scrollLeft;
+      left =
+        window.scrollX + coords.left + newLeft + ref.scrollLeft - containerLeft;
       top =
-        window.scrollY + coords.top + newTop + coords.height - ref.scrollTop;
+        window.scrollY +
+        coords.top +
+        newTop +
+        coords.height -
+        ref.scrollTop -
+        containerTop;
       triggerIdx = newTriggerIdx;
       console.log(left, top);
     }, 0);
@@ -256,6 +266,10 @@
   }
 </script>
 
+<div
+  class="fixed top-0 left-0 bottom-0 right-0 pointer-events-none invisible"
+  bind:this={container}
+/>
 {#if top !== undefined}
   <div class="absolute top-0 left-0 w-full h-full pointer-events-none">
     <div

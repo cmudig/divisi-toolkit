@@ -14,7 +14,12 @@
     faSearch,
   } from '@fortawesome/free-solid-svg-icons';
   import * as d3 from 'd3';
-  import { areSetsEqual, sortMetrics } from '../utils/utils';
+  import {
+    areObjectsEqual,
+    areSetsEqual,
+    randomStringRep,
+    sortMetrics,
+  } from '../utils/utils';
   import { createEventDispatcher } from 'svelte';
   import SliceTable from './SliceTable.svelte';
   import SliceFeatureEditor from './SliceFeatureEditor.svelte';
@@ -36,16 +41,21 @@
   export let baseSlice: Slice = null;
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
+  export let customSliceResults: Slice[] = [];
+
+  export let hoveredSlice: Slice | null = null;
 
   export let scoreWeights: any = {};
 
   export let fixedFeatureOrder: Array<any> = [];
   export let searchBaseSlice: any = null;
 
+  export let allowDragAndDrop: boolean = true;
+
   export let showScores = false;
   export let positiveOnly = false;
 
-  export let valueNames: any = {};
+  export let allowedValues: { [key: string]: string[] } = {};
 
   export let searchScopeInfo: {
     within_slice?: any;
@@ -53,10 +63,10 @@
     intersection?: { slices: number[] };
     proportion?: number;
   } = {};
-  let editingSearchScope: boolean = false;
 
   export let selectedSlices: Slice[] = [];
   export let savedSlices: Slice[] = [];
+  export let customSlices: Slice[] = [];
 
   export let hiddenMetrics: string[] = [];
 
@@ -112,16 +122,6 @@
     metricInfo = {};
   }
 
-  let allowedValues;
-  $: if (!!valueNames && valueNames.hasOwnProperty('subscribe')) {
-    allowedValues = {};
-    Object.entries($valueNames).forEach((item) => {
-      allowedValues[item[1][0]] = Object.values(item[1][1]);
-    });
-  } else {
-    allowedValues = null;
-  }
-
   function updateMetricInfo(testMetrics) {
     let oldMetricInfo = metricInfo;
     metricInfo = {};
@@ -169,28 +169,6 @@
       ])
     );
   }
-
-  /*function toggleSliceFeature(slice: Slice, feature: string) {
-    let allRequests = Object.assign({}, sliceRequests);
-    let r;
-    if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
-    else r = Object.assign({}, slice.featureValues);
-    if (r.hasOwnProperty(feature)) delete r[feature];
-    else r[feature] = slice.featureValues[feature];
-    allRequests[slice.stringRep] = r;
-    sliceRequests = allRequests;
-    console.log('slice requests:', sliceRequests);
-  }
-
-  function editSliceFeature(slice: Slice, newFeatureValues: any) {
-    let allRequests = Object.assign({}, sliceRequests);
-    let r;
-    if (!!allRequests[slice.stringRep]) r = allRequests[slice.stringRep];
-    else r = Object.assign({}, slice.featureValues);
-    Object.assign(r, newFeatureValues);
-    allRequests[slice.stringRep] = r;
-    sliceRequests = allRequests;
-  }*/
 
   let searchViewHeader;
   let samplerPanel;
@@ -242,21 +220,48 @@
   $: selectedInvisibleSlices = selectedSlices.filter(
     (s) => !slices.find((s2) => s2.stringRep === s.stringRep)
   );
+
+  let dragOver = false;
 </script>
 
-<div class="flex-auto min-h-0 h-full min-w-full overflow-auto relative">
+<div
+  class="w-full h-full flex flex-col relative {dragOver
+    ? 'border-4 border-blue-400'
+    : ''}"
+  on:dragover|preventDefault={(e) => {
+    dragOver = true;
+    e.dataTransfer.dropEffect = 'copy';
+  }}
+  on:dragleave|preventDefault={() => (dragOver = false)}
+  on:drop={(e) => {
+    dragOver = false;
+    if (!e.dataTransfer.getData('slice')) return;
+    console.log(e.dataTransfer.getData('slice'));
+    e.preventDefault();
+    e.stopPropagation();
+    let newSlice = JSON.parse(e.dataTransfer.getData('slice'));
+    customSlices = [
+      ...customSlices,
+      {
+        ...newSlice,
+        stringRep: randomStringRep(),
+      },
+    ];
+  }}
+>
   {#if !!baseSlice}
-    <div class="bg-white sticky top-0 z-10" bind:this={searchViewHeader}>
+    <div class="bg-white w-full" bind:this={searchViewHeader}>
       <SliceTable
         slices={[]}
         {savedSlices}
         {sliceColorMap}
         bind:selectedSlices
+        bind:customSlices
         {baseSlice}
+        {allowDragAndDrop}
         bind:sliceRequests
         bind:sliceRequestResults
         {positiveOnly}
-        {valueNames}
         {allowedValues}
         showHeader={false}
         bind:metricInfo
@@ -271,17 +276,24 @@
       />
     </div>
   {/if}
-  {#if selectedSlices.length > 0}
+  <div class="flex-auto min-h-0 h-full min-w-full overflow-auto relative">
     <SliceTable
-      slices={selectedSlices}
+      slices={customSlices.map((s, i) =>
+        !!customSliceResults[s.stringRep] &&
+        areObjectsEqual(customSliceResults[s.stringRep].feature, s.feature)
+          ? customSliceResults[s.stringRep]
+          : s
+      )}
+      custom
       {savedSlices}
       {sliceColorMap}
       bind:selectedSlices
+      bind:customSlices
       showHeader={false}
       bind:sliceRequests
       bind:sliceRequestResults
+      {allowDragAndDrop}
       {positiveOnly}
-      {valueNames}
       {allowedValues}
       bind:metricInfo
       bind:metricNames
@@ -291,116 +303,57 @@
         searchScopeInfo = { within_slice: e.detail.base_slice };
       }}
       on:saveslice
+      on:customize={(e) => {
+        let newCustom = [...customSlices];
+        newCustom[e.detail.index] = e.detail.slice;
+        customSlices = newCustom;
+      }}
+      on:hover={(e) => (hoveredSlice = e.detail)}
     />
-  {/if}
-  <div class="sampler-panel w-full mb-2 bg-white" bind:this={samplerPanel}>
-    <div class="bg-slate-200 text-gray-700">
-      {#if runningSampler}
-        <div class="flex items-center px-4 py-3">
-          <div class="flex-auto">
-            <div class="text-sm">
-              {#if shouldCancel}
-                Canceling...
-              {:else}
-                Running sampler ({(samplerRunProgress * 100).toFixed(1)}%
-                complete)...
-              {/if}
-            </div>
-            <div
-              class="w-full bg-slate-300 rounded-full h-1.5 mt-1 indigo:bg-slate-700"
-            >
-              <div
-                class="bg-blue-600 h-1.5 rounded-full indigo:bg-indigo-200 duration-100"
-                style="width: {(samplerRunProgress * 100).toFixed(1)}%"
-              />
-            </div>
-          </div>
+    {#if slices.length > 0}
+      <div
+        class="mx-2 mb-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded sticky top-0 z-10"
+      >
+        Search Results
+      </div>
+    {:else}
+      <div class="text-center text-slate-500 my-8 mx-6">
+        Click Find Slices to begin an automatic search.
+      </div>
+    {/if}
+    <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
+      <SliceTable
+        {slices}
+        {savedSlices}
+        {sliceColorMap}
+        bind:selectedSlices
+        bind:customSlices
+        bind:sliceRequests
+        bind:sliceRequestResults
+        {allowDragAndDrop}
+        {positiveOnly}
+        {allowedValues}
+        showHeader={false}
+        bind:metricInfo
+        bind:metricNames
+        bind:scoreNames
+        bind:scoreWidthScalers
+        bind:showScores
+        on:newsearch={(e) => {
+          searchScopeInfo = { within_slice: e.detail.base_slice };
+        }}
+        on:saveslice
+        on:hover={(e) => (hoveredSlice = e.detail)}
+      />
+      {#if slices.length > 0}
+        <div class="m-2">
           <button
-            class="ml-2 btn btn-blue disabled:opacity-50"
-            disabled={shouldCancel}
-            on:click={() => (shouldCancel = true)}>Stop</button
-          >
-        </div>
-      {:else}
-        <div class="flex px-4 items-center whitespace-nowrap gap-3">
-          <div class="text-slate-500 font-bold flex-auto text-base">
-            Slice Search
-          </div>
-          {#if !!searchScopeInfo.within_slice}
-            <button
-              style="padding-left: 1rem;"
-              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-              on:click={() => (searchScopeInfo = {})}
-              ><Fa icon={faMinus} class="inline mr-1" />
-              Within Slice</button
-            >
-            <div class="text-slate-600">
-              {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
-            </div>
-          {:else if !!searchScopeInfo.within_selection}
-            <button
-              style="padding-left: 1rem;"
-              class="ml-1 btn btn-dark-slate flex-0 mr-3 whitespace-nowrap"
-              on:click={() => (searchScopeInfo = {})}
-              ><Fa icon={faMinus} class="inline mr-1" />
-              Within Selection</button
-            >
-            <div class="text-slate-600">
-              {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
-            </div>
-          {/if}
-
-          <div>
-            <input
-              class="mx-2 p-1 rounded bg-slate-50 indigo:bg-indigo-500 w-16 focus:ring-1 focus:ring-blue-600"
-              type="number"
-              min="0"
-              max="500"
-              step="5"
-              bind:value={numSamples}
-            />
-            samples
-          </div>
-          <button
-            class="my-3 ml-1 btn btn-blue disabled:opacity-50"
-            disabled={runningSampler}
-            on:click={() => dispatch('runsampler')}>Find Slices</button
+            class="btn btn-blue disabled:opacity-50"
+            on:click={() => dispatch('loadmore')}>Load More</button
           >
         </div>
       {/if}
     </div>
-  </div>
-  <div class="flex-1 min-h-0" class:disable-div={runningSampler}>
-    <SliceTable
-      {slices}
-      {savedSlices}
-      {sliceColorMap}
-      bind:selectedSlices
-      bind:sliceRequests
-      bind:sliceRequestResults
-      {positiveOnly}
-      {valueNames}
-      {allowedValues}
-      showHeader={false}
-      bind:metricInfo
-      bind:metricNames
-      bind:scoreNames
-      bind:scoreWidthScalers
-      bind:showScores
-      on:newsearch={(e) => {
-        updateEditingControl(e.detail.type, e.detail.base_slice);
-        toggleSliceControl(e.detail.type, true);
-      }}
-      on:saveslice
-    />
-    {#if slices.length > 0}
-      <div class="mt-2">
-        <button
-          class="btn btn-blue disabled:opacity-50"
-          on:click={() => dispatch('loadmore')}>Load More</button
-        >
-      </div>
-    {/if}
   </div>
 </div>
 

@@ -16,6 +16,7 @@
     ideal_fraction?: number;
     spread?: number;
     inverse?: boolean;
+    editable?: boolean;
   };
   export let weight: number;
 
@@ -42,7 +43,7 @@
   let wasEditing = false;
   $: if (!wasEditing && editing) {
     editingName = name;
-    editingConfig = config;
+    editingConfig = { ...config };
     editingConfig.inverse = editingConfig.inverse ?? false;
     wasEditing = true;
   } else if (!editing) {
@@ -52,12 +53,13 @@
 
 <button
   on:click={(e) => (editing = true)}
+  disabled={!(config?.editable ?? true)}
   class="bg-transparent w-full text-left rounded {editing
     ? 'outline outline-1 outline-slate-400 mb-2'
     : 'hover:bg-slate-100'}"
 >
   <div
-    class="px-2 py-1 flex flex-wrap items-center text-sm w-full cursor-pointer"
+    class="px-2 py-1 flex flex-wrap items-center text-sm w-full cursor-pointer pointer-events-auto"
   >
     <div class="flex-auto shrink-0 mr-2">
       {#if editing}
@@ -74,7 +76,7 @@
     {#if !editing}
       <div class="flex items-center">
         <Checkbox
-          colorClass={weight > 0.0 ? 'bg-blue-600' : null}
+          colorClass={weight > 0.0 ? 'bg-slate-500' : null}
           checked={weight > 0.0}
           on:change={(e) => {
             if (!e.detail) {
@@ -112,6 +114,7 @@
       <div class="font-bold">Type</div>
       <select class="flat-select flex-auto" bind:value={editingConfig.type}>
         <option value="OutcomeRateScore">Outcome Rate</option>
+        <option value="OutcomeShareScore">Outcome Share</option>
         <option value="MeanDifferenceScore">Mean Difference</option>
         <option value="SliceSizeScore">Slice Size</option>
         <option value="NumFeaturesScore">Slice Complexity</option>
@@ -127,6 +130,18 @@
             <option value={false}>true</option>
             <option value={true}>false</option>
           </select>:
+        </div>
+        <MetricExpressionEditor
+          bind:metricExpressionRequest
+          bind:metricExpressionResponse
+          bind:expression={editingConfig.metric}
+          placeholder="Type a binary expression using metrics"
+          {metricNames}
+        />
+      {:else if editingConfig.type == 'OutcomeShareScore'}
+        <div class="text-xs text-slate-700 mb-2">
+          Prioritize slices where most of the instances matching the binary
+          expression are included:
         </div>
         <MetricExpressionEditor
           bind:metricExpressionRequest
@@ -159,6 +174,12 @@
           max={1}
           step={0.01}
           bind:value={editingConfig.ideal_fraction}
+          on:input={() =>
+            (editingConfig.spread =
+              Math.min(
+                editingConfig.ideal_fraction,
+                1 - editingConfig.ideal_fraction
+              ) * 0.5)}
           class="w-full"
         />
       {:else if editingConfig.type == 'NumFeaturesScore'}

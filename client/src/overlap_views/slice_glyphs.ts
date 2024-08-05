@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 
 export enum OutcomeColors {
   False = '#fff',
-  True = '#94a3b8',
+  True = '#172554',
 }
 
 export const GlyphBorderColor = '#cbd5e1';
@@ -49,21 +49,6 @@ export function drawSliceGlyphCanvas(
       ctx.stroke();
       sliceIdx++;
     });
-  }
-
-  if (outlineWidth > 0) {
-    ctx.beginPath();
-    ctx.arc(
-      0,
-      0,
-      Math.ceil(radius * (numSlices > 0 ? 0.7 : 0.5) + 2),
-      0,
-      2 * Math.PI,
-      false
-    );
-    ctx.strokeStyle = GlyphOutlineColor;
-    ctx.lineWidth = outlineWidth;
-    ctx.stroke();
   }
 }
 

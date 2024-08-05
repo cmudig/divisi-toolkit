@@ -9,17 +9,17 @@
   export let slices: Array<Slice> = [];
 
   export let sliceColorMap: { [key: string]: string } = {};
+  export let allowDragAndDrop: boolean = true;
 
   // $: console.log('sliceColorMap at SliceCurationTable:', sliceColorMap);
   $: console.log('Current sliceColorMap in SliceCurationTable:', sliceColorMap);
 
   export let baseSlice: Slice = null;
+  export let hoveredSlice: Slice = {};
   export let sliceRequests: { [key: string]: any } = {};
   export let sliceRequestResults: { [key: string]: Slice } = {};
 
   export let positiveOnly = false;
-
-  export let valueNames: any = {};
 
   export let selectedSlices = [];
   export let savedSlices = [];
@@ -48,15 +48,7 @@
     metricInfo = {};
   }
 
-  let allowedValues;
-  $: if (!!valueNames && valueNames.hasOwnProperty('subscribe')) {
-    allowedValues = {};
-    Object.entries($valueNames).forEach((item) => {
-      allowedValues[item[1][0]] = Object.values(item[1][1]);
-    });
-  } else {
-    allowedValues = null;
-  }
+  export let allowedValues: { [key: string]: string[] } | null = null;
 
   function updateMetricInfo(testMetrics) {
     let oldMetricInfo = metricInfo;
@@ -102,13 +94,13 @@
       {baseSlice}
       {savedSlices}
       {sliceColorMap}
+      {allowDragAndDrop}
       bind:selectedSlices
       bind:sliceRequests
       bind:sliceRequestResults
       {positiveOnly}
-      {valueNames}
       {allowedValues}
-      showHeader={true}
+      showHeader={false}
       bind:metricInfo
       bind:metricNames
       showScores={false}
@@ -117,6 +109,7 @@
         // toggleSliceControl(e.detail.type, true);
       }}
       on:saveslice
+      on:hover={(e) => (hoveredSlice = e.detail)}
     />
   </div>
 </div>

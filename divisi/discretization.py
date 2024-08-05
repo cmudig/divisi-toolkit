@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import scipy.sparse as sps
 import tqdm
+import pickle
+from .projections import Projection
 
 class DiscretizedData:
     def __init__(self, discrete_data, value_names):
@@ -25,6 +27,10 @@ class DiscretizedData:
         value_names_iter = enumerate(self.value_names) if isinstance(self.value_names, list) else self.value_names.items()
         for enc_key, (dec_key, dec_values) in value_names_iter:
             self.inverse_value_mapping[dec_key] = (enc_key, {v: k for k, v in dec_values.items()})
+            
+        self.projections = {} # map from method to Projection object
+        self._one_hot_matrix = None
+        self._one_hot_labels = None
         
     def __contains__(self, col_name):
         return col_name in self.inverse_value_mapping
@@ -157,6 +163,69 @@ class DiscretizedData:
                     return ExcludeIfAll(list(decoded_allowed.values()))
                 
         return filter_obj.replace(replacer)
+    
+    @property
+    def one_hot_matrix(self):
+        if self._one_hot_matrix is None:
+            self._one_hot_matrix = np.hstack([
+                np.vstack([self.df[:,i] == x for x in sorted(self.value_names[i][1].keys())]).T
+                for i in range(self.df.shape[1])
+            ])
+        return self._one_hot_matrix
+    
+    @property
+    def one_hot_labels(self):
+        if self._one_hot_labels is None:
+            self._one_hot_labels = [
+                f"{self.value_names[i][0]} = {self.value_names[i][1][x]}"
+                for i in range(self.df.shape[1])
+                for x in sorted(self.value_names[i][1].keys())
+            ]
+        return self._one_hot_labels
+    
+    def get_projection(self, method='tsne'):
+        """
+        Creates a Projection if it does not already exist, using the given method.
+        """
+        if method not in self.projections:    
+            if method.lower() == 'tsne':
+                from sklearn.manifold import TSNE
+                coords = TSNE(verbose=False, metric='cosine').fit_transform(self.one_hot_matrix)
+            elif method.lower() == 'umap':
+                try:
+                    from umap import UMAP
+                except:
+                    raise ValueError("Package 'umap-learn' required to use method 'umap'")
+                else:
+                    coords = UMAP().fit_transform(self.one_hot_matrix)                
+            else:
+                raise ValueError(f"Unsupported projection method '{method}'")
+            coords = (coords - coords.min(axis=0)) / (coords.max(axis=0) - coords.min(axis=0))
+            self.projections[method] = Projection(coords.astype(np.float32))
+            
+        return self.projections[method]
+        
+    def save(self, filepath, save_projections=True):
+        """Saves the DiscretizedData to file. A pickle file containing
+        the discretized dataframe and any associated projections (if save_projections
+        is True) is saved."""
+        with open(filepath, 'wb') as file:
+            pickle.dump({
+                "df": self.df,
+                "value_names": self.value_names,
+                **({"projections": {n: proj.coords for n, proj in self.projections.items()}}
+                   if save_projections else {})
+            }, file)
+            
+    @classmethod
+    def load(cls, filepath):
+        """Loads a DiscretizedData from a pickle file."""
+        with open(filepath, 'rb') as file:
+            data = pickle.load(file)
+            dd = cls(data["df"], data["value_names"])
+            if "projections" in data:
+                dd.projections = {method: Projection(coords) for method, coords in data["projections"].items()}
+        return dd
     
 def _represent_bin(bins, i, quantile=False):
     if quantile:
