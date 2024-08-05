@@ -116,7 +116,7 @@
 
   let oldSliceToShow: Slice;
   $: if (oldSliceToShow !== sliceToShow) {
-    if (hovering) dispatch('hover', sliceToShow);
+    if (hovering && !!sliceToShow) dispatch('hover', sliceToShow);
     oldSliceToShow = sliceToShow;
   }
 </script>
@@ -145,6 +145,10 @@
       dragging = true;
     }}
     on:dragend={() => (dragging = false)}
+    on:dragover|stopPropagation|preventDefault={dragging
+      ? (e) => (e.dataTransfer.dropEffect = 'none')
+      : undefined}
+    on:drop={dragging ? (e) => e.preventDefault() : undefined}
   >
     {#if isEditing}
       <div class="py-1 pr-2 w-full h-full">
@@ -330,7 +334,10 @@
               {#if custom}
                 <button
                   class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
-                  on:click={() => dispatch('delete')}
+                  on:click={() => {
+                    dispatch('hover', {});
+                    dispatch('delete');
+                  }}
                   title="Delete this custom slice"><Fa icon={faTrash} /></button
                 >
               {/if}

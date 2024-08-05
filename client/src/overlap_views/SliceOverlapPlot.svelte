@@ -5,7 +5,11 @@
   import SliceMetricBar from '../metric_charts/SliceMetricBar.svelte';
   import { onMount } from 'svelte';
   import SliceLegendGlyph from './SliceLegendGlyph.svelte';
-  import { areObjectsEqual, featureNeedsParentheses } from '../utils/utils';
+  import {
+    areObjectsEqual,
+    featureNeedsParentheses,
+    randomStringRep,
+  } from '../utils/utils';
   import type { Slice } from '../utils/slice.type';
   import Hoverable from '../utils/Hoverable.svelte';
   import Fa from 'svelte-fa';
@@ -68,6 +72,7 @@
     sliceColorMap = Object.fromEntries(
       selectedSlices.map((slice, ind) => [slice.stringRep, colorScale(ind)])
     );
+    console.log(sliceColorMap);
   }
   $: assignColorToSlice(selectedSlices);
 
@@ -157,38 +162,46 @@
     };
   }
 
-  function setSearchScopeToSlice(intersection: {
+  function getSliceForIntersection(intersection: {
     slices: number[];
     count: number;
-  }) {
-    // construct an intersection slice
+  }): Slice {
+    let feature = { type: 'base' };
     if (labels.length > 0) {
       let negateIfNeeded: (label: { feature: any }, index: number) => any = (
         label,
         index
       ) => {
-        console.log('negating if needed:', label, intersection.slices[index]);
         if (!intersection.slices[index])
           return { type: 'negation', feature: label.feature };
         return label.feature;
       };
-      console.log('Setting search scope to slice');
-      searchScopeInfo = {
-        within_slice: labels.slice(1).reduce(
-          (prev, curr, i) => ({
-            type: 'and',
-            lhs: prev,
-            rhs: negateIfNeeded(curr, i + 1),
-          }),
-          negateIfNeeded(labels[0], 0)
-        ),
-        // within_selection: pointData
-        //   .filter((d) => d.slices.every((s, i) => intersection.slices[i] == s))
-        //   .map((d) => d.cluster),
-        // proportion: intersection.count / totalInstances,
-      };
-    } else searchScopeInfo = {};
-    // searchScopeInfo = { within_slice}
+      feature = labels.slice(1).reduce(
+        (prev, curr, i) => ({
+          type: 'and',
+          lhs: prev,
+          rhs: negateIfNeeded(curr, i + 1),
+        }),
+        negateIfNeeded(labels[0], 0)
+      );
+    }
+    return {
+      stringRep: randomStringRep(),
+      rawFeature: { type: 'base' },
+      scoreValues: {},
+      metrics: {},
+      feature,
+      isEmpty: feature.type != 'base',
+    };
+  }
+
+  function setSearchScopeToSlice(intersection: {
+    slices: number[];
+    count: number;
+  }) {
+    let intersectionSlice = getSliceForIntersection(intersection);
+    if (intersectionSlice.isEmpty) searchScopeInfo = {};
+    else searchScopeInfo = { within_slice: intersectionSlice.feature };
   }
 
   $: console.log('Search scope INFO:', searchScopeInfo);
@@ -262,6 +275,7 @@
   let draggingOverContainer: boolean = false;
 
   function handleDrop(e: DragEvent) {
+    if (!draggingOverContainer) return;
     draggingOverContainer = false;
     if (!!e.dataTransfer.getData('slice')) {
       e.stopPropagation();
@@ -348,13 +362,21 @@
     {/if}
     <div class="absolute top-0 left-0 right-0 pt-2 px-2">
       <div class="flex items-start flex-wrap gap-2">
-        {#each collapseSlices ? d3.range(labels.length, labels.length + 1) : d3.range(labels.length + 1) as sliceIndex (sliceIndex)}
+        {#each d3.range(labels.length + 1) as sliceIndex (sliceIndex)}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <Hoverable class={wideMode ? 'basis-2/5 grow' : 'basis-full'}>
+          <Hoverable
+            class={collapseSlices && labels.length > sliceIndex
+              ? 'w-8 h-8 aspect-square'
+              : wideMode
+                ? 'basis-2/5 grow'
+                : 'basis-full'}
+          >
             <div
               slot="default"
               let:hovering
-              class="w-full flex items-center gap-2 rounded-md p-2 select-none duration-500 {!!hoveredSlices &&
+              class="flex {collapseSlices
+                ? 'justify-center items-center h-full'
+                : 'items-start'} rounded-md w-full p-2 select-none duration-500 {!!hoveredSlices &&
               !hoveredSlices[sliceIndex]
                 ? 'opacity-30'
                 : ''} {labels.length > sliceIndex
@@ -405,40 +427,49 @@
               on:drop={handleDrop}
             >
               {#if labels.length > sliceIndex}
-                <div class="flex-auto text-xs {hovering ? '' : 'line-clamp-1'}">
-                  {@html describeSlice(labels[sliceIndex].feature)}
-                </div>
-                {#if hovering}
-                  {@const saveIdx = savedSlices.findIndex((s) =>
-                    areObjectsEqual(s.feature, labels[sliceIndex].feature)
-                  )}
-                  <button
-                    class="bg-transparent hover:opacity-60 p-1 text-slate-600"
-                    title="Save this slice"
-                    on:click|stopPropagation={() => {
-                      if (saveIdx >= 0)
-                        savedSlices = [
-                          ...savedSlices.slice(0, saveIdx),
-                          ...savedSlices.slice(saveIdx + 1),
-                        ];
-                      else
-                        savedSlices = [
-                          ...savedSlices,
-                          selectedSlices[sliceIndex],
-                        ];
-                    }}
-                    ><Fa
-                      icon={saveIdx >= 0 ? faHeart : faHeartOutline}
-                    /></button
+                {#if !collapseSlices}
+                  <div
+                    class="flex-auto text-xs mr-2 {hovering
+                      ? ''
+                      : 'line-clamp-1'}"
                   >
+                    {@html describeSlice(labels[sliceIndex].feature)}
+                  </div>
+                {/if}
+                {#if hovering}
+                  {#if !collapseSlices}
+                    {@const saveIdx = savedSlices.findIndex((s) =>
+                      areObjectsEqual(s.feature, labels[sliceIndex].feature)
+                    )}
+                    <button
+                      class="bg-transparent hover:opacity-60 p-1 text-xs text-slate-600"
+                      title="Save this slice"
+                      on:click|stopPropagation={() => {
+                        if (saveIdx >= 0)
+                          savedSlices = [
+                            ...savedSlices.slice(0, saveIdx),
+                            ...savedSlices.slice(saveIdx + 1),
+                          ];
+                        else
+                          savedSlices = [
+                            ...savedSlices,
+                            selectedSlices[sliceIndex],
+                          ];
+                      }}
+                      ><Fa
+                        icon={saveIdx >= 0 ? faHeart : faHeartOutline}
+                      /></button
+                    >
+                  {/if}
                   <button
-                    class="bg-transparent p-1 hover:opacity-50 text-slate-600"
+                    class="bg-transparent p-1 hover:opacity-50 text-xs text-slate-600"
                     on:click|stopPropagation={(e) => {
                       selectedSlices = [
                         ...selectedSlices.slice(0, sliceIndex),
                         ...selectedSlices.slice(sliceIndex + 1),
                       ];
-                    }}><Fa icon={faTrash} class="inline" /></button
+                      hoveredClusters = new Set();
+                    }}><Fa icon={faTrash} /></button
                   >
                 {/if}
               {:else}
@@ -467,6 +498,10 @@
         null || searchScopeEnrichedFeatures.length > 0
         ? 'left-0 flex gap-2 justify-between items-end'
         : ''}"
+      on:dragover|preventDefault|stopPropagation={(e) =>
+        (draggingOverContainer = false)}
+      on:dragleave|preventDefault|stopPropagation={() =>
+        (draggingOverContainer = true)}
     >
       {#if hoveredPointIndex != null || searchScopeEnrichedFeatures.length > 0}
         <div class="p-1 bg-slate-100/80 rounded">
@@ -476,7 +511,7 @@
           {/each}
         </div>
       {/if}
-      <div class="p-1 bg-slate-100/80 rounded pointer-events-auto">
+      <div class="p-1 bg-slate-100/80 rounded pointer-events-auto select-none">
         <div class="flex items-center w-full">
           <div class="flex-auto text-xs font-bold text-slate-500">
             Slice Intersections
@@ -491,56 +526,69 @@
           >
         </div>
         {#if !collapseIntersections}
-          {#each sortedIntersections as intersection, intIndex}
-            {@const numSlices = intersection.slices.reduce((a, b) => a + b, 0)}
-            {@const errorRateString = d3.format('.1%')(
-              intersection[errorKey] / intersection.count
-            )}
-            <button
-              class="text-left bg-transparent flex items-center w-full justify-end gap-2 transition-opacity duration-700 delay-100"
-              class:opacity-30={!!hoveredSliceInfo &&
-                !hoveredSliceInfo.slices.every(
-                  (s, i) => intersection.slices[i] == s
-                )}
-              on:mouseenter={() => {
-                hoveredSlices = intersection.slices;
-              }}
-              on:mouseleave={() => {
-                hoveredSlices = intersection.slices;
-              }}
-              on:click={() => setSearchScopeToSlice(intersection)}
-              title="{intersection.count} points included in {numSlices} slice{numSlices !=
-              1
-                ? 's'
-                : ''}, with an error rate of {errorRateString}"
-            >
-              <SliceLegendGlyph {intersection} {sliceColors} />
-              <!-- <p class="flex-auto">{intersection.slices}</p> -->
-              <div class="flex-auto">
-                <SliceMetricBar
-                  value={intersection[errorKey] / intersection.count}
-                  color={OutcomeColors.True}
-                  width={wideMode ? 64 : null}
-                  showFullBar
-                  fullBarColor={OutcomeColors.False}
-                  horizontalLayout
-                  ><div
-                    slot="caption"
-                    class="ml-1"
-                    style="width: {wideMode ? '100px' : '0'};"
+          <div style="max-height: 160px;" class="w-full mr-4 overflow-y-auto">
+            {#each sortedIntersections as intersection, intIndex}
+              {@const numSlices = intersection.slices.reduce(
+                (a, b) => a + b,
+                0
+              )}
+              {@const errorRateString = d3.format('.1%')(
+                intersection[errorKey] / intersection.count
+              )}
+              <div
+                class="text-left bg-transparent flex items-center w-full justify-end gap-2 transition-opacity duration-700 delay-100 cursor-pointer"
+                class:opacity-30={!!hoveredSliceInfo &&
+                  !hoveredSliceInfo.slices.every(
+                    (s, i) => intersection.slices[i] == s
+                  )}
+                on:mouseenter={() => {
+                  hoveredSlices = intersection.slices;
+                }}
+                on:mouseleave={() => {
+                  hoveredSlices = null;
+                }}
+                on:click={() => setSearchScopeToSlice(intersection)}
+                draggable={true}
+                on:dragstart|stopPropagation={(e) => {
+                  hoveredSlices = null;
+                  e.dataTransfer.setData(
+                    'slice',
+                    JSON.stringify(getSliceForIntersection(intersection))
+                  );
+                }}
+                title="{intersection.count} points included in {numSlices} slice{numSlices !=
+                1
+                  ? 's'
+                  : ''}, with an error rate of {errorRateString}"
+              >
+                <SliceLegendGlyph {intersection} {sliceColors} />
+                <!-- <p class="flex-auto">{intersection.slices}</p> -->
+                <div class="flex-auto">
+                  <SliceMetricBar
+                    value={intersection[errorKey] / intersection.count}
+                    color={OutcomeColors.True}
+                    width={wideMode ? 64 : null}
+                    showFullBar
+                    fullBarColor={OutcomeColors.False}
+                    horizontalLayout
+                    ><div
+                      slot="caption"
+                      class="ml-1"
+                      style="width: {wideMode ? '100px' : '0'};"
+                    >
+                      {#if wideMode}
+                        {d3.format(',')(intersection.count)} ({errorRateString}
+                        <span
+                          class="inline-block rounded-full w-2 h-2 align-middle"
+                          style="background-color: #94a3b8;"
+                        />)
+                      {/if}
+                    </div></SliceMetricBar
                   >
-                    {#if wideMode}
-                      {d3.format(',')(intersection.count)} ({errorRateString}
-                      <span
-                        class="inline-block rounded-full w-2 h-2 align-middle"
-                        style="background-color: #94a3b8;"
-                      />)
-                    {/if}
-                  </div></SliceMetricBar
-                >
+                </div>
               </div>
-            </button>
-          {/each}
+            {/each}
+          </div>
         {/if}
         {#if errorKeyOptions.length > 0}
           <div class="mt-1 flex items-center w-full">

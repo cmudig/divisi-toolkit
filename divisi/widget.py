@@ -544,7 +544,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
             slice_masks[slice_obj] = manager.slice_mask(slice_obj).cpu().numpy()
                     
         slice_order = list(slice_masks.keys())
-        labels = [self.get_slice_description(s) for s in slice_order]
+        labels = [{**self.get_slice_description(s), "stringRep": self.selected_slices[i]["stringRep"]} 
+                   for i, s in enumerate(slice_order)]
         
         intersect_counts = []
         base_mask = np.arange(manager.df.shape[0])[manager.eval_mask]
@@ -576,6 +577,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.slice_intersection_counts = intersect_counts 
         self.slice_intersection_labels = labels
 
+        print("Calculated intersection counts", len(slice_masks))
         if self.projection is not None and overlap_metric:
             error_metric = self.derived_metrics[overlap_metric]
             if isinstance(error_metric, dict): error_metric = error_metric["data"]
@@ -595,6 +597,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             enriched_cluster_features = {cluster: [self.slice_finder.eval_data.one_hot_labels[top_features[i]]]
                                          for i, cluster in enumerate(cluster_sums.index)}
             
+            print("Calculated grouped map layout")
             self.grouped_map_layout = {
                 'overlap_plot_metric': overlap_metric,
                 'labels': labels,
@@ -634,5 +637,5 @@ class SliceFinderWidget(anywidget.AnyWidget):
             }
             self.map_clusters = None
             
-        if self.hovered_slice is not None:
+        if self.hovered_slice:
             self.update_hovered_slice()
