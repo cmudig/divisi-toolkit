@@ -164,24 +164,28 @@
         />
       {:else if editingConfig.type == 'SliceSizeScore'}
         <div class="text-xs text-slate-700 mb-2">
-          Prioritize slices that match approximately <strong
-            >{d3.format('.0%')(editingConfig.ideal_fraction)}</strong
-          > of the dataset.
+          Prioritize slices that match approximately this fraction of the
+          dataset.
         </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          bind:value={editingConfig.ideal_fraction}
-          on:input={() =>
-            (editingConfig.spread =
-              Math.min(
-                editingConfig.ideal_fraction,
-                1 - editingConfig.ideal_fraction
-              ) * 0.5)}
-          class="w-full"
-        />
+        <div class="flex items-center">
+          <div class="font-bold">
+            {d3.format('.0%')(editingConfig.ideal_fraction)}
+          </div>
+          <input
+            class="ml-1 flex-auto"
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            bind:value={editingConfig.ideal_fraction}
+            on:input={() =>
+              (editingConfig.spread =
+                Math.min(
+                  editingConfig.ideal_fraction,
+                  1 - editingConfig.ideal_fraction
+                ) * 0.5)}
+          />
+        </div>
       {:else if editingConfig.type == 'NumFeaturesScore'}
         <div class="text-xs text-slate-700">
           Prioritize slices with fewer features in the rule.

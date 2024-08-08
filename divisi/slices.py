@@ -374,8 +374,6 @@ class IntersectionSlice(Slice):
         ablated_slices = [(exclude_feature, IntersectionSlice([f for f in self.base_features if f != exclude_feature]))
                           for exclude_feature in self.base_features]
         ablated_scores = [(*s, base_score - score_fn(s[1])) for s in ablated_slices]
-        print(self, ablated_scores, "RESULT:", IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
-                                 self.score_values))
         return IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
                                  self.score_values)
         

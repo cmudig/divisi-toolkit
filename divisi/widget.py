@@ -84,6 +84,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     
     thread_starter = traitlets.Any(default_thread_starter)
     
+    search_scope_for_results = traitlets.Dict({}).tag(sync=True) # the search scope that is actually used in the results
     search_scope_info = traitlets.Dict({}).tag(sync=True)
     search_scope_enriched_features = traitlets.List([]).tag(sync=True)
     
@@ -292,7 +293,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
     @traitlets.observe("should_rerun")
     def rerun_flag_changed(self, change):
         if change.new:
-            self.rerun_sampler()
+            if self.search_scope_for_results != self.search_scope_info:
+                self.update_search_scopes()
+                if self.search_scope_info.get('within_slice') or self.search_scope_info.get('within_selection'):
+                    self.rerun_sampler()
+                self.should_rerun = False
+            else:
+                self.rerun_sampler()
             
     def rerun_sampler(self):
         self.thread_starter(self._rerun_sampler_background)
@@ -305,6 +312,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.running_sampler = True
         self.sampler_run_progress = 0.0
         self.num_slices = 10
+        self.search_scope_for_results = {**self.search_scope_info}
         
         try:
             sample_step = max(self.num_samples // 5, 50)
@@ -375,8 +383,32 @@ class SliceFinderWidget(anywidget.AnyWidget):
         else:
             return spec["score_weights"]
         
-    @traitlets.observe("search_scope_info")        
-    def update_search_scopes(self, change=None):
+    @traitlets.observe("search_scope_info", "hovered_slice")
+    def update_top_feature(self, change=None):
+        mask = None
+        if self.hovered_slice or 'within_slice' in self.search_scope_info:
+            hover_slice = self.slice_finder.results.encode_slice(self.search_scope_info.get('within_slice', self.hovered_slice['feature']))
+            mask = hover_slice.make_mask(self.slice_finder.results.eval_df,
+                                         univariate_masks=self.slice_finder.results.univariate_masks,
+                                         device=self.slice_finder.results.device)
+        elif 'within_selection' in self.search_scope_info and len(self.search_scope_info['within_selection']):
+            if self.map_clusters is None:
+                print("Can't get top feature for selection without map_clusters")
+                self.search_scope_enriched_features = []
+                return
+            
+            ids = self.search_scope_info["within_selection"]
+            mask = self.map_clusters.isin(ids)
+        
+        if mask is not None:
+            one_hot = self.slice_finder.eval_data.one_hot_matrix
+            feature_means = one_hot[mask].mean(axis=0)
+            top_feature = np.argmax(feature_means * self.idf)
+            self.search_scope_enriched_features = [self.slice_finder.eval_data.one_hot_labels[top_feature]]
+        else:
+            self.search_scope_enriched_features = []
+        
+    def update_search_scopes(self):
         if not self.slice_finder: return
         
         search_info = self.search_scope_info
@@ -385,6 +417,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.slice_finder = self.original_slice_finder
             self.score_weights = {s: w for s, w in self.score_weights.items() if not s.startswith("Search Scope")}
             self.search_scope_mask = None
+            self.search_scope_for_results = {}
             self._slice_description_cache = {}
             self.search_scope_enriched_features = []
             self.rerank_results()
@@ -463,12 +496,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},
                               **{n: 1.0 for n in new_score_fns}}
         self._slice_description_cache = {}
-        self.rerank_results()
-        
-        one_hot = self.slice_finder.eval_data.one_hot_matrix
-        feature_means = one_hot[self.search_scope_mask[self.slice_finder.results.eval_indexes]].mean(axis=0)
-        top_feature = np.argmax(feature_means * self.idf)
-        self.search_scope_enriched_features = [self.slice_finder.eval_data.one_hot_labels[top_feature]]
+        self.rerank_results()        
 
     @traitlets.observe("score_function_config")
     def update_score_functions(self, change=None):

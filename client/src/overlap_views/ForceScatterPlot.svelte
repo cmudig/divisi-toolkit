@@ -323,10 +323,8 @@
     let closest = positionMap.hitTest(hoveredMousePosition);
     if (!!closest) {
       hoveredPointIndex = closest.represented;
-      hoveredSlices = closest.attr('slices');
     } else {
       hoveredPointIndex = null;
-      hoveredSlices = null;
     }
   }
 
@@ -356,18 +354,7 @@
     mouseDown = false;
   }
 
-  function handleClick(e: MouseEvent, delayed = false) {
-    if (!delayed) {
-      setTimeout(() => {
-        if (disableClick) {
-          setTimeout(() => (disableClick = false), 200);
-          return;
-        }
-        handleClick(e, true);
-      }, 200);
-      return;
-    }
-
+  function handleClick(e: MouseEvent) {
     mouseDown = false;
     if (disableClick) {
       disableClick = false;
@@ -402,44 +389,6 @@
         }),
       200
     );
-  }
-
-  function handleDoubleClick(e: MouseEvent) {
-    mouseDown = false;
-    disableClick = true;
-    let rect = e.target.getBoundingClientRect();
-    let pos = [e.clientX - rect.left, e.clientY - rect.top];
-    let closest = positionMap.hitTest(pos);
-    let newSelection = [...selectedClusters];
-    if (!!closest) {
-      let newSlices = closest.attr('slices');
-      let matchingClusters: Set<number> = new Set(
-        pointData
-          .filter((d) => d.slices.every((s, i) => newSlices[i] == s))
-          .map((d) => d.cluster)
-      );
-      if (e.shiftKey || e.ctrlKey || e.metaKey) {
-        let containsSlices = selectedClusters.find((c) =>
-          matchingClusters.has(c)
-        );
-        if (containsSlices) {
-          newSelection = newSelection.filter((c) => !matchingClusters.has(c));
-        } else newSelection = [...newSelection, ...matchingClusters];
-      } else newSelection = [...matchingClusters];
-    } else {
-      return;
-    }
-    dispatch('selectClusters', {
-      ids: newSelection,
-      num_instances:
-        newSelection.length == 0
-          ? 0
-          : pointData.reduce(
-              (sum, d) => sum + (newSelection.includes(d.cluster) ? d.size : 0),
-              0
-            ),
-    });
-    e.stopImmediatePropagation();
   }
 
   let oldHoverIdx = null;
@@ -485,7 +434,6 @@
     hoveredSlices = null;
   }}
   on:click={handleClick}
-  on:dblclick={handleDoubleClick}
 >
   <LayerCake
     padding={{ top: 0, right: 0, bottom: 0, left: 0 }}

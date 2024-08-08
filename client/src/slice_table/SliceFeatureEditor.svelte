@@ -106,12 +106,12 @@
       />
     </div>
     <button
-      class="bg-transparent hover:opacity-60 mx-1 text-slate-600 text-lg"
+      class="bg-transparent hover:opacity-60 px-1 py-2 text-slate-600 text-lg"
       on:click={() => dispatch('cancel')}
       title="Cancel the edit"><Fa icon={faXmark} /></button
     >
     <button
-      class="bg-transparent hover:opacity-60 mx-1 text-slate-600 text-lg disabled:opacity-50"
+      class="bg-transparent hover:opacity-60 px-1 py-2 text-slate-600 text-lg disabled:opacity-50"
       disabled={!!errorText}
       on:mousedown|preventDefault|stopPropagation={() => {}}
       on:click|preventDefault={() => {

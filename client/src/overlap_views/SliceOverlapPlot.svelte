@@ -504,10 +504,21 @@
         (draggingOverContainer = true)}
     >
       {#if hoveredPointIndex != null || searchScopeEnrichedFeatures.length > 0}
-        <div class="p-1 bg-slate-100/80 rounded">
-          <div class="text-xs font-bold text-slate-500 mb-1">Top Feature</div>
+        <div class="p-1 bg-slate-100/80 rounded text-xs text-slate-700">
+          {#if hoveredPointIndex != null}
+            {@const hoveredClusterSize =
+              pointData.find((p) => p.cluster == hoveredPointIndex)?.size ?? 0}
+            <div class="mb-1">
+              {hoveredClusterSize}
+              {hoveredClusterSize != 1 ? 'instances' : 'instance'}
+            </div>
+          {/if}
           {#each hoveredPointIndex != null ? groupedLayout.enriched_cluster_features[hoveredPointIndex] : searchScopeEnrichedFeatures as f}
-            <div class="mb-1 text-xs">{@html formatEnrichedFeature(f)}</div>
+            <div class="mb-1">
+              <strong>TOP FEATURE:&nbsp;</strong>{@html formatEnrichedFeature(
+                f
+              )}
+            </div>
           {/each}
         </div>
       {/if}

@@ -8,6 +8,7 @@
   import { featureToString, parseFeature } from '../utils/slice_parsing';
 
   export let searchScopeInfo: any = {};
+  export let searchScopeNeedsRerun: boolean = false;
   export let positiveOnly: boolean = false;
   export let allowedValues: { [key: string]: string[] } | null = null;
 
@@ -28,7 +29,7 @@
 <div
   class="w-full p-1 border-2 rounded-md {dragOver
     ? 'border-blue-400'
-    : 'border-transparent'}"
+    : 'border-transparent'} {searchScopeNeedsRerun ? 'bg-orange-100' : ''}"
   on:dragover={(e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -111,15 +112,18 @@
     </div>
   {:else}
     <div
-      class="w-full h-full flex items-center gap-2 rounded-md p-2 select-none bg-slate-200/80"
+      class="w-full h-full rounded-md p-4 select-none bg-slate-200/80 text-xs text-center text-slate-500"
     >
-      <div class="my-1 flex-auto text-xs text-slate-500 text-center">
-        Drag and drop a slice or <a
-          class="text-blue-600"
-          href="#"
-          on:click={() => (editingSlice = true)}>define manually</a
-        >
-      </div>
+      Drag and drop a slice, select in the overlap plot, or <a
+        class="text-blue-600"
+        href="#"
+        on:click={() => (editingSlice = true)}>define manually</a
+      >
+    </div>
+  {/if}
+  {#if searchScopeNeedsRerun}
+    <div class="w-full p-2 text-orange-700 text-xs">
+      Click <strong>Find Slices Here</strong> above to search within this scope.
     </div>
   {/if}
 </div>

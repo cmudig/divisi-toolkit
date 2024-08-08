@@ -13,6 +13,7 @@
   import SearchScopeConfiguration from './SearchScopeConfiguration.svelte';
 
   export let showSearchScopeConfig: boolean = true;
+  export let searchScopeNeedsRerun: boolean = false;
   export let searchScopeInfo: any = {};
   export let positiveOnly: boolean = false;
   export let allowedValues: { [key: string]: string[] } | null = null;
@@ -145,6 +146,7 @@
     <SearchScopeConfiguration
       bind:searchScopeInfo
       {allowedValues}
+      {searchScopeNeedsRerun}
       {positiveOnly}
     />
   {/if}

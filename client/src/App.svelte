@@ -70,6 +70,7 @@
   let scoreWeights = traitlet(model, 'score_weights', {});
 
   let searchScopeInfo = traitlet(model, 'search_scope_info', {});
+  let searchScopeForResults = traitlet(model, 'search_scope_for_results', {});
   let searchScopeEnrichedFeatures = traitlet(
     model,
     'search_scope_enriched_features',
@@ -280,11 +281,26 @@
         </div>
       </div>
     {:else}
+      {#if !areObjectsEqual($searchScopeForResults, {})}
+        <button
+          class="btn btn-dark-slate"
+          on:click={() => {
+            $searchScopeInfo = {};
+            $shouldRerun = true;
+          }}>Show Global Results</button
+        >
+      {/if}
       <button
         class="btn btn-blue"
         disabled={$shouldRerun}
         on:click={() => ($shouldRerun = true)}
-        ><Fa icon={faSearch} class="inline mr-2" />Find Slices</button
+        ><Fa
+          icon={faSearch}
+          class="inline mr-2"
+        />{#if areObjectsEqual($searchScopeForResults, $searchScopeInfo)}Find {$slices.length >
+          0
+            ? 'More'
+            : ''} Slices{:else}Find Slices Here{/if}</button
       >
       <div class="flex-1" />
     {/if}
@@ -323,6 +339,10 @@
             showSearchScopeConfig={$interfaceMode == 'B'}
             {allowedValues}
             positiveOnly={$positiveOnly}
+            searchScopeNeedsRerun={!areObjectsEqual(
+              $searchScopeForResults,
+              $searchScopeInfo
+            ) && !areObjectsEqual($searchScopeInfo, {})}
             bind:searchScopeInfo={$searchScopeInfo}
             bind:derivedMetricConfigs={$derivedMetricConfigs}
             bind:hiddenMetrics
