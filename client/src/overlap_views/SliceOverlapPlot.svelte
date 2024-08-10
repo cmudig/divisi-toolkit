@@ -515,9 +515,8 @@
           {/if}
           {#each hoveredPointIndex != null ? groupedLayout.enriched_cluster_features[hoveredPointIndex] : searchScopeEnrichedFeatures as f}
             <div class="mb-1">
-              <strong>TOP FEATURE:&nbsp;</strong>{@html formatEnrichedFeature(
-                f
-              )}
+              <strong>Distinguishing Feature:&nbsp;</strong
+              >{@html formatEnrichedFeature(f)}
             </div>
           {/each}
         </div>

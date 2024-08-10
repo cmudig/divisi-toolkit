@@ -141,6 +141,7 @@
     {draggable}
     on:dragstart={(e) => {
       e.dataTransfer.setData('slice', JSON.stringify(sliceToShow));
+      dispatch('hover', {});
       hovering = false;
       dragging = true;
     }}

@@ -387,7 +387,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
     def update_top_feature(self, change=None):
         mask = None
         if self.hovered_slice or 'within_slice' in self.search_scope_info:
-            hover_slice = self.slice_finder.results.encode_slice(self.search_scope_info.get('within_slice', self.hovered_slice['feature']))
+            hover_slice = self.slice_finder.results.encode_slice(self.search_scope_info.get('within_slice', self.hovered_slice.get('feature')))
             mask = hover_slice.make_mask(self.slice_finder.results.eval_df,
                                          univariate_masks=self.slice_finder.results.univariate_masks,
                                          device=self.slice_finder.results.device)
@@ -407,6 +407,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.search_scope_enriched_features = [self.slice_finder.eval_data.one_hot_labels[top_feature]]
         else:
             self.search_scope_enriched_features = []
+        
+    @traitlets.observe("search_scope_info")
+    def on_search_scope_change(self, change=None):
+        self.search_scope_mask = None
         
     def update_search_scopes(self):
         if not self.slice_finder: return

@@ -64,6 +64,13 @@
     proportion?: number;
   } = {};
 
+  export let searchScopeForResults: {
+    within_slice?: any;
+    within_selection?: number[];
+    intersection?: { slices: number[] };
+    proportion?: number;
+  } = {};
+
   export let selectedSlices: Slice[] = [];
   export let savedSlices: Slice[] = [];
   export let customSlices: Slice[] = [];
@@ -220,35 +227,9 @@
   $: selectedInvisibleSlices = selectedSlices.filter(
     (s) => !slices.find((s2) => s2.stringRep === s.stringRep)
   );
-
-  let dragOver = false;
 </script>
 
-<div
-  class="w-full h-full flex flex-col relative {dragOver
-    ? 'border-4 border-blue-400'
-    : ''}"
-  on:dragover|preventDefault={(e) => {
-    dragOver = true;
-    e.dataTransfer.dropEffect = 'copy';
-  }}
-  on:dragleave|preventDefault={() => (dragOver = false)}
-  on:drop={(e) => {
-    dragOver = false;
-    if (!e.dataTransfer.getData('slice')) return;
-    console.log(e.dataTransfer.getData('slice'));
-    e.preventDefault();
-    e.stopPropagation();
-    let newSlice = JSON.parse(e.dataTransfer.getData('slice'));
-    customSlices = [
-      ...customSlices,
-      {
-        ...newSlice,
-        stringRep: randomStringRep(),
-      },
-    ];
-  }}
->
+<div class="w-full h-full flex flex-col relative">
   {#if !!baseSlice}
     <div class="bg-white w-full" bind:this={searchViewHeader}>
       <SliceTable
@@ -314,9 +295,10 @@
       <div
         class="mx-2 mb-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded sticky top-0 z-10"
       >
-        Search Results
+        Search Results {#if !areObjectsEqual(searchScopeForResults, {})}
+          (within selected search scope){/if}
       </div>
-    {:else}
+    {:else if !runningSampler}
       <div class="text-center text-slate-500 my-8 mx-6">
         Click Find Slices to begin an automatic search.
       </div>

@@ -290,33 +290,38 @@
           }}>Show Global Results</button
         >
       {/if}
-      <button
-        class="btn btn-blue"
-        disabled={$shouldRerun}
-        on:click={() => ($shouldRerun = true)}
-        ><Fa
-          icon={faSearch}
-          class="inline mr-2"
-        />{#if areObjectsEqual($searchScopeForResults, $searchScopeInfo)}Find {$slices.length >
-          0
+      {#if areObjectsEqual($searchScopeForResults, $searchScopeInfo)}
+        <button
+          class="btn btn-blue"
+          disabled={$shouldRerun}
+          on:click={() => ($shouldRerun = true)}
+          ><Fa icon={faSearch} class="inline mr-2" />Find {$slices.length > 0
             ? 'More'
-            : ''} Slices{:else}Find Slices Here{/if}</button
-      >
+            : ''} Slices</button
+        >
+      {:else if !areObjectsEqual($searchScopeInfo, {})}
+        <button
+          class="btn btn-blue"
+          disabled={$shouldRerun}
+          on:click={() => ($shouldRerun = true)}
+          ><Fa icon={faSearch} class="inline mr-2" />Find Slices Here</button
+        >
+      {/if}
       <div class="flex-1" />
     {/if}
     <button
-      class="btn {viewingTab == 1 ? 'btn-dark-slate' : 'btn-slate'}"
+      class="btn {viewingTab == 1 ? 'btn-slate' : 'btn-dark-slate'}"
       on:click={() => (viewingTab = 1 - viewingTab)}
       ><Fa icon={faHeart} class="inline mr-2" />Favorites</button
     >
     <button
-      class="p-3 rounded bg-transparent hover:opacity-50"
+      class="btn btn-dark-slate"
       on:click={isFullScreen ? exitFullScreen : enterFullScreen}
+      ><Fa
+        icon={isFullScreen ? faCompress : faExpand}
+        class="inline mr-2"
+      />{isFullScreen ? 'Inline' : 'Full Screen'}</button
     >
-      <span class="my-0.5 block">
-        <Fa icon={isFullScreen ? faCompress : faExpand} /></span
-      >
-    </button>
   </div>
   <div
     class="flex flex-1 w-full min-h-0 border-b border-slate-400 overflow-hidden border-x {!isFullScreen
@@ -330,7 +335,7 @@
         minWidth={240}
         maxWidth="70%"
         height="100%"
-        width={320}
+        width={360}
         class="border-r border-slate-400"
       >
         <div class="w-full h-full overflow-y-auto">
@@ -381,6 +386,7 @@
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           bind:searchScopeInfo={$searchScopeInfo}
+          searchScopeForResults={$searchScopeForResults}
           bind:hoveredSlice={$hoveredSlice}
           on:runsampler={() => ($shouldRerun = true)}
           on:loadmore={() => ($numSlices += 10)}

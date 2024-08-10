@@ -3,6 +3,7 @@
   import {
     faEye,
     faEyeSlash,
+    faPencil,
     faTrash,
   } from '@fortawesome/free-solid-svg-icons';
   import { createEventDispatcher } from 'svelte';
@@ -42,13 +43,12 @@
   }
 </script>
 
-<button
-  on:click={(e) => (editing = true)}
-  class="bg-transparent w-full text-left rounded pointer-events-all {editing
+<div
+  class="bg-transparent w-full text-left rounded {editing
     ? 'outline outline-1 outline-slate-400 mb-2 pt-1'
-    : 'hover:bg-slate-100'}"
+    : ''}"
 >
-  <div class="px-2 py-1 flex items-center text-sm w-full cursor-pointer">
+  <div class="px-2 py-1 flex items-center text-sm w-full">
     <button
       class="{isHidden
         ? 'text-slate-300 hover:text-slate-400'
@@ -73,7 +73,16 @@
     </div>
     {#if !metricInfo || !metricInfo[metricName]}
       <button
-        class="bg-transparent ml-1 px-2"
+        class="bg-transparent ml-1 px-1"
+        on:click|stopPropagation={() => (editing = true)}
+        ><Fa
+          icon={faPencil}
+          class="inline text-slate-400 hover:text-slate-600"
+        /></button
+      >
+
+      <button
+        class="bg-transparent ml-1 px-1"
         on:click|stopPropagation={() => dispatch('delete')}
         ><Fa
           icon={faTrash}
@@ -115,4 +124,4 @@
       >
     </div>
   {/if}
-</button>
+</div>
