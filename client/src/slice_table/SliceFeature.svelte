@@ -7,7 +7,10 @@
   import Hoverable from '../utils/Hoverable.svelte';
   import { stop_propagation } from 'svelte/internal';
   import Fa from 'svelte-fa';
-  import { faRotateRight } from '@fortawesome/free-solid-svg-icons';
+  import {
+    faChevronDown,
+    faRotateRight,
+  } from '@fortawesome/free-solid-svg-icons';
 
   const dispatch = createEventDispatcher();
 
@@ -46,22 +49,10 @@
         ? { vals: currentFeature.vals.filter((v) => v != val) }
         : { vals: [...currentFeature.vals, val].sort() }
     );
-    if (
-      newFeature.vals.length == 0 ||
-      newFeature.vals.length == allowedValues[feature.col].length
-    )
-      dispatch('toggle', {
-        old: feature,
-        new: Object.assign(
-          { ...feature },
-          { vals: allowedValues[feature.col] }
-        ),
-      });
-    else
-      dispatch('toggle', {
-        old: feature,
-        new: newFeature,
-      });
+    dispatch('toggle', {
+      old: feature,
+      new: newFeature,
+    });
   }
 
   function toggleFeature() {
@@ -103,7 +94,7 @@
         >
       {:else}
         <button
-          class="bg-transparent font-mono text-slate-800 font-normal hover:opacity-70"
+          class="bg-transparent font-mono text-slate-800 font-normal hover:opacity-50"
           disabled={!canToggle}
           class:opacity-50={featureDisabled}
           title={featureDisabled
@@ -131,7 +122,14 @@
               buttonTitle="Test alternative values for this feature"
               buttonActiveClass="text-slate-800"
               singleClick={false}
-              ><span slot="button-content">{valueText}</span>
+              ><span slot="button-content"
+                >{valueText}
+                <Fa
+                  icon={faChevronDown}
+                  style="transform: translateY(-2px); font-size: 0.6em;"
+                  class="inline"
+                /></span
+              >
               <div slot="options">
                 {#each allowedValues[feature.col] as val}
                   <Hoverable>

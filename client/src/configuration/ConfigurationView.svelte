@@ -72,9 +72,9 @@
         /></button
       >
       <div class="flex-auto">
-        <div class="font-bold">SCORE FUNCTIONS</div>
+        <div class="font-bold">RANKING FUNCTIONS</div>
         <div class="text-xs text-slate-600">
-          Define and reweight how slices will be ranked.
+          Define and reweight how slice results will be ordered.
         </div>
       </div>
       <button

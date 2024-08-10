@@ -275,7 +275,7 @@
   let draggingOverContainer: boolean = false;
 
   function handleDrop(e: DragEvent) {
-    if (!draggingOverContainer) return;
+    if (!draggingOverContainer && dragOverSliceIndex == null) return;
     draggingOverContainer = false;
     if (!!e.dataTransfer.getData('slice')) {
       e.stopPropagation();
@@ -442,7 +442,10 @@
                       areObjectsEqual(s.feature, labels[sliceIndex].feature)
                     )}
                     <button
-                      class="bg-transparent hover:opacity-60 p-1 text-xs text-slate-600"
+                      class="bg-transparent hover:opacity-60 p-1 text-xs {saveIdx >=
+                      0
+                        ? 'text-rose-600 hover:text-rose-400'
+                        : 'text-slate-400 hover:text-slate-600'}"
                       title="Save this slice"
                       on:click|stopPropagation={() => {
                         if (saveIdx >= 0)

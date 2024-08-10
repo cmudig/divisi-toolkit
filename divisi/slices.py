@@ -66,7 +66,6 @@ class SliceFeature(SliceFeatureBase):
         super().__init__()
         self.empty = False
         self.feature_name = feature_name
-        assert len(allowed_values) > 0
         self.allowed_values = tuple(sorted(allowed_values))
         self.num_univariate_features = 1
         
@@ -74,7 +73,7 @@ class SliceFeature(SliceFeatureBase):
         return hash((self.feature_name, self.allowed_values))
     
     def __str__(self):
-        if len(self.allowed_values) > 1:
+        if len(self.allowed_values) != 1:
             return f"{self.feature_name} in ({', '.join(str(x) for x in self.allowed_values)})"
         return f"{self.feature_name} = {self.allowed_values[0]}"
     
@@ -105,19 +104,22 @@ class SliceFeature(SliceFeatureBase):
             univ_mask = univariate_masks.get(self, None)
             
         if univ_mask is None:
-            for val in self.allowed_values:
-                if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
-                    mask = torch.from_numpy((inputs[:,self.feature_name] == val).toarray().flatten()).to(device)
-                elif isinstance(inputs, np.ndarray):
-                    mask = torch.from_numpy(inputs[:,self.feature_name] == val).to(device)
-                elif isinstance(inputs, torch.Tensor):
-                    mask = inputs[:,self.feature_name] == val
-                else:
-                    mask = inputs[self.feature_name] == val
-                if univ_mask is None:
-                    univ_mask = mask.clone()
-                else:
-                    univ_mask |= mask
+            if not self.allowed_values:
+                univ_mask = torch.zeros(inputs.shape[0], dtype=torch.bool).to(device)
+            else:
+                for val in self.allowed_values:
+                    if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
+                        mask = torch.from_numpy((inputs[:,self.feature_name] == val).toarray().flatten()).to(device)
+                    elif isinstance(inputs, np.ndarray):
+                        mask = torch.from_numpy(inputs[:,self.feature_name] == val).to(device)
+                    elif isinstance(inputs, torch.Tensor):
+                        mask = inputs[:,self.feature_name] == val
+                    else:
+                        mask = inputs[self.feature_name] == val
+                    if univ_mask is None:
+                        univ_mask = mask.clone()
+                    else:
+                        univ_mask |= mask
                     
             # Update cache  
             if univariate_masks is not None and self not in univariate_masks:

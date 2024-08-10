@@ -9,7 +9,9 @@
     faChevronRight,
     faCompress,
     faExpand,
+    faGlobe,
     faHeart,
+    faMap,
     faMinus,
     faPlus,
     faSearch,
@@ -29,8 +31,6 @@
   import * as d3 from 'd3';
 
   export let model;
-
-  let interfaceMode = traitlet(model, 'interface', 'B');
 
   let numSlices = traitlet(model, 'num_slices', 10);
   let numSamples = traitlet(model, 'num_samples', 50);
@@ -151,6 +151,7 @@
   let ignoreFullScreenEvent = false;
 
   let showConfiguration = true;
+  let showSliceMap = false;
 
   function enterFullScreen() {
     let fn;
@@ -218,6 +219,12 @@
     if (isFullScreen && !ignoreFullScreenEvent) isFullScreen = false;
     console.log('is full screen', isFullScreen);
     ignoreFullScreenEvent = false;
+  }
+
+  let oldSelectedSlices = [];
+  $: if (oldSelectedSlices !== $selectedSlices) {
+    if ($selectedSlices.length > oldSelectedSlices.length) showSliceMap = true;
+    oldSelectedSlices = $selectedSlices;
   }
 </script>
 
@@ -312,7 +319,7 @@
     <button
       class="btn {viewingTab == 1 ? 'btn-slate' : 'btn-dark-slate'}"
       on:click={() => (viewingTab = 1 - viewingTab)}
-      ><Fa icon={faHeart} class="inline mr-2" />Favorites</button
+      ><Fa icon={faHeart} class="inline mr-2" />Favorites {#if $savedSlices.length > 0}({$savedSlices.length}){/if}</button
     >
     <button
       class="btn btn-dark-slate"
@@ -322,6 +329,18 @@
         class="inline mr-2"
       />{isFullScreen ? 'Inline' : 'Full Screen'}</button
     >
+    <button
+      class="btn bg-slate-600 text-white hover:bg-slate-700"
+      on:click={() => (showSliceMap = !showSliceMap)}
+    >
+      {#if showSliceMap}
+        Hide Map
+        <Fa icon={faChevronRight} class="inline ml-1" />
+      {:else}
+        <Fa icon={faGlobe} class="inline mr-1" />
+        Slice Map
+      {/if}
+    </button>
   </div>
   <div
     class="flex flex-1 w-full min-h-0 border-b border-slate-400 overflow-hidden border-x {!isFullScreen
@@ -341,7 +360,6 @@
         <div class="w-full h-full overflow-y-auto">
           <ConfigurationView
             metricInfo={$metricInfo}
-            showSearchScopeConfig={$interfaceMode == 'B'}
             {allowedValues}
             positiveOnly={$positiveOnly}
             searchScopeNeedsRerun={!areObjectsEqual(
@@ -379,7 +397,6 @@
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
           sliceColorMap={$sliceColorMap}
-          allowDragAndDrop={$interfaceMode == 'B'}
           {allowedValues}
           baseSlice={$baseSlice}
           bind:hiddenMetrics
@@ -410,7 +427,6 @@
           bind:selectedSlices={$selectedSlices}
           bind:hoveredSlice={$hoveredSlice}
           savedSlices={$savedSlices}
-          allowDragAndDrop={$interfaceMode == 'B'}
           {allowedValues}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
@@ -430,9 +446,10 @@
       {/if}
     </div>
 
-    {#if $interfaceMode == 'B'}
+    {#if showSliceMap}
       <ResizablePanel
         leftResizable
+        collapsible={false}
         minWidth={300}
         maxWidth="70%"
         height="100%"
@@ -453,7 +470,7 @@
                 ? new Set($hoverMapIndexes.clusters)
                 : new Set()}
               errorKeyOptions={binaryMetrics}
-              savedSlices={$savedSlices}
+              bind:savedSlices={$savedSlices}
               bind:sliceColorMap={$sliceColorMap}
               intersectionCounts={$sliceIntersectionCounts}
               labels={$sliceIntersectionLabels}

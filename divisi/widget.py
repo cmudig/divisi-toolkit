@@ -90,9 +90,6 @@ class SliceFinderWidget(anywidget.AnyWidget):
     
     state_path = traitlets.Unicode(None, allow_none=True)
     
-    # for the user study
-    interface = traitlets.Unicode("B").tag(sync=True)
-    
     def __init__(self, discrete_data, *args, **kwargs):
         try:
             self._esm = DEV_ESM_URL if kwargs.get('dev', False) else (BUNDLE_DIR / "widget-main.js").read_text()

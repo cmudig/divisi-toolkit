@@ -66,7 +66,7 @@
         <input
           type="text"
           bind:value={editingName}
-          placeholder="Score function name"
+          placeholder="Ranking function name"
           class="w-full flat-text-input-small"
         />
       {:else}
