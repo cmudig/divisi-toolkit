@@ -132,6 +132,7 @@ class DiscretizedData:
                     if feature not in self.inverse_value_mapping: continue
                     enc_key, enc_values = self.inverse_value_mapping[feature]
                     f_allowed_vals = tuple(sorted(enc_values[v] for v in allowed_values if v in enc_values))
+                    if not f_allowed_vals: continue
                     if f_allowed_vals not in encoded_allowed:
                         encoded_allowed[f_allowed_vals] = type(f)([enc_key], f_allowed_vals)
                     else:
