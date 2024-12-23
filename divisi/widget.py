@@ -166,7 +166,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 min_items=len(data) * 0.5 * self.min_items_fraction,
                 holdout_fraction=0.5,
                 max_features=self.max_features,
-                positive_only=self.positive_only,
+                positive_only=kwargs.get("positive_only", None),
                 similarity_threshold=0.9
             )
             self.slice_finder.results.score_cache = self._score_cache
@@ -344,10 +344,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
             self.update_slices([])
         else:    
             weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.slice_finder.score_fns}
-            # add weights for interaction effect scores
-            for n, config in self.score_function_config.items():
-                if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRateScore":
-                    weights_to_use[f"{n}_interaction"] = weights_to_use[n]
+            # # add weights for interaction effect scores
+            # for n, config in self.score_function_config.items():
+            #     if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRateScore":
+            #         weights_to_use[f"{n}_interaction"] = weights_to_use[n]
             ranked_results = self.slice_finder.results.rank(weights_to_use, 
                                                             n_slices=self.num_slices)
             self.update_slices(ranked_results)
@@ -399,7 +399,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
         if mask is not None:
             one_hot = self.slice_finder.eval_data.one_hot_matrix
-            feature_means = one_hot[mask].mean(axis=0)
+            feature_means = np.array(one_hot[mask].mean(axis=0))
             top_feature = np.argmax(feature_means * self.idf)
             self.search_scope_enriched_features = [self.slice_finder.eval_data.one_hot_labels[top_feature]]
         else:
@@ -507,8 +507,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 sf[n] = ScoreFunctionBase.from_configuration(config, self.derived_metrics) 
             elif n in self.score_functions:
                 sf[n] = self.score_functions[n]
-            if n in sf and config['type'] == 'OutcomeRateScore':
-                sf[f"{n}_interaction"] = InteractionEffectScore((1 - sf[n].data) if sf[n].inverse else sf[n].data)
+            # if n in sf and config['type'] == 'OutcomeRateScore':
+            #     sf[f"{n}_interaction"] = InteractionEffectScore((1 - sf[n].data) if sf[n].inverse else sf[n].data)
         self.score_functions = sf
         if self.slice_finder is not None:
             self.slice_finder.rescore(self.score_functions)

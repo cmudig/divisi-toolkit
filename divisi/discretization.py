@@ -32,11 +32,34 @@ class DiscretizedData:
         self._one_hot_matrix = None
         self._one_hot_labels = None
         
+    def rename_columns(self, new_names):
+        """new_names should be a dictionary of old names to new names"""
+        return DiscretizedData(self.df, {i: (new_names.get(c, c), v) for i, (c, v) in self.value_names.items()})
+    
+    @staticmethod
+    def concat(dfs):
+        """Concatenates the discrete dataframes horizontally. Assumes all column
+        names in the datasets are unique."""
+        new_value_names = {}
+        current_index = 0
+        for d in dfs:
+            new_value_names = {**new_value_names, **{i + current_index: item for i, item in d.value_names.items()}}
+            current_index = len(new_value_names)
+        if all(isinstance(d.df, sps.csr_matrix) for d in dfs):
+            return DiscretizedData(sps.hstack([d.df for d in dfs]),
+                                new_value_names)
+        dfs = [
+            DiscretizedData(np.array(d.df.todense()), d.value_names) if isinstance(d.df, sps.csr_matrix) else d
+            for d in dfs
+        ]
+        return DiscretizedData(np.hstack([d.df for d in dfs]),
+                            new_value_names)
+        
     def __contains__(self, col_name):
         return col_name in self.inverse_value_mapping
     
     def __len__(self):
-        return len(self.df)
+        return self.df.shape[0]
     
     def column_names(self):
         return list(self.inverse_value_mapping.keys())
@@ -167,20 +190,29 @@ class DiscretizedData:
     @property
     def one_hot_matrix(self):
         if self._one_hot_matrix is None:
-            self._one_hot_matrix = np.hstack([
-                np.vstack([self.df[:,i] == x for x in sorted(self.value_names[i][1].keys())]).T
-                for i in range(self.df.shape[1])
-            ])
+            if isinstance(self.df, sps.csr_matrix):
+                self._one_hot_matrix = np.array(self.df.todense())
+            else:
+                self._one_hot_matrix = np.hstack([
+                    np.vstack([self.df[:,i] == x for x in sorted(self.value_names[i][1].keys())]).T
+                    for i in range(self.df.shape[1])
+                ])
         return self._one_hot_matrix
     
     @property
     def one_hot_labels(self):
         if self._one_hot_labels is None:
-            self._one_hot_labels = [
-                f"{self.value_names[i][0]} = {self.value_names[i][1][x]}"
-                for i in range(self.df.shape[1])
-                for x in sorted(self.value_names[i][1].keys())
-            ]
+            if isinstance(self.df, sps.csr_matrix):
+                self._one_hot_labels = [
+                    f"{self.value_names[i][0]}"
+                    for i in range(self.df.shape[1])
+                ]
+            else:
+                self._one_hot_labels = [
+                    f"{self.value_names[i][0]} = {self.value_names[i][1][x]}"
+                    for i in range(self.df.shape[1])
+                    for x in sorted(self.value_names[i][1].keys())
+                ]
         return self._one_hot_labels
     
     def get_projection(self, method='tsne'):
@@ -188,16 +220,21 @@ class DiscretizedData:
         Creates a Projection if it does not already exist, using the given method.
         """
         if method not in self.projections:    
+            if self.one_hot_matrix.shape[1] > 100:
+                from sklearn.decomposition import TruncatedSVD
+                lo_d = TruncatedSVD(n_components=100).fit_transform(self.one_hot_matrix)
+            else:
+                lo_d = self.one_hot_matrix
             if method.lower() == 'tsne':
                 from sklearn.manifold import TSNE
-                coords = TSNE(verbose=False, metric='cosine').fit_transform(self.one_hot_matrix)
+                coords = TSNE(verbose=False, metric='cosine').fit_transform(lo_d)
             elif method.lower() == 'umap':
                 try:
                     from umap import UMAP
                 except:
                     raise ValueError("Package 'umap-learn' required to use method 'umap'")
                 else:
-                    coords = UMAP().fit_transform(self.one_hot_matrix)                
+                    coords = UMAP().fit_transform(lo_d)                
             else:
                 raise ValueError(f"Unsupported projection method '{method}'")
             coords = (coords - coords.min(axis=0)) / (coords.max(axis=0) - coords.min(axis=0))
@@ -281,7 +318,7 @@ def discretize_column(column_name, column_data, col_spec):
     
     return result, column_desc
     
-def discretize_data(df, spec):
+def discretize_data(df, spec, sparse=False):
     """
     Discretizes the data according to the given set of rules.
     
@@ -303,6 +340,9 @@ def discretize_data(df, spec):
         - quantiles: If method is 'bin', providing this key specifies quantiles
             at which the values will be binned. Binning follows the same rules as
             for the bins key.
+    :param sparse: If true, the resulting object will be backed by a sparse matrix.
+        (The method still temporarily materializes a dense matrix even if sparse 
+        is set to True.)
             
     :return: A DiscretizedData instance representing the dataframe.
     """
@@ -313,7 +353,7 @@ def discretize_data(df, spec):
             discrete_columns[:,col_idx], column_descriptions[col_idx] = discretize_column(col, df[col], col_spec)
         except Exception as e:
             raise ValueError(f"Error discretizing column '{col}': {e}")
-    return DiscretizedData(discrete_columns,
+    return DiscretizedData(sps.csr_matrix(discrete_columns) if sparse else discrete_columns,
                            column_descriptions)
 
 def discretize_token_sets(token_sets, token_idx_mapping=None, n_top_columns=None, max_column_mean=None, show_progress=True):
