@@ -262,7 +262,7 @@
             metrics: {},
           },
         ];
-      }}><Fa icon={faPlus} class="inline mr-2" />New Slice</button
+      }}><Fa icon={faPlus} class="inline mr-2" />New Rule</button
     >
     {#if $runningSampler}
       <div
@@ -282,7 +282,7 @@
           {#if $shouldCancel}
             Canceling...
           {:else}
-            Finding slices ({($samplerRunProgress * 100).toFixed(1)}%
+            Finding subgroups ({($samplerRunProgress * 100).toFixed(1)}%
             complete)...
           {/if}
         </div>
@@ -304,14 +304,14 @@
           on:click={() => ($shouldRerun = true)}
           ><Fa icon={faSearch} class="inline mr-2" />Find {$slices.length > 0
             ? 'More'
-            : ''} Slices</button
+            : ''} Subgroups</button
         >
       {:else if !areObjectsEqual($searchScopeInfo, {})}
         <button
           class="btn btn-blue"
           disabled={$shouldRerun}
           on:click={() => ($shouldRerun = true)}
-          ><Fa icon={faSearch} class="inline mr-2" />Find Slices Here</button
+          ><Fa icon={faSearch} class="inline mr-2" />Find Subgroups Here</button
         >
       {/if}
       <div class="flex-1" />
@@ -338,7 +338,7 @@
         <Fa icon={faChevronRight} class="inline ml-1" />
       {:else}
         <Fa icon={faGlobe} class="inline mr-1" />
-        Slice Map
+        Subgroup Map
       {/if}
     </button>
   </div>

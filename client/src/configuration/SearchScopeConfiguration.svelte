@@ -55,9 +55,7 @@
   >
   <div class="flex-auto">
     <div class="font-bold">SEARCH SCOPE</div>
-    <div class="text-xs text-slate-600">
-      Find slices within a selection or slice.
-    </div>
+    <div class="text-xs text-slate-600">Find subgroups within a selection.</div>
   </div>
 </div>
 {#if expanded}
@@ -72,7 +70,7 @@
             class="ml-1 btn btn-slate flex-0 mr-3 whitespace-nowrap"
             on:click={() => (searchScopeInfo = {})}
             ><Fa icon={faMinus} class="inline mr-1" />
-            Within Slice</button
+            Within Subgroup</button
           >
           <div class="text-slate-600">
             {d3.format('.1~%')(searchScopeInfo.proportion ?? 0)} of dataset
@@ -140,7 +138,7 @@
       <div
         class="w-full h-full rounded-md p-4 select-none bg-slate-200/80 text-xs text-center text-slate-500"
       >
-        Drag and drop a slice, select in the overlap plot, or <a
+        Drag and drop a subgroup, select in the overlap plot, or <a
           class="text-blue-600"
           href="#"
           on:click={() => (editingSlice = true)}>define manually</a
@@ -149,7 +147,7 @@
     {/if}
     {#if searchScopeNeedsRerun}
       <div class="w-full p-2 text-orange-700 text-xs">
-        Click <strong>Find Slices Here</strong> above to search within this scope.
+        Click <strong>Find Subgroups Here</strong> above to search within this scope.
       </div>
     {/if}
   </div>

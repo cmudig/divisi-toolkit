@@ -5,7 +5,6 @@
   import ActionMenuButton from '../utils/ActionMenuButton.svelte';
   import Checkbox from '../utils/Checkbox.svelte';
   import Hoverable from '../utils/Hoverable.svelte';
-  import { stop_propagation } from 'svelte/internal';
   import Fa from 'svelte-fa';
   import {
     faChevronDown,

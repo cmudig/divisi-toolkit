@@ -479,7 +479,7 @@
                 <div
                   class="self-stretch flex-auto text-xs text-slate-500 text-center"
                 >
-                  Drag and drop a slice
+                  Drag and drop a subgroup
                 </div>
               {/if}
             </div>
@@ -527,7 +527,7 @@
       <div class="p-1 bg-slate-100/80 rounded pointer-events-auto select-none">
         <div class="flex items-center w-full">
           <div class="flex-auto text-xs font-bold text-slate-500">
-            Slice Intersections
+            Subgroup Intersections
           </div>
           <button
             class="bg-transparent p-1 hover:opacity-50 text-slate-600"

@@ -300,7 +300,7 @@
       </div>
     {:else if !runningSampler}
       <div class="text-center text-slate-500 my-8 mx-6">
-        Click Find Slices to begin an automatic search.
+        Click Find Subgroups to begin an automatic search.
       </div>
     {/if}
     <div class="flex-1 min-h-0" class:disable-div={runningSampler}>

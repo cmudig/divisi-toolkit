@@ -74,7 +74,7 @@
       <div class="flex-auto">
         <div class="font-bold">RANKING FUNCTIONS</div>
         <div class="text-xs text-slate-600">
-          Define and reweight how slice results will be ordered.
+          Define and reweight how results will be ordered.
         </div>
       </div>
       <button
@@ -169,7 +169,7 @@
     <div class="flex-auto">
       <div class="font-bold">METRICS</div>
       <div class="text-xs text-slate-600">
-        Define what metrics will be shown for each slice.
+        Define what metrics will be shown for each subgroup.
       </div>
     </div>
     <button
