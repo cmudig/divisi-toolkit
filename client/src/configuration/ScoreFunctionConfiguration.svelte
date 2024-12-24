@@ -4,7 +4,11 @@
   import SteppedSlider from '../utils/SteppedSlider.svelte';
   import Fa from 'svelte-fa/src/fa.svelte';
   import * as d3 from 'd3';
-  import { faTrash, faWeightHanging } from '@fortawesome/free-solid-svg-icons';
+  import {
+    faPencil,
+    faTrash,
+    faWeightHanging,
+  } from '@fortawesome/free-solid-svg-icons';
   import MetricExpressionEditor from './MetricExpressionEditor.svelte';
 
   const dispatch = createEventDispatcher();
@@ -51,22 +55,18 @@
   }
 </script>
 
-<button
-  on:click={(e) => (editing = true)}
-  disabled={!(config?.editable ?? true)}
+<div
   class="bg-transparent w-full text-left rounded {editing
     ? 'outline outline-1 outline-slate-400 mb-2'
-    : 'hover:bg-slate-100'}"
+    : ''}"
 >
-  <div
-    class="px-2 py-1 flex flex-wrap items-center text-sm w-full cursor-pointer pointer-events-auto"
-  >
-    <div class="flex-auto shrink-0 mr-2">
+  <div class="px-2 py-1 flex flex-wrap items-center text-sm w-full">
+    <div class="flex-auto mr-2 shrink w-0" style="min-width: 50px;">
       {#if editing}
         <input
           type="text"
           bind:value={editingName}
-          placeholder="Score function name"
+          placeholder="Ranking function name"
           class="w-full flat-text-input-small"
         />
       {:else}
@@ -75,19 +75,38 @@
     </div>
     {#if !editing}
       <div class="flex items-center">
-        <Checkbox
-          colorClass={weight > 0.0 ? 'bg-slate-500' : null}
-          checked={weight > 0.0}
-          on:change={(e) => {
-            if (!e.detail) {
-              weight = 0.0;
-              dispatch('reweight', weight);
-            } else {
-              weight = 1.0;
-              dispatch('reweight', weight);
-            }
-          }}
-        />
+        {#if config?.editable ?? true}
+          <button
+            class="bg-transparent ml-1 p-2"
+            on:click={(e) => (editing = true)}
+            ><Fa
+              icon={faPencil}
+              class="inline text-slate-400 hover:text-slate-600"
+            /></button
+          >
+        {/if}
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            value=""
+            class="sr-only peer"
+            checked={weight > 0.0}
+            on:change={(e) => {
+              if (weight > 0.0) {
+                weight = 0.0;
+                dispatch('reweight', weight);
+              } else {
+                weight = 1.0;
+                dispatch('reweight', weight);
+              }
+            }}
+          />
+          <div
+            title="Enable or disable this feature from the model"
+            class="pointer-events-none relative w-7 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] peer-checked:after:translate-x-[8px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-slate-500"
+          ></div>
+        </label>
+
         <SteppedSlider
           class="ml-2 w-32"
           min={0.5}
@@ -164,24 +183,28 @@
         />
       {:else if editingConfig.type == 'SliceSizeScore'}
         <div class="text-xs text-slate-700 mb-2">
-          Prioritize slices that match approximately <strong
-            >{d3.format('.0%')(editingConfig.ideal_fraction)}</strong
-          > of the dataset.
+          Prioritize slices that match approximately this fraction of the
+          dataset.
         </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          bind:value={editingConfig.ideal_fraction}
-          on:input={() =>
-            (editingConfig.spread =
-              Math.min(
-                editingConfig.ideal_fraction,
-                1 - editingConfig.ideal_fraction
-              ) * 0.5)}
-          class="w-full"
-        />
+        <div class="flex items-center">
+          <div class="font-bold">
+            {d3.format('.0%')(editingConfig.ideal_fraction)}
+          </div>
+          <input
+            class="ml-1 flex-auto"
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            bind:value={editingConfig.ideal_fraction}
+            on:input={() =>
+              (editingConfig.spread =
+                Math.min(
+                  editingConfig.ideal_fraction,
+                  1 - editingConfig.ideal_fraction
+                ) * 0.5)}
+          />
+        </div>
       {:else if editingConfig.type == 'NumFeaturesScore'}
         <div class="text-xs text-slate-700">
           Prioritize slices with fewer features in the rule.
@@ -210,4 +233,4 @@
       >
     </div>
   {/if}
-</button>
+</div>

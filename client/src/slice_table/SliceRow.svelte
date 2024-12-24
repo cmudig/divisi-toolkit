@@ -16,6 +16,8 @@
     faHeart,
     faTrash,
     faCopy,
+    faMap,
+    faGlobe,
   } from '@fortawesome/free-solid-svg-icons';
   import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
   import ActionMenuButton from '../utils/ActionMenuButton.svelte';
@@ -141,6 +143,7 @@
     {draggable}
     on:dragstart={(e) => {
       e.dataTransfer.setData('slice', JSON.stringify(sliceToShow));
+      dispatch('hover', {});
       hovering = false;
       dragging = true;
     }}
@@ -187,7 +190,7 @@
       {:else}
         <div
           class="p-2 whitespace-nowrap shrink-0 grid auto-rows-max text-xs gap-x-2 gap-y-0 items-center"
-          style="width: 40%; min-width: 300px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 108px;"
+          style="width: 40%; min-width: 270px; max-width: {TableWidths.AllMetrics}px; grid-template-columns: max-content auto 108px;"
         >
           {#each metricNames as name, i (name)}
             {@const metric = sliceForScores.metrics[name]}
@@ -258,92 +261,105 @@
           {/each}
         </div>
       {/if}
-      <div class="ml-2 flex flex-auto items-center" style="width: 200px;">
-        <div class="grow-0 shrink-0" style="width: {TableWidths.Checkbox}px;">
-          {#if showFavoriteButton}
-            <button
-              class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
-              title="Add a new custom slice"
-              on:click={() => dispatch('saveslice', slice)}
-              ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
-            >
+      <div
+        class="ml-2 flex flex-auto h-full whitespace-nowrap items-center py-2 text-sm min-w-0"
+        style="width: 300px;"
+      >
+        <div
+          style="flex: 1 1 auto;"
+          class="overflow-auto text-sm"
+          class:opacity-50={revertedScores}
+        >
+          <SliceFeature
+            feature={featuresHaveSameTree(
+              slice.feature,
+              sliceToShow.feature,
+              true
+            ) && slice.feature.type != 'base'
+              ? slice.feature
+              : sliceToShow.feature}
+            currentFeature={sliceToShow.feature}
+            canToggle={featuresHaveSameTree(
+              slice.feature,
+              sliceToShow.feature,
+              true
+            )}
+            {positiveOnly}
+            {allowedValues}
+            on:toggle
+          />
+          {#if !areObjectsEqual(slice.feature, sliceToShow.feature)}
+            <span class="text-sm text-slate-400">(Edited)</span>
           {/if}
         </div>
-
-        <div class="py-2 text-xs min-w-0" class:opacity-50={revertedScores}>
-          <div class="flex items-center h-full whitespace-nowrap">
-            <div style="flex: 0 1 auto;" class="overflow-auto text-sm">
-              <SliceFeature
-                feature={featuresHaveSameTree(
-                  slice.feature,
-                  sliceToShow.feature,
-                  true
-                ) && slice.feature.type != 'base'
-                  ? slice.feature
-                  : sliceToShow.feature}
-                currentFeature={sliceToShow.feature}
-                canToggle={featuresHaveSameTree(
-                  slice.feature,
-                  sliceToShow.feature,
-                  true
-                )}
-                {positiveOnly}
-                {allowedValues}
-                on:toggle
-              />
-            </div>
-            {#if showButtons || hovering}
-              {#if showCreateSliceButton}
-                <button
-                  class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600 py-2"
-                  title="Add a new custom slice"
-                  on:click={() => dispatch('create')}
-                  ><Fa icon={faPlus} /></button
-                >
-              {/if}
-              {#if showEditButtons}
-                <button
-                  class="bg-transparent hover:opacity-60 ml-1 px-1 py-3 text-slate-600"
-                  on:click={() => {
-                    isEditing = true;
-                    dispatch('beginedit');
-                  }}
-                  title="Temporarily modify the slice definition"
-                  ><Fa icon={faPencil} /></button
-                >
-                {#if !!temporarySlice && !areObjectsEqual(temporarySlice.feature, slice.feature)}
-                  <button
-                    class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
-                    on:click={() => {
-                      temporaryRevertSlice(false);
-                      dispatch('reset');
-                    }}
-                    on:mouseenter={() => temporaryRevertSlice(true)}
-                    on:mouseleave={() => temporaryRevertSlice(false)}
-                    title="Reset the slice definition"
-                    ><Fa icon={faRotateRight} /></button
-                  >
-                {/if}
-                <button
-                  class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
-                  on:click={() => dispatch('duplicate')}
-                  title="Create a copy of this slice"
-                  ><Fa icon={faCopy} /></button
-                >
-              {/if}
-              {#if custom}
-                <button
-                  class="bg-transparent hover:opacity-60 ml-1 px-1 text-slate-600"
-                  on:click={() => {
-                    dispatch('hover', {});
-                    dispatch('delete');
-                  }}
-                  title="Delete this custom slice"><Fa icon={faTrash} /></button
-                >
-              {/if}
-            {/if}
-          </div>
-        </div>
+        {#if showFavoriteButton}
+          <button
+            class="bg-transparent px-1.5 {isSaved
+              ? 'text-rose-600 hover:text-rose-400'
+              : 'text-slate-400 hover:text-slate-600'} py-2"
+            title={isSaved
+              ? 'Remove this slice from favorites'
+              : 'Add this slice to favorites'}
+            on:click={() => dispatch('saveslice', slice)}
+            ><Fa icon={isSaved ? faHeart : faHeartOutline} /></button
+          >
+        {/if}
+        {#if showCreateSliceButton}
+          <button
+            class="bg-transparent hover:text-slate-600 px-1.5 text-slate-400 py-2"
+            title="Add a new custom slice"
+            on:click={() => dispatch('create')}><Fa icon={faPlus} /></button
+          >
+        {/if}
+        {#if showEditButtons}
+          <button
+            class="bg-transparent hover:text-slate-600 px-1.5 py-3 text-slate-400"
+            on:click={() => {
+              isEditing = true;
+              dispatch('beginedit');
+            }}
+            title="Temporarily modify the slice definition"
+            ><Fa icon={faPencil} /></button
+          >
+          {#if !!temporarySlice && !areObjectsEqual(temporarySlice.feature, slice.feature)}
+            <button
+              class="bg-transparent hover:text-slate-600 px-1.5 text-slate-400"
+              on:click={() => {
+                temporaryRevertSlice(false);
+                dispatch('reset');
+              }}
+              on:mouseenter={() => temporaryRevertSlice(true)}
+              on:mouseleave={() => temporaryRevertSlice(false)}
+              title="Reset the slice definition"
+              ><Fa icon={faRotateRight} /></button
+            >
+          {/if}
+          <button
+            class="bg-transparent hover:text-slate-600 px-1.5 text-slate-400"
+            on:click={() => dispatch('duplicate')}
+            title="Create a copy of this slice"><Fa icon={faCopy} /></button
+          >
+        {/if}
+        {#if custom}
+          <button
+            class="bg-transparent hover:text-slate-600 px-1.5 text-slate-400"
+            on:click={() => {
+              dispatch('hover', {});
+              dispatch('delete');
+            }}
+            title="Delete this custom slice"><Fa icon={faTrash} /></button
+          >
+        {/if}
+        {#if showEditButtons}
+          <button
+            class="mx-0.5 text-center {isSelected
+              ? 'p-1.5 rounded bg-slate-400 text-white hover:opacity-50 text-xs'
+              : 'p-1 bg-transparent text-slate-400 hover:text-slate-600'}"
+            on:click={() => dispatch('select', !isSelected)}
+            title="Show this slice in the Slice Map"
+            ><Fa icon={faGlobe} /></button
+          >
+        {/if}
       </div>
     {/if}
   </div>

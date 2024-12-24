@@ -66,7 +66,6 @@ class SliceFeature(SliceFeatureBase):
         super().__init__()
         self.empty = False
         self.feature_name = feature_name
-        assert len(allowed_values) > 0
         self.allowed_values = tuple(sorted(allowed_values))
         self.num_univariate_features = 1
         
@@ -74,7 +73,7 @@ class SliceFeature(SliceFeatureBase):
         return hash((self.feature_name, self.allowed_values))
     
     def __str__(self):
-        if len(self.allowed_values) > 1:
+        if len(self.allowed_values) != 1:
             return f"{self.feature_name} in ({', '.join(str(x) for x in self.allowed_values)})"
         return f"{self.feature_name} = {self.allowed_values[0]}"
     
@@ -105,19 +104,22 @@ class SliceFeature(SliceFeatureBase):
             univ_mask = univariate_masks.get(self, None)
             
         if univ_mask is None:
-            for val in self.allowed_values:
-                if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
-                    mask = torch.from_numpy((inputs[:,self.feature_name] == val).toarray().flatten()).to(device)
-                elif isinstance(inputs, np.ndarray):
-                    mask = torch.from_numpy(inputs[:,self.feature_name] == val).to(device)
-                elif isinstance(inputs, torch.Tensor):
-                    mask = inputs[:,self.feature_name] == val
-                else:
-                    mask = inputs[self.feature_name] == val
-                if univ_mask is None:
-                    univ_mask = mask.clone()
-                else:
-                    univ_mask |= mask
+            if not self.allowed_values:
+                univ_mask = torch.zeros(inputs.shape[0], dtype=torch.bool).to(device)
+            else:
+                for val in self.allowed_values:
+                    if isinstance(inputs, (sps.csc_matrix, sps.csc_array, sps.csr_matrix, sps.csr_array)):
+                        mask = torch.from_numpy((inputs[:,self.feature_name] == val).toarray().flatten()).to(device)
+                    elif isinstance(inputs, np.ndarray):
+                        mask = torch.from_numpy(inputs[:,self.feature_name] == val).to(device)
+                    elif isinstance(inputs, torch.Tensor):
+                        mask = inputs[:,self.feature_name] == val
+                    else:
+                        mask = inputs[self.feature_name] == val
+                    if univ_mask is None:
+                        univ_mask = mask.clone()
+                    else:
+                        univ_mask |= mask
                     
             # Update cache  
             if univariate_masks is not None and self not in univariate_masks:
@@ -374,8 +376,6 @@ class IntersectionSlice(Slice):
         ablated_slices = [(exclude_feature, IntersectionSlice([f for f in self.base_features if f != exclude_feature]))
                           for exclude_feature in self.base_features]
         ablated_scores = [(*s, base_score - score_fn(s[1])) for s in ablated_slices]
-        print(self, ablated_scores, "RESULT:", IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
-                                 self.score_values))
         return IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
                                  self.score_values)
         
@@ -384,37 +384,50 @@ def score_slices_batch(slices_to_score, inputs, score_fns, max_features, min_ite
     univariate_masks = univariate_masks if univariate_masks is not None else {}
     scored_slices = {}
     
-    for num_features in range(1, max_features + 1):
-        combined_masks = []
-        itemized_masks = [[] for _ in range(num_features)]
-        matched_slices = []
-        for new_slice in slices_to_score:
-            if len(new_slice.univariate_features()) != num_features: continue
+    for new_slice in slices_to_score:
+        mask = new_slice.make_mask(inputs, univariate_masks=univariate_masks, device=device)
+        if min_items is not None and mask.sum() < min_items:
+            scored_slices[new_slice] = None
+            continue
+        
+        computed_scores = {}
+        itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
+        for key, scorer in score_fns.items():
+            computed_scores[key] = scorer.calculate_score(new_slice, mask, itemized_masks).item()
+        
+        scored_slices[new_slice] = new_slice.rescore(computed_scores)
+    
+    # for num_features in range(1, max_features + 1):
+    #     combined_masks = []
+    #     itemized_masks = [[] for _ in range(num_features)]
+    #     matched_slices = []
+    #     for new_slice in slices_to_score:
+    #         if len(new_slice.univariate_features()) != num_features: continue
             
-            mask = new_slice.make_mask(inputs, univariate_masks=univariate_masks, device=device)
-            if min_items is not None and mask.sum() < min_items:
-                scored_slices[new_slice] = None
-                continue
+    #         mask = new_slice.make_mask(inputs, univariate_masks=univariate_masks, device=device)
+    #         if min_items is not None and mask.sum() < min_items:
+    #             scored_slices[new_slice] = None
+    #             continue
             
-            combined_masks.append(mask)
-            for i, feature in enumerate(new_slice.univariate_features()):
-                itemized_masks[i].append(feature.make_mask(inputs, univariate_masks=univariate_masks, device=device))
-            matched_slices.append(new_slice)
+    #         combined_masks.append(mask)
+    #         for i, feature in enumerate(new_slice.univariate_features()):
+    #             itemized_masks[i].append(feature.make_mask(inputs, univariate_masks=univariate_masks, device=device))
+    #         matched_slices.append(new_slice)
             
-        if combined_masks:
-            batch_size = 64
-            for start_idx in range(0, len(combined_masks), batch_size):
-                end_idx = min(len(combined_masks), start_idx + batch_size)
-                combined_masks_batch = torch.stack(combined_masks[start_idx:end_idx], 1)
-                itemized_masks_batch = [torch.stack(m[start_idx:end_idx], 1) for m in itemized_masks]
+    #     if combined_masks:
+    #         batch_size = 64
+    #         for start_idx in range(0, len(combined_masks), batch_size):
+    #             end_idx = min(len(combined_masks), start_idx + batch_size)
+    #             combined_masks_batch = torch.stack(combined_masks[start_idx:end_idx], 1)
+    #             itemized_masks_batch = [torch.stack(m[start_idx:end_idx], 1) for m in itemized_masks]
                 
-                computed_scores = torch.zeros((len(score_fns), combined_masks_batch.shape[1])).to(device)
-                for i, (key, scorer) in enumerate(score_fns.items()):
-                    computed_scores[i] = scorer.calculate_score(new_slice, combined_masks_batch, itemized_masks_batch)
+    #             computed_scores = torch.zeros((len(score_fns), combined_masks_batch.shape[1])).to(device)
+    #             for i, (key, scorer) in enumerate(score_fns.items()):
+    #                 computed_scores[i] = scorer.calculate_score(new_slice, combined_masks_batch, itemized_masks_batch)
                 
-                for i, new_slice in enumerate(matched_slices[start_idx:end_idx]):
-                    scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
-                    scored_slices[new_slice] = scored_slice
+    #             for i, new_slice in enumerate(matched_slices[start_idx:end_idx]):
+    #                 scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
+    #                 scored_slices[new_slice] = scored_slice
     return scored_slices
 
 class RankedSliceList:
@@ -428,7 +441,7 @@ class RankedSliceList:
     slice-finding operation.
     """
     
-    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9, device='cpu'):
+    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9, device='cpu', normalize_weights=True):
         """
         :param results: A list of Slice objects representing the results of a
             slice-finding operation
@@ -465,11 +478,12 @@ class RankedSliceList:
         self.max_weight = max_weight
         self.train_scores = pd.DataFrame([r.score_values for r in self.results])
         self.similarity_threshold = similarity_threshold
+        self.normalize_weights = normalize_weights
         
         self.univariate_masks = {}
         self.score_cache = None # if the user sets this, we will cache eval scores
 
-    def _rank_weighted_indexes(self, score_df, weights, k=None):
+    def _rank_weighted_indexes(self, score_df, weights, k=None, normalize=True):
         """
         Computes the top indexes of a given score dataframe using the
         given dictionary of weights.
@@ -477,7 +491,7 @@ class RankedSliceList:
         original_score_indexes = np.arange(len(score_df), dtype=np.uint32)
         weighted_score = np.zeros(len(score_df))
         for w_name, w in weights.items():
-            weighted_score += w * (score_df[w_name] / score_df[w_name].max())
+            weighted_score += w * (score_df[w_name] / (score_df[w_name].max() if normalize else 1))
         original_score_indexes = original_score_indexes[~np.isnan(weighted_score)]
         weighted_score = weighted_score[~np.isnan(weighted_score)]
         results = np.flip(np.argsort(weighted_score.values))
@@ -552,7 +566,7 @@ class RankedSliceList:
             return (*result, mask_mat)
         return result
         
-    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None, order_features=True):
+    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None, order_features=True, normalize_weights=None):
         """
         Ranks and returns the top slices according to a given set of weights,
         filtering results that contain a very similar set of instances.
@@ -567,6 +581,9 @@ class RankedSliceList:
             than this threshold to already-returned slices will be omitted.
         :param order_features: if True (default), sort the features in IntersectionSlices
             by their contribution to the slice's relevance.
+        :param normalize_weights: If True (default), divide each score function's
+            values by the max values they take to ensure that weights can be 
+            adjusted in a user-friendly way.
         
         :return: A list of Slice objects with scores from the held-out
             evaluation data.
@@ -580,7 +597,7 @@ class RankedSliceList:
 
         # Rescore these using evaluation data and rank
         eval_scored_slices, eval_scores, mask_mat = self.rescore(top_train_indexes, return_masks=True)
-        top_eval_indexes = self._rank_weighted_indexes(eval_scores, weights)
+        top_eval_indexes = self._rank_weighted_indexes(eval_scores, weights, normalize=normalize_weights if normalize_weights is not None else self.normalize_weights)
 
         # Remove results with too-high jaccard similarity
         mask_similarities = pairwise_jaccard_similarities(mask_mat)
@@ -598,7 +615,7 @@ class RankedSliceList:
         def _score(slice_obj):
             scores = self.score_slice(slice_obj)
             return sum(scores.get(n, 0) * w for n, w in weights.items())
-        ranked_results = [slice_obj.sort_features(_score) if isinstance(slice_obj, IntersectionSlice) else slice_obj
+        ranked_results = [slice_obj.sort_features(_score) if isinstance(slice_obj, IntersectionSlice) and order_features else slice_obj
                           for slice_obj in ranked_results]
         return ranked_results
     

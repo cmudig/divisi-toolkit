@@ -258,7 +258,7 @@
         {allowedValues}
         {fixedFeatureOrder}
         draggable={allowDragAndDrop}
-        rowClass="rounded hover:bg-slate-100 shadow border border-slate-100"
+        rowClass="rounded hover:shadow-lg shadow transition-shadow duration-200 border border-slate-100"
         isSaved={!!savedSlices.find((s) =>
           areObjectsEqual(s.feature, slice.feature)
         )}

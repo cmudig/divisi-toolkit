@@ -295,8 +295,8 @@ class OutcomeRateScore(ScoreFunctionBase):
         mask = mask.view(mask.shape[0], -1)
         mask_mean = torch.nansum(self.data.unsqueeze(-1) * mask, 0) / torch.logical_and(mask, self._present_mask.unsqueeze(-1)).sum(0)
         if self.inverse: 
-            return (self.eps + self._mean) / (self.eps + mask_mean)
-        return (self.eps + mask_mean) / (self.eps + self._mean)
+            return 1.0 / (mask_mean + self.eps)
+        return mask_mean
 
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         mean = slice_sum / slice_count

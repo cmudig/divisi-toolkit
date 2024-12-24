@@ -8,33 +8,36 @@ class RankedList:
     A helper class that maintains a list of arbitrary objects with single
     numerical scores.
     """
-    def __init__(self, k, initial_items=None):
+    def __init__(self, k, initial_items=None, unique=True):
         """
         :param k: The number of items to save in the ranked list.
         :param initial_items: If provided, a list of tuples of (item, score)
             that should populate the ranked list.
+        :param unique: if True, then only allow elements to be added once.
         """
         self.k = k
-        self.items = []
+        self._items = []
+        self._ranked_items = None
+        self._item_set = set()
+        self.unique = unique
         self.scores = []
         if initial_items is not None:
             for x in initial_items:
                 self.add(x[0], x[1])
+                
+    @property
+    def items(self):
+        if self._ranked_items is None:
+            indexes = np.flip(np.argsort(self.scores))[:self.k]
+            self._ranked_items = [self._items[i] for i in indexes]
+        return self._ranked_items
         
     def add(self, item, score):
-        added = False
-        for i, comp_score in enumerate(self.scores):
-            if score > comp_score:
-                self.items.insert(i, item)
-                self.scores.insert(i, score)
-                added = True
-                break
-        if not added and len(self.items) < self.k: 
-            self.items.append(item)
-            self.scores.append(score)
-        if len(self.items) > self.k:
-            self.items = self.items[:self.k]
-            self.scores = self.scores[:self.k]
+        if self.unique and item in self._item_set: return
+        self._ranked_items = None
+        self._items.append(item)
+        self._item_set.add(item)
+        self.scores.append(score)
 
 def pairwise_jaccard_similarities(mat):
     """

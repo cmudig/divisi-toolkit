@@ -191,7 +191,7 @@
       scoreValues: {},
       metrics: {},
       feature,
-      isEmpty: feature.type != 'base',
+      isEmpty: feature.type == 'base',
     };
   }
 
@@ -275,7 +275,7 @@
   let draggingOverContainer: boolean = false;
 
   function handleDrop(e: DragEvent) {
-    if (!draggingOverContainer) return;
+    if (!draggingOverContainer && dragOverSliceIndex == null) return;
     draggingOverContainer = false;
     if (!!e.dataTransfer.getData('slice')) {
       e.stopPropagation();
@@ -442,7 +442,10 @@
                       areObjectsEqual(s.feature, labels[sliceIndex].feature)
                     )}
                     <button
-                      class="bg-transparent hover:opacity-60 p-1 text-xs text-slate-600"
+                      class="bg-transparent hover:opacity-60 p-1 text-xs {saveIdx >=
+                      0
+                        ? 'text-rose-600 hover:text-rose-400'
+                        : 'text-slate-400 hover:text-slate-600'}"
                       title="Save this slice"
                       on:click|stopPropagation={() => {
                         if (saveIdx >= 0)
@@ -476,7 +479,7 @@
                 <div
                   class="self-stretch flex-auto text-xs text-slate-500 text-center"
                 >
-                  Drag and drop a slice
+                  Drag and drop a subgroup
                 </div>
               {/if}
             </div>
@@ -504,17 +507,27 @@
         (draggingOverContainer = true)}
     >
       {#if hoveredPointIndex != null || searchScopeEnrichedFeatures.length > 0}
-        <div class="p-1 bg-slate-100/80 rounded">
-          <div class="text-xs font-bold text-slate-500 mb-1">Top Feature</div>
+        <div class="p-1 bg-slate-100/80 rounded text-xs text-slate-700">
+          {#if hoveredPointIndex != null}
+            {@const hoveredClusterSize =
+              pointData.find((p) => p.cluster == hoveredPointIndex)?.size ?? 0}
+            <div class="mb-1">
+              {hoveredClusterSize}
+              {hoveredClusterSize != 1 ? 'instances' : 'instance'}
+            </div>
+          {/if}
           {#each hoveredPointIndex != null ? groupedLayout.enriched_cluster_features[hoveredPointIndex] : searchScopeEnrichedFeatures as f}
-            <div class="mb-1 text-xs">{@html formatEnrichedFeature(f)}</div>
+            <div class="mb-1">
+              <strong>Distinguishing Feature:&nbsp;</strong
+              >{@html formatEnrichedFeature(f)}
+            </div>
           {/each}
         </div>
       {/if}
       <div class="p-1 bg-slate-100/80 rounded pointer-events-auto select-none">
         <div class="flex items-center w-full">
           <div class="flex-auto text-xs font-bold text-slate-500">
-            Slice Intersections
+            Subgroup Intersections
           </div>
           <button
             class="bg-transparent p-1 hover:opacity-50 text-slate-600"

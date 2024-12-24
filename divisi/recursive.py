@@ -1,10 +1,11 @@
 import itertools
-from .slices import Slice
+from .slices import Slice, IntersectionSlice, SliceFeature
 from .utils import RankedList
-
+import numpy as np
+import tqdm
 
 # function to assign values and generate combinations for selected features of a slice
-def generate_values_for_feature_set(discrete_df, feature_set):
+def generate_values_for_feature_set(discrete_df, feature_set, positive_only=False):
     """
     A function that generates all possible numeric values for a particular feature set
 
@@ -14,7 +15,10 @@ def generate_values_for_feature_set(discrete_df, feature_set):
     """
     ranges = []
     for feature in feature_set:
-        ranges.append(range(discrete_df[feature].max() + 1))
+        if positive_only:
+            ranges.append([1])
+        else:
+            ranges.append(range(discrete_df[feature].max() + 1))
 
     # using itertools to generate all unique combinations of n features
     combinations = list(itertools.product(*ranges))
@@ -22,7 +26,7 @@ def generate_values_for_feature_set(discrete_df, feature_set):
 
 
 # calculate scores for slices and store it in a list
-def calculate_scores(discrete_df, score_functions, weights, feature_set, combinations, top_k_slices, min_items=None):
+def calculate_scores(discrete_df, score_functions, weights, feature_set, combinations, top_k_slices, scored_slices=None, min_items=None, univariate_masks=None):
     """
     Function that will calculate score for a slice and add it to top_k_slices if it has a better score
 
@@ -38,18 +42,25 @@ def calculate_scores(discrete_df, score_functions, weights, feature_set, combina
     # here a combination is set of discrete values for a particular feature set
     num_scored = 0
     for combination in combinations:
-        current_slice = Slice(dict(zip(feature_set, combination)))
-        mask = current_slice.make_mask(discrete_df)
+        current_slice = IntersectionSlice([SliceFeature(f, [val]) for f, val in zip(feature_set, combination)])
+        if scored_slices is not None and current_slice in scored_slices: continue 
+        mask = current_slice.make_mask(discrete_df, univariate_masks=univariate_masks)
         num_scored += 1
 
-        if min_items is None or mask.sum() >= min_items:
-            current_slice = current_slice.rescore(
-                {fn_name: fn.calculate_score(current_slice, mask)
-                 for fn_name, fn in score_functions.items()}
-            )
-            score = sum(weight * current_slice.score_values[fn_name]
-                        for fn_name, weight in weights.items())
-            top_k_slices.add(current_slice, score)
+        if min_items is not None and mask.sum() < min_items:
+            if scored_slices is not None:
+                scored_slices[current_slice] = None
+            continue
+    
+        current_slice = current_slice.rescore(
+            {fn_name: fn.calculate_score(current_slice, mask, univariate_masks or {}).item()
+                for fn_name, fn in score_functions.items()}
+        )
+        score = sum(weight * current_slice.score_values[fn_name]
+                    for fn_name, weight in weights.items())
+        top_k_slices.add(current_slice, score)
+        if scored_slices is not None:
+            scored_slices[current_slice] = score
     return num_scored
 
 
@@ -71,7 +82,7 @@ def generate_feature_combinations(features, M):
 
 
 # function to populate top_k_slices with data considering at the most M features
-def populate_slices(discrete_df, score_functions, weights, M, top_k_slices, min_items=None):
+def populate_slices(discrete_df, score_functions, weights, M, top_k_slices, positive_only=False, min_items=None, scored_slices=None, univariate_masks=None):
     """
     This is a helper function that first generates all possible feature sets.
     Once all feature sets are generated, it generates all possible valid values for a particular feature set.
@@ -87,17 +98,17 @@ def populate_slices(discrete_df, score_functions, weights, M, top_k_slices, min_
     """
     print("Slice finding for", M, "feature(s)")
     num_scored = 0
-    for value in generate_feature_combinations(discrete_df.columns, M):
-        combinations = generate_values_for_feature_set(discrete_df, value)
-        num_scored += calculate_scores(discrete_df, score_functions, weights, value, combinations, top_k_slices, min_items=min_items)
+    for value in generate_feature_combinations(np.arange(discrete_df.shape[1]), M):
+        combinations = generate_values_for_feature_set(discrete_df, value, positive_only=positive_only)
+        num_scored += calculate_scores(discrete_df, score_functions, weights, value, combinations, top_k_slices, min_items=min_items, scored_slices=scored_slices, univariate_masks=univariate_masks)
     print("Done for: ", M, ", scored", num_scored, "slices")
     return num_scored
-
 
 def find_slices_recursive(discrete_df,
                           score_functions, 
                           max_features_to_consider, 
                           desired_top_slice_count,
+                          positive_only=False,
                           weights=None,
                           min_items=None):
     """
@@ -126,14 +137,62 @@ def find_slices_recursive(discrete_df,
         weights = {fn_name: 1.0 for fn_name in score_functions}
         
     top_k_slices = RankedList(desired_top_slice_count)
+    univariate_masks = {}
+    scored_slices = {}
+    
+    # total_scored = 0
+    # # populate slices from size 1 to max_features_to_consider
+    # for index in range(1, max_features_to_consider + 1):
+    #     total_scored += populate_slices(discrete_df, 
+    #                     score_functions, 
+    #                     weights, 
+    #                     index, 
+    #                     top_k_slices, 
+    #                     positive_only=positive_only,
+    #                     scored_slices=scored_slices,
+    #                     min_items=min_items,
+    #                     univariate_masks=univariate_masks)
 
-    # populate slices from size 1 to max_features_to_consider
-    for index in range(1, max_features_to_consider + 1):
-        populate_slices(discrete_df, 
-                        score_functions, 
-                        weights, 
-                        index, 
-                        top_k_slices, 
-                        min_items=min_items)
+    num_scored = 0
+    
+    def _find_slices_recursive(base_slice):
+        nonlocal num_scored
+        
+        if scored_slices is not None and base_slice in scored_slices: return
+        
+        # Score this slice
+        mask = base_slice.make_mask(discrete_df, univariate_masks=univariate_masks)
+        num_scored += 1
 
-    return top_k_slices.items
+        if min_items is not None and mask.sum() < min_items:
+            if scored_slices is not None:
+                scored_slices[base_slice] = None
+            return
+    
+        base_slice = base_slice.rescore(
+            {fn_name: fn.calculate_score(base_slice, mask, univariate_masks or {}).item()
+                for fn_name, fn in score_functions.items()}
+        )
+        score = sum(weight * base_slice.score_values[fn_name]
+                    for fn_name, weight in weights.items())
+        top_k_slices.add(base_slice, score)
+        if scored_slices is not None:
+            scored_slices[base_slice] = score
+
+        # Test subslices
+        if len(base_slice.base_features) == max_features_to_consider:
+            return
+        bar = np.arange(discrete_df.shape[1]) 
+        if len(base_slice.base_features) == 0: bar = tqdm.tqdm(bar)
+        for new_feature in bar:
+            if any(f.feature_name == new_feature for f in base_slice.base_features):
+                continue
+            if positive_only:
+                values_to_try = [1]
+            else:
+                values_to_try = list(range(discrete_df[:,new_feature].max() + 1))
+            for v in values_to_try:
+                _find_slices_recursive(base_slice.subslice(SliceFeature(new_feature, [v])))
+            
+    _find_slices_recursive(IntersectionSlice([]))
+    return top_k_slices.items, num_scored

@@ -9,7 +9,9 @@
     faChevronRight,
     faCompress,
     faExpand,
+    faGlobe,
     faHeart,
+    faMap,
     faMinus,
     faPlus,
     faSearch,
@@ -29,8 +31,6 @@
   import * as d3 from 'd3';
 
   export let model;
-
-  let interfaceMode = traitlet(model, 'interface', 'B');
 
   let numSlices = traitlet(model, 'num_slices', 10);
   let numSamples = traitlet(model, 'num_samples', 50);
@@ -70,6 +70,7 @@
   let scoreWeights = traitlet(model, 'score_weights', {});
 
   let searchScopeInfo = traitlet(model, 'search_scope_info', {});
+  let searchScopeForResults = traitlet(model, 'search_scope_for_results', {});
   let searchScopeEnrichedFeatures = traitlet(
     model,
     'search_scope_enriched_features',
@@ -112,8 +113,13 @@
         binaryMetrics = metricNames.filter(
           (m) => testSlice.metrics[m].type == 'binary'
         );
-        if (binaryMetrics.length > 0) $overlapPlotMetric = binaryMetrics[0];
-        else $overlapPlotMetric = null;
+        if (
+          !$overlapPlotMetric ||
+          !binaryMetrics.includes($overlapPlotMetric)
+        ) {
+          if (binaryMetrics.length > 0) $overlapPlotMetric = binaryMetrics[0];
+          else $overlapPlotMetric = null;
+        }
       }
     }
     console.log('overlap metric:', $overlapPlotMetric);
@@ -145,6 +151,7 @@
   let ignoreFullScreenEvent = false;
 
   let showConfiguration = true;
+  let showSliceMap = false;
 
   function enterFullScreen() {
     let fn;
@@ -213,6 +220,12 @@
     console.log('is full screen', isFullScreen);
     ignoreFullScreenEvent = false;
   }
+
+  let oldSelectedSlices = [];
+  $: if (oldSelectedSlices !== $selectedSlices) {
+    if ($selectedSlices.length > oldSelectedSlices.length) showSliceMap = true;
+    oldSelectedSlices = $selectedSlices;
+  }
 </script>
 
 <main
@@ -249,7 +262,7 @@
             metrics: {},
           },
         ];
-      }}><Fa icon={faPlus} class="inline mr-2" />New Slice</button
+      }}><Fa icon={faPlus} class="inline mr-2" />New Rule</button
     >
     {#if $runningSampler}
       <div
@@ -269,32 +282,64 @@
           {#if $shouldCancel}
             Canceling...
           {:else}
-            Finding slices ({($samplerRunProgress * 100).toFixed(1)}%
+            Finding subgroups ({($samplerRunProgress * 100).toFixed(1)}%
             complete)...
           {/if}
         </div>
       </div>
     {:else}
-      <button
-        class="btn btn-blue"
-        disabled={$shouldRerun}
-        on:click={() => ($shouldRerun = true)}
-        ><Fa icon={faSearch} class="inline mr-2" />Find Slices</button
-      >
+      {#if !areObjectsEqual($searchScopeForResults, {})}
+        <button
+          class="btn btn-dark-slate"
+          on:click={() => {
+            $searchScopeInfo = {};
+            $shouldRerun = true;
+          }}>Show Global Results</button
+        >
+      {/if}
+      {#if areObjectsEqual($searchScopeForResults, $searchScopeInfo)}
+        <button
+          class="btn btn-blue"
+          disabled={$shouldRerun}
+          on:click={() => ($shouldRerun = true)}
+          ><Fa icon={faSearch} class="inline mr-2" />Find {$slices.length > 0
+            ? 'More'
+            : ''} Subgroups</button
+        >
+      {:else if !areObjectsEqual($searchScopeInfo, {})}
+        <button
+          class="btn btn-blue"
+          disabled={$shouldRerun}
+          on:click={() => ($shouldRerun = true)}
+          ><Fa icon={faSearch} class="inline mr-2" />Find Subgroups Here</button
+        >
+      {/if}
       <div class="flex-1" />
     {/if}
     <button
-      class="btn {viewingTab == 1 ? 'btn-dark-slate' : 'btn-slate'}"
+      class="btn {viewingTab == 1 ? 'btn-slate' : 'btn-dark-slate'}"
       on:click={() => (viewingTab = 1 - viewingTab)}
-      ><Fa icon={faHeart} class="inline mr-2" />Favorites</button
+      ><Fa icon={faHeart} class="inline mr-2" />Favorites {#if $savedSlices.length > 0}({$savedSlices.length}){/if}</button
     >
     <button
-      class="p-3 rounded bg-transparent hover:opacity-50"
+      class="btn btn-dark-slate"
       on:click={isFullScreen ? exitFullScreen : enterFullScreen}
+      ><Fa
+        icon={isFullScreen ? faCompress : faExpand}
+        class="inline mr-2"
+      />{isFullScreen ? 'Inline' : 'Full Screen'}</button
     >
-      <span class="my-0.5 block">
-        <Fa icon={isFullScreen ? faCompress : faExpand} /></span
-      >
+    <button
+      class="btn bg-slate-600 text-white hover:bg-slate-700"
+      on:click={() => (showSliceMap = !showSliceMap)}
+    >
+      {#if showSliceMap}
+        Hide Map
+        <Fa icon={faChevronRight} class="inline ml-1" />
+      {:else}
+        <Fa icon={faGlobe} class="inline mr-1" />
+        Subgroup Map
+      {/if}
     </button>
   </div>
   <div
@@ -309,15 +354,18 @@
         minWidth={240}
         maxWidth="70%"
         height="100%"
-        width={320}
+        width={360}
         class="border-r border-slate-400"
       >
         <div class="w-full h-full overflow-y-auto">
           <ConfigurationView
             metricInfo={$metricInfo}
-            showSearchScopeConfig={$interfaceMode == 'B'}
             {allowedValues}
             positiveOnly={$positiveOnly}
+            searchScopeNeedsRerun={!areObjectsEqual(
+              $searchScopeForResults,
+              $searchScopeInfo
+            ) && !areObjectsEqual($searchScopeInfo, {})}
             bind:searchScopeInfo={$searchScopeInfo}
             bind:derivedMetricConfigs={$derivedMetricConfigs}
             bind:hiddenMetrics
@@ -349,13 +397,13 @@
           bind:selectedSlices={$selectedSlices}
           savedSlices={$savedSlices}
           sliceColorMap={$sliceColorMap}
-          allowDragAndDrop={$interfaceMode == 'B'}
           {allowedValues}
           baseSlice={$baseSlice}
           bind:hiddenMetrics
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           bind:searchScopeInfo={$searchScopeInfo}
+          searchScopeForResults={$searchScopeForResults}
           bind:hoveredSlice={$hoveredSlice}
           on:runsampler={() => ($shouldRerun = true)}
           on:loadmore={() => ($numSlices += 10)}
@@ -379,7 +427,6 @@
           bind:selectedSlices={$selectedSlices}
           bind:hoveredSlice={$hoveredSlice}
           savedSlices={$savedSlices}
-          allowDragAndDrop={$interfaceMode == 'B'}
           {allowedValues}
           baseSlice={$baseSlice}
           bind:sliceRequests={$sliceScoreRequests}
@@ -399,9 +446,10 @@
       {/if}
     </div>
 
-    {#if $interfaceMode == 'B'}
+    {#if showSliceMap}
       <ResizablePanel
         leftResizable
+        collapsible={false}
         minWidth={300}
         maxWidth="70%"
         height="100%"
@@ -422,7 +470,7 @@
                 ? new Set($hoverMapIndexes.clusters)
                 : new Set()}
               errorKeyOptions={binaryMetrics}
-              savedSlices={$savedSlices}
+              bind:savedSlices={$savedSlices}
               bind:sliceColorMap={$sliceColorMap}
               intersectionCounts={$sliceIntersectionCounts}
               labels={$sliceIntersectionLabels}
