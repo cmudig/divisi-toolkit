@@ -167,11 +167,11 @@ def explore_groups_worker(source_row, **kwargs):
                                       **kwargs)
     
 def explore_groups_beam_search(inputs, 
-                               score_fns, 
+                               ranking_fns, 
                                source_row, 
                                col_names=None,
                                seen_slices=None, 
-                               group_filter=None, 
+                               rule_filter=None, 
                                initial_slice=None,
                                positive_only=None,
                                max_features=5, 
@@ -186,7 +186,7 @@ def explore_groups_beam_search(inputs,
         # Maintain a ranking for each function separately, as different slices may
         # maximize different functions
         best_groups = {fn_name: RankedList(num_candidates, [(initial_slice, -1e9)]) 
-                        for fn_name in score_fns}
+                        for fn_name in ranking_fns}
     else:
         best_groups = set([initial_slice])
 
@@ -238,7 +238,7 @@ def explore_groups_beam_search(inputs,
                 # Skip if the user wants to filter this slice out
                 if new_slice in scored_slices: 
                     continue
-                if group_filter is not None and not group_filter(new_slice): 
+                if rule_filter is not None and not rule_filter(new_slice): 
                     continue
 
                 if new_slice in seen_slices:
@@ -255,7 +255,7 @@ def explore_groups_beam_search(inputs,
                         seen_slices[new_slice] = None
                         continue
                     itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
-                    for key, scorer in score_fns.items():
+                    for key, scorer in ranking_fns.items():
                         new_slice_scores[key] = scorer.calculate_score(new_slice, slice_mask, itemized_masks).item()
                     prescored_slices.append(new_slice.rescore(new_slice_scores))
                     
@@ -288,13 +288,13 @@ def explore_groups_beam_search(inputs,
             #     for start_idx in range(0, len(new_scored_slices), batch_size):
             #         end_idx = min(len(new_scored_slices), start_idx + batch_size)
                     
-            #         computed_scores = torch.zeros((len(score_fns), end_idx - start_idx)).to(device)
-            #         for i, (key, scorer) in enumerate(score_fns.items()):
+            #         computed_scores = torch.zeros((len(ranking_fns), end_idx - start_idx)).to(device)
+            #         for i, (key, scorer) in enumerate(ranking_fns.items()):
             #             computed_scores[i] = scorer.calculate_score(new_slice, 
             #                                                         combined_masks[:,start_idx:end_idx], 
             #                                                         [m[:,start_idx:end_idx] for m in itemized_masks])
                     
-            #         new_scored_slices[start_idx:end_idx] = [new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
+            #         new_scored_slices[start_idx:end_idx] = [new_slice.rescore({fn_name: score.item() for fn_name, score in zip(ranking_fns, computed_scores[:,i])})
             #                             for i, new_slice in enumerate(new_scored_slices[start_idx:end_idx])]
             # else:
             #     new_scored_slices = []
@@ -303,10 +303,10 @@ def explore_groups_beam_search(inputs,
                 seen_slices[new_slice] = new_slice.score_values
                 scored_slices.add(new_slice)
                 if num_candidates is not None:
-                    for fn_name in score_fns:
+                    for fn_name in ranking_fns:
                         # Add to each ranking the score where only the current score
                         # function's value is maximized
-                        score = sum((max_weight if f == fn_name else min_weight) * new_slice.score_values[f] for f in score_fns)
+                        score = sum((max_weight if f == fn_name else min_weight) * new_slice.score_values[f] for f in ranking_fns)
                         best_groups[fn_name].add(new_slice, score)
                 else:
                     best_groups.add(new_slice)
@@ -321,9 +321,9 @@ class SamplingSubgroupSearch:
     """
     def __init__(self,
                  inputs, 
-                 score_fns, 
+                 ranking_fns, 
                  source_mask=None, 
-                 group_filter=None, 
+                 rule_filter=None, 
                  max_features=3, 
                  min_items=100, 
                  num_candidates=20,
@@ -342,9 +342,9 @@ class SamplingSubgroupSearch:
                  device='cpu'):
         self.inputs = inputs
         self.raw_inputs = inputs.df if hasattr(inputs, 'df') else inputs
-        self.score_fns = score_fns
+        self.ranking_fns = ranking_fns
         self.source_mask = source_mask
-        self.group_filter = group_filter
+        self.rule_filter = rule_filter
         self.max_features = max_features
         self.min_items = min_items
         self.num_candidates = num_candidates
@@ -383,18 +383,18 @@ class SamplingSubgroupSearch:
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
         self.results = RankedSubgroupList(list(set(self.all_scores)),
                             self.inputs,
-                            self.score_fns,
+                            self.ranking_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
                             min_weight=self.min_weight,
                             max_weight=self.max_weight,
                             similarity_threshold=self.similarity_threshold)
         
-    def copy_spec(self, inputs=None, score_fns=None, **kwargs):
+    def copy_spec(self, inputs=None, ranking_fns=None, **kwargs):
         return SamplingSubgroupSearch(
             self.inputs if inputs is None else inputs, 
-            self.score_fns if score_fns is None else score_fns, 
+            self.ranking_fns if ranking_fns is None else ranking_fns, 
             source_mask=kwargs.get("source_mask", self.source_mask), 
-            group_filter=kwargs.get("group_filter", self.group_filter), 
+            rule_filter=kwargs.get("rule_filter", self.rule_filter),
             max_features=kwargs.get("max_features", self.max_features), 
             min_items=kwargs.get("min_items", self.min_items), 
             num_candidates=kwargs.get("num_candidates", self.num_candidates),
@@ -416,7 +416,7 @@ class SamplingSubgroupSearch:
         return {
             "config": {
                 "source_mask": self.source_mask, 
-                "group_filter": self.group_filter, 
+                "rule_filter": self.rule_filter,
                 "max_features": self.max_features, 
                 "min_items": self.min_items, 
                 "num_candidates": self.num_candidates,
@@ -439,8 +439,8 @@ class SamplingSubgroupSearch:
         }
         
     @classmethod
-    def from_state_dict(self, inputs, score_fns, data):
-        sf = SamplingSubgroupSearch(inputs, score_fns, **data["config"])
+    def from_state_dict(self, inputs, ranking_fns, data):
+        sf = SamplingSubgroupSearch(inputs, ranking_fns, **data["config"])
         sf.sampled_idxs = np.array(data["results"]["sampled_idxs"])
         all_scores = []
         for s in data["results"]["all_scores"]:
@@ -449,7 +449,7 @@ class SamplingSubgroupSearch:
         sf.all_scores = all_scores
         sf.results = RankedSubgroupList(list(set(sf.all_scores)),
                             sf.inputs,
-                            sf.score_fns,
+                            sf.ranking_fns,
                             eval_indexes=~sf.discovery_mask if sf.holdout_fraction > 0.0 else None,
                             min_weight=sf.min_weight,
                             max_weight=sf.max_weight,
@@ -566,7 +566,7 @@ class SamplingSubgroupSearch:
     def rescore(self, new_score_fns):
         """
         Updates the set of score functions, re-evaluates the slice scores, and 
-        returns the new RankedSliceList. Also sets the score_fns property to the 
+        returns the new RankedSliceList. Also sets the ranking_fns property to the 
         provided value.
         """
         _, discovery_inputs, _ = self.make_discovery_inputs()
@@ -590,10 +590,10 @@ class SamplingSubgroupSearch:
             else:
                 self.seen_slices[old_slice] = None
                 
-        self.score_fns = new_score_fns
+        self.ranking_fns = new_score_fns
         self.results = RankedSubgroupList(list(set(self.all_scores)),
                             self.inputs,
-                            self.score_fns,
+                            self.ranking_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
                             min_weight=self.min_weight,
                             max_weight=self.max_weight,
@@ -612,7 +612,7 @@ class SamplingSubgroupSearch:
                     
         # Use only score functions within the discovery subset of the data
         discovery_score_fns = {fn_name: fn.subslice(self.discovery_mask)
-                            for fn_name, fn in self.score_fns.items()}
+                            for fn_name, fn in self.ranking_fns.items()}
         if isinstance(self.raw_inputs, (sps.csr_matrix, sps.csc_matrix)):
             discovery_inputs = self.raw_inputs[self.discovery_mask].astype(np.uint8)
         else:
@@ -663,7 +663,7 @@ class SamplingSubgroupSearch:
             worker_inputs = discovery_inputs.cpu().numpy() if isinstance(discovery_inputs, torch.Tensor) else discovery_inputs
             init_fn, init_args = self._create_worker_initializer(worker_inputs, discovery_score_fns, sample_size=sample_size)
             
-            worker = partial(explore_groups_worker, group_filter=self.group_filter,
+            worker = partial(explore_groups_worker, rule_filter=self.rule_filter,
                                                     max_features=self.max_features,
                                                     min_items=self.min_items * sample_size,
                                                     initial_slice=self.initial_slice,
@@ -701,7 +701,7 @@ class SamplingSubgroupSearch:
                                                     worker_score_fns,
                                                     source_row,
                                                     seen_slices=self.seen_slices,
-                                                    group_filter=self.group_filter,
+                                                    rule_filter=self.rule_filter,
                                                     max_features=self.max_features,
                                                     min_items=self.min_items * sample_size,
                                                     initial_slice=self.initial_slice,
@@ -766,7 +766,7 @@ class SamplingSubgroupSearch:
             
         self.results = RankedSubgroupList(list(set(self.all_scores)),
                             self.inputs,
-                            self.score_fns,
+                            self.ranking_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
                             min_weight=self.min_weight,
                             max_weight=self.max_weight,
@@ -775,9 +775,9 @@ class SamplingSubgroupSearch:
         return self.results, sample_idxs
     
 def find_slices_by_sampling(inputs, 
-                            score_fns, 
+                            ranking_fns, 
                             source_mask=None, 
-                            group_filter=None, 
+                            rule_filter=None, 
                             initial_slice=None,
                             max_features=3, 
                             min_items=100, 
@@ -793,12 +793,12 @@ def find_slices_by_sampling(inputs,
     sample row.
     
     :param inputs: a dataframe or matrix representing the discretized inputs
-    :param score_fns: a dictionary mapping score names to `ScoreFunction`-type
+    :param ranking_fns: a dictionary mapping score names to `ScoreFunction`-type
         objects
     :param source_mask: if provided, a boolean mask indicating which rows should
         be sampled from for slice finding. This will encourage finding slices
         that match a particular criterion of interest (e.g. model errors).
-    :param group_filter: if provided, a function that takes a `Slice` object and
+    :param rule_filter: if provided, a function that takes a `Slice` object and
         returns False if the slice should not be explored. Subslices of these
         slices will not be explored either.
     :param initial_slice: if provided, a slice that will be used as the base
@@ -828,9 +828,9 @@ def find_slices_by_sampling(inputs,
     """
     
     finder = SamplingSubgroupSearch(inputs,
-                                score_fns,
+                                ranking_fns,
                                 source_mask=source_mask, 
-                                group_filter=group_filter, 
+                                rule_filter=rule_filter,
                                 initial_slice=initial_slice,
                                 max_features=max_features, 
                                 min_items=min_items, 

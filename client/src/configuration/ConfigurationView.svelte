@@ -31,7 +31,7 @@
 
   export let derivedMetricConfigs: { [key: string]: any };
   export let scoreFunctionConfigs: { [key: string]: any };
-  export let scoreWeights: { [key: string]: number };
+  export let rankingWeights: { [key: string]: number };
   export let showScoreFunctionConfig: boolean = true;
 
   export let creatingNewDerivedMetric: boolean = false;
@@ -92,9 +92,9 @@
         <ScoreFunctionConfiguration
           name={fnName}
           config={scoreFunctionConfigs[fnName]}
-          weight={scoreWeights[fnName] ?? 0}
+          weight={rankingWeights[fnName] ?? 0}
           on:reweight={(e) => {
-            scoreWeights = { ...scoreWeights, [fnName]: e.detail };
+            rankingWeights = { ...rankingWeights, [fnName]: e.detail };
           }}
           on:save={(e) => {
             scoreFunctionConfigs = {
@@ -105,20 +105,20 @@
               ),
               [e.detail.name]: e.detail.config,
             };
-            scoreWeights = {
+            rankingWeights = {
               ...Object.fromEntries(
-                Object.entries(scoreWeights).filter((e) => e[0] != fnName)
+                Object.entries(rankingWeights).filter((e) => e[0] != fnName)
               ),
               [e.detail.name]:
-                scoreWeights[fnName] > 0 ? scoreWeights[fnName] : 1,
+                rankingWeights[fnName] > 0 ? rankingWeights[fnName] : 1,
             };
           }}
           on:delete={(e) => {
             scoreFunctionConfigs = Object.fromEntries(
               Object.entries(scoreFunctionConfigs).filter((e) => e[0] != fnName)
             );
-            scoreWeights = Object.fromEntries(
-              Object.entries(scoreWeights).filter((e) => e[0] != fnName)
+            rankingWeights = Object.fromEntries(
+              Object.entries(rankingWeights).filter((e) => e[0] != fnName)
             );
           }}
           bind:metricExpressionRequest
@@ -138,8 +138,8 @@
               ...scoreFunctionConfigs,
               [e.detail.name]: e.detail.config,
             };
-            scoreWeights = {
-              ...scoreWeights,
+            rankingWeights = {
+              ...rankingWeights,
               [e.detail.name]: e.detail.weight,
             };
             creatingNewScoreFunction = false;

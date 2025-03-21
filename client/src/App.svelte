@@ -53,7 +53,7 @@
 
   let metricInfo = traitlet(model, 'metric_info', {});
   let derivedMetricConfigs = traitlet(model, 'derived_metric_config', {});
-  let scoreFunctionConfigs = traitlet(model, 'score_function_config', {});
+  let scoreFunctionConfigs = traitlet(model, 'ranking_function_config', {});
   let metricExpressionRequest = traitlet(
     model,
     'metric_expression_request',
@@ -67,7 +67,7 @@
 
   let valueNames = traitlet(model, 'value_names', {});
 
-  let scoreWeights = traitlet(model, 'score_weights', {});
+  let rankingWeights = traitlet(model, 'ranking_weights', {});
 
   let searchScopeInfo = traitlet(model, 'search_scope_info', {});
   let searchScopeForResults = traitlet(model, 'search_scope_for_results', {});
@@ -96,7 +96,7 @@
 
   let scoreNames: Array<string>;
   $: {
-    scoreNames = Object.keys($scoreWeights);
+    scoreNames = Object.keys($rankingWeights);
     scoreNames.sort();
   }
 
@@ -370,7 +370,7 @@
             bind:derivedMetricConfigs={$derivedMetricConfigs}
             bind:hiddenMetrics
             bind:scoreFunctionConfigs={$scoreFunctionConfigs}
-            bind:scoreWeights={$scoreWeights}
+            bind:rankingWeights={$rankingWeights}
             bind:metricExpressionRequest={$metricExpressionRequest}
             bind:metricExpressionResponse={$metricExpressionResponse}
           />
@@ -389,7 +389,7 @@
           bind:numSamples={$numSamples}
           positiveOnly={$positiveOnly}
           bind:shouldCancel={$shouldCancel}
-          bind:scoreWeights={$scoreWeights}
+          bind:rankingWeights={$rankingWeights}
           samplerRunProgress={$samplerRunProgress}
           slices={$slices}
           bind:customSlices={$customSlices}

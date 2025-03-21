@@ -5,17 +5,17 @@ __version__ = importlib.metadata.version("divisi-toolkit")
 from .widget import DivisiWidget
 from .sampling import find_slices_by_sampling
 from .recursive import search_subgroups_recursive
-from .scores import *
+from .ranking import *
 from .filters import *
 from .discretization import DiscretizedData, discretize_data, discretize_token_sets
 
-def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=5.0, algorithm='recursive', **kwargs):
+def find_slices(df, ranking_functions, max_features=3, min_weight=0.0, max_weight=5.0, algorithm='recursive', **kwargs):
     """
     Performs slice-finding on the given discrete dataframe, optimizing for a
     set of ScoreFunction objects.
     
     :param df: A dataframe of discretized features.
-    :param score_functions: A dict mapping score function names to score function
+    :param ranking_functions: A dict mapping score function names to score function
         objects.
     :param max_features: The maximum number of feature values allowed in a slice.
         Lower values make the algorithm run faster.
@@ -63,7 +63,7 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
         del kwargs['n_slices']
         return search_subgroups_recursive(
             df_to_run,
-            score_functions,
+            ranking_functions,
             max_features,
             n_slices,
             **kwargs
@@ -73,7 +73,7 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
     elif algorithm.lower() == 'sampling':
         results = find_slices_by_sampling(
             df,
-            score_functions,
+            ranking_functions,
             max_features=max_features,
             **{k: v for k, v in kwargs.items() if k not in ('weights', 'n_slices')}
         )

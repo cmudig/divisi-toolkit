@@ -44,9 +44,9 @@ class DivisiWidget(anywidget.AnyWidget):
     running_sampler = traitlets.Bool(False).tag(sync=True)
     num_samples_drawn = traitlets.Int(0).tag(sync=True)
     sampler_run_progress = traitlets.Float(0.0).tag(sync=True)
-    score_functions = traitlets.Dict({})
-    score_function_config = traitlets.Dict({}).tag(sync=True)
-    score_weights = traitlets.Dict({}).tag(sync=True)
+    ranking_functions = traitlets.Dict({})
+    ranking_function_config = traitlets.Dict({}).tag(sync=True)
+    ranking_weights = traitlets.Dict({}).tag(sync=True)
     metrics = traitlets.Dict({})
     metric_info = traitlets.Dict({}).tag(sync=True)
     derived_metrics = traitlets.Dict({})
@@ -118,20 +118,20 @@ class DivisiWidget(anywidget.AnyWidget):
                 
         # Generate score functions automatically if needed
         score_fn_configs = {}
-        score_weights = kwargs.get("score_weights", {})
-        provided_score_weights = len(score_weights) > 0
-        for name, fn in kwargs.get("score_functions", {}).items():
+        ranking_weights = kwargs.get("ranking_weights", {})
+        provided_score_weights = len(ranking_weights) > 0
+        for name, fn in kwargs.get("ranking_functions", {}).items():
             if isinstance(fn, RankingFunctionBase):
                 score_fn_configs[name] = {"type": type(fn).__name__, "editable": False}
             else:
                 score_fn_configs[name] = fn
             if not provided_score_weights:
-                score_weights[name] = 1.0
+                ranking_weights[name] = 1.0
         if not score_fn_configs:
             score_fn_configs["Slice Size"] = {"type": "SubgroupSize", "ideal_fraction": 0.1, "spread": 0.05}
-            score_weights["Slice Size"] = 0.5
+            ranking_weights["Slice Size"] = 0.5
             score_fn_configs["Simple Rule"] = {"type": "SimpleRule"}
-            score_weights["Simple Rule"] = 0.5
+            ranking_weights["Simple Rule"] = 0.5
             
             if len(self.metric_info):
                 first_metric = sorted(self.metric_info.keys())[0]
@@ -139,20 +139,20 @@ class DivisiWidget(anywidget.AnyWidget):
                 if info["type"] == "binary":
                     score_fn_configs[f"{first_metric} High"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": False}
                     score_fn_configs[f"{first_metric} Low"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": True}
-                    score_weights[f"{first_metric} High"] = 1.0
-                    score_weights[f"{first_metric} Low"] = 0.0
+                    ranking_weights[f"{first_metric} High"] = 1.0
+                    ranking_weights[f"{first_metric} Low"] = 0.0
                 elif info["type"] == "continuous":
                     score_fn_configs[f"{first_metric} Different"] = {"type": "MeanDifferenceScore", "metric": f"{{{first_metric}}}"}
-                    score_weights[f"{first_metric} Different"] = 1.0
+                    ranking_weights[f"{first_metric} Different"] = 1.0
                 
         self.discrete_data = discrete_data
         self.metrics = kwargs.get("metrics", {})
         self.derived_metrics = {**self.metrics}
         self.derived_metric_config = {k: { "expression": f"{{{k}}}" } for k in self.metrics}
-        self.score_functions = kwargs.get("score_functions", {})
-        self.score_function_config = score_fn_configs
+        self.ranking_functions = kwargs.get("ranking_functions", {})
+        self.ranking_function_config = score_fn_configs
         self._slice_description_cache = {}
-        self.score_weights = score_weights
+        self.ranking_weights = ranking_weights
         self._score_cache = {}
         
         self.state_path = kwargs.get("state_path", None)
@@ -161,7 +161,7 @@ class DivisiWidget(anywidget.AnyWidget):
         if self.search_engine is None:
             self.search_engine = SamplingSubgroupSearch(
                 self.discrete_data,
-                self.score_functions,
+                self.ranking_functions,
                 source_mask=parse_metric_expression(self.source_mask_expr, self.derived_metrics) if self.source_mask_expr else None,
                 min_items=len(data) * 0.5 * self.min_items_fraction,
                 holdout_fraction=0.5,
@@ -220,7 +220,7 @@ class DivisiWidget(anywidget.AnyWidget):
                 state = json.load(file)
             if "metric_info" in state: self.metric_info = state["metric_info"]
             if "derived_metric_config" in state: self.derived_metric_config = state["derived_metric_config"]
-            if "score_function_config" in state: self.score_function_config = state["score_function_config"]
+            if "ranking_function_config" in state: self.ranking_function_config = state["ranking_function_config"]
             if "saved_slices" in state: self.saved_slices = state["saved_slices"]
             if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
             if "custom_slices" in state: self.custom_slices = state["custom_slices"]
@@ -228,12 +228,12 @@ class DivisiWidget(anywidget.AnyWidget):
         if os.path.exists(os.path.join(self.state_path, "search_engine.pkl")):
             with open(os.path.join(self.state_path, "search_engine.pkl"), "rb") as file:
                 sf_state = pickle.load(file)
-            self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.score_functions, sf_state)
+            self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state)
             self.search_engine.results.score_cache = self._score_cache
             self.original_slice_finder = self.search_engine
             if self.search_scope_info: self.update_search_scopes()
         
-    @traitlets.observe("metric_info", "derived_metric_config", "score_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
+    @traitlets.observe("metric_info", "derived_metric_config", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
     def _write_state(self, change=None):
         if self.search_engine is None: return
         
@@ -252,7 +252,7 @@ class DivisiWidget(anywidget.AnyWidget):
             json.dump({
                 "metric_info": self.metric_info,
                 "derived_metric_config": self.derived_metric_config,
-                "score_function_config": self.score_function_config,
+                "ranking_function_config": self.ranking_function_config,
                 "search_scope_info": self.search_scope_info,
                 "saved_slices": self.saved_slices,
                 "selected_slices": self.selected_slices,   
@@ -338,15 +338,15 @@ class DivisiWidget(anywidget.AnyWidget):
             self.running_sampler = False
             raise e
 
-    @traitlets.observe("score_weights", "num_slices")
+    @traitlets.observe("ranking_weights", "num_slices")
     def rerank_results(self, change=None):
         if not self.search_engine or not self.search_engine.results: 
             self.update_slices([])
         else:    
-            weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.search_engine.score_fns}
+            weights_to_use = {n: w for n, w in self.ranking_weights.items() if n in self.search_engine.ranking_fns}
             # # add weights for interaction effect scores
-            # for n, config in self.score_function_config.items():
-            #     if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRate":
+            # for n, config in self.ranking_function_config.items():
+            #     if n in weights_to_use and n in self.ranking_functions and config["type"] == "OutcomeRate":
             #         weights_to_use[f"{n}_interaction"] = weights_to_use[n]
             ranked_results = self.search_engine.results.rank(weights_to_use, 
                                                             n_slices=self.num_slices)
@@ -375,10 +375,10 @@ class DivisiWidget(anywidget.AnyWidget):
                                     for k, f in self.slice_score_requests.items()}
         
     def _base_score_weights_for_spec(self, search_specs, spec, slice_finder):
-        if not all(n in slice_finder.score_fns for n in spec["score_weights"]):
-            return search_specs[0]["score_weights"]
+        if not all(n in slice_finder.ranking_fns for n in spec["ranking_weights"]):
+            return search_specs[0]["ranking_weights"]
         else:
-            return spec["score_weights"]
+            return spec["ranking_weights"]
         
     @traitlets.observe("search_scope_info", "hovered_slice")
     def update_top_feature(self, change=None):
@@ -416,7 +416,7 @@ class DivisiWidget(anywidget.AnyWidget):
         
         if not search_info:
             self.search_engine = self.original_slice_finder
-            self.score_weights = {s: w for s, w in self.score_weights.items() if not s.startswith("Search Scope")}
+            self.ranking_weights = {s: w for s, w in self.ranking_weights.items() if not s.startswith("Search Scope")}
             self.search_scope_mask = None
             self.search_scope_for_results = {}
             self._slice_description_cache = {}
@@ -477,7 +477,7 @@ class DivisiWidget(anywidget.AnyWidget):
         else:
             return
 
-        new_filter = base_finder.group_filter
+        new_filter = base_finder.rule_filter
         if exclusion_criteria is not None:
             if new_filter is not None:
                 new_filter = ExcludeIfAny([new_filter, exclusion_criteria])
@@ -485,33 +485,33 @@ class DivisiWidget(anywidget.AnyWidget):
                 new_filter = exclusion_criteria
         # subslice any outcomes 
         # adjusted_score_fns = {n: fn.with_data(fn.data & self.search_scope_mask)
-        #                       for n, fn in base_finder.score_fns.items()
+        #                       for n, fn in base_finder.ranking_fns.items()
         #                       if hasattr(fn, "with_data")}
         new_finder = base_finder.copy_spec(
-            score_fns={**base_finder.score_fns, **new_score_fns},
+            ranking_fns={**base_finder.ranking_fns, **new_score_fns},
             source_mask=new_source_mask,
-            group_filter=new_filter,
+            rule_filter=new_filter,
             initial_slice=initial_slice,
         )
         self.search_engine = new_finder
-        self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},
+        self.ranking_weights = {**{n: w for n, w in self.ranking_weights.items() if n in base_finder.ranking_fns},
                               **{n: 1.0 for n in new_score_fns}}
         self._slice_description_cache = {}
         self.rerank_results()        
 
-    @traitlets.observe("score_function_config")
-    def update_score_functions(self, change=None):
+    @traitlets.observe("ranking_function_config")
+    def update_ranking_functions(self, change=None):
         sf = {}
-        for n, config in self.score_function_config.items():
+        for n, config in self.ranking_function_config.items():
             if config.get("editable", True):
                 sf[n] = RankingFunctionBase.from_configuration(config, self.derived_metrics) 
-            elif n in self.score_functions:
-                sf[n] = self.score_functions[n]
+            elif n in self.ranking_functions:
+                sf[n] = self.ranking_functions[n]
             # if n in sf and config['type'] == 'OutcomeRate':
             #     sf[f"{n}_interaction"] = InteractionEffect((1 - sf[n].data) if sf[n].inverse else sf[n].data)
-        self.score_functions = sf
+        self.ranking_functions = sf
         if self.search_engine is not None:
-            self.search_engine.rescore(self.score_functions)
+            self.search_engine.rescore(self.ranking_functions)
             self.rerank_results()
 
     @traitlets.observe("derived_metric_config")

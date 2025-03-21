@@ -380,7 +380,7 @@ class IntersectionRule(Rule):
                                  self.score_values)
         
 
-def score_subgroups_batch(slices_to_score, inputs, score_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
+def score_subgroups_batch(slices_to_score, inputs, ranking_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
     univariate_masks = univariate_masks if univariate_masks is not None else {}
     scored_slices = {}
     
@@ -392,7 +392,7 @@ def score_subgroups_batch(slices_to_score, inputs, score_fns, max_features, min_
         
         computed_scores = {}
         itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
-        for key, scorer in score_fns.items():
+        for key, scorer in ranking_fns.items():
             computed_scores[key] = scorer.calculate_score(new_slice, mask, itemized_masks).item()
         
         scored_slices[new_slice] = new_slice.rescore(computed_scores)
@@ -421,12 +421,12 @@ def score_subgroups_batch(slices_to_score, inputs, score_fns, max_features, min_
     #             combined_masks_batch = torch.stack(combined_masks[start_idx:end_idx], 1)
     #             itemized_masks_batch = [torch.stack(m[start_idx:end_idx], 1) for m in itemized_masks]
                 
-    #             computed_scores = torch.zeros((len(score_fns), combined_masks_batch.shape[1])).to(device)
-    #             for i, (key, scorer) in enumerate(score_fns.items()):
+    #             computed_scores = torch.zeros((len(ranking_fns), combined_masks_batch.shape[1])).to(device)
+    #             for i, (key, scorer) in enumerate(ranking_fns.items()):
     #                 computed_scores[i] = scorer.calculate_score(new_slice, combined_masks_batch, itemized_masks_batch)
                 
     #             for i, new_slice in enumerate(matched_slices[start_idx:end_idx]):
-    #                 scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(score_fns, computed_scores[:,i])})
+    #                 scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(ranking_fns, computed_scores[:,i])})
     #                 scored_slices[new_slice] = scored_slice
     return scored_slices
 
@@ -441,13 +441,13 @@ class RankedSubgroupList:
     slice-finding operation.
     """
     
-    def __init__(self, results, data, score_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9, device='cpu', normalize_weights=True):
+    def __init__(self, results, data, ranking_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9, device='cpu', normalize_weights=True):
         """
         :param results: A list of Slice objects representing the results of a
             slice-finding operation
         :param data: The original discrete-valued dataframe or DiscretizedData
             used to compute scores
-        :param score_functions: A dictionary of score names to score function
+        :param ranking_functions: A dictionary of score names to score function
             objects
         :param similarity_threshold: Slices that have a higher Jaccard similarity
             than this threshold to already-returned slices will be omitted.
@@ -466,12 +466,12 @@ class RankedSubgroupList:
                     self.eval_df = self.eval_df.tocsc()
             if not isinstance(self.eval_df, csc_matrix):
                 self.eval_df = torch.from_numpy(self.eval_df).to(self.device)
-            self.score_functions = {fn_name: fn.subslice(self.eval_indexes).to(self.device)
-                                    for fn_name, fn in score_functions.items()}
+            self.ranking_functions = {fn_name: fn.subslice(self.eval_indexes).to(self.device)
+                                    for fn_name, fn in ranking_functions.items()}
             self.eval_mask = self.eval_indexes
         else:
             self.eval_df = self.df
-            self.score_functions = score_functions
+            self.ranking_functions = ranking_functions
             self.eval_mask = np.arange(self.df.shape[0])
             
         self.min_weight = min_weight
@@ -516,7 +516,7 @@ class RankedSubgroupList:
             mask = slice_obj.make_mask(self.eval_df, univariate_masks=self.univariate_masks, device=self.device)
             itemized_masks = [self.univariate_masks[f] for f in slice_obj.univariate_features()]
             group_scores = {key: item.calculate_score(slice_obj, mask, itemized_masks).item()
-                            for key, item in self.score_functions.items()}
+                            for key, item in self.ranking_functions.items()}
             if self.score_cache is not None:
                 self.score_cache[slice_obj] = (group_scores, mask)
             

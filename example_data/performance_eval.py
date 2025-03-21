@@ -61,12 +61,12 @@ def load_adult():
     print(discrete_outcomes.mean())
 
     metrics = {"error": discrete_outcomes.values}
-    score_fns = {
+    ranking_fns = {
         "error_rate": {"fn": divisi.OutcomeRate(discrete_outcomes.values), "type": "OutcomeRate", "metric": "error"},
         "slice_size": {"fn": divisi.SubgroupSize(1, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
     }
     
-    return discrete_df, metrics, score_fns, {
+    return discrete_df, metrics, ranking_fns, {
         "max_features": 3, 
         "source_mask": discrete_outcomes.values,
         "weights": {
@@ -108,13 +108,13 @@ def load_reviews():
     criterion = (val_pred - val_true >= 3) #[:100000] # (val_pred >= 2) != (val_true >= 2)
 
     metrics = {"polarity": criterion}
-    score_fns = {
+    ranking_fns = {
         "wrong_polarity": {"fn": sf.OutcomeRate(criterion), "type": "OutcomeRate", "metric": "polarity"},
         "slice_size": {"fn": sf.SubgroupSize(1.0, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
     }
     print(len(discrete_data))
     
-    return discrete_data, metrics, score_fns, {
+    return discrete_data, metrics, ranking_fns, {
         "max_features": 3, 
         "source_mask": criterion,
         "positive_only": True,
@@ -203,13 +203,13 @@ def load_airline():
     })
     
     metrics = { "dissatisfaction": 1 - y.values}
-    score_fns = {
+    ranking_fns = {
         # "error": divisi.OutcomeRate(is_error.values),
         "dissatisfaction": {"fn": divisi.OutcomeRate(1 - y.values), "type": "OutcomeRate", "metric": "dissatisfaction"},
         "slice_size": {"fn": divisi.SubgroupSize(1, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
     }
 
-    return discrete_df, metrics, score_fns, {
+    return discrete_df, metrics, ranking_fns, {
         "max_features": 3, 
         "source_mask": 1 - y.values,
         "weights": {
@@ -217,11 +217,11 @@ def load_airline():
             "slice_size": 0.1
         }}
 
-def run_recursive(results_path, discrete_df, metrics, score_fns, **kwargs):
+def run_recursive(results_path, discrete_df, metrics, ranking_fns, **kwargs):
     a = time.time()
     results, num_scored = divisi.search_subgroups_recursive(
         discrete_df.df, 
-        {n: fn['fn'] for n, fn in score_fns.items()}, 
+        {n: fn['fn'] for n, fn in ranking_fns.items()}, 
         kwargs.get("max_features", 3), 
         kwargs.get("num_results", 100), 
         min_items=int(kwargs.get("min_items_fraction") * len(discrete_df)), 
@@ -243,11 +243,11 @@ def run_recursive(results_path, discrete_df, metrics, score_fns, **kwargs):
             "num_scored": num_scored
         }], file)
 
-def run_sampling(results_path, discrete_df, metrics, score_fns, **kwargs):
+def run_sampling(results_path, discrete_df, metrics, ranking_fns, **kwargs):
     a = time.time()
     slice_finder = divisi.sampling.SamplingSubgroupSearch(
         discrete_df,
-        {n: fn['fn'] for n, fn in score_fns.items()},
+        {n: fn['fn'] for n, fn in ranking_fns.items()},
         source_mask=kwargs.get("source_mask", None),
         min_items=int(kwargs.get("min_items_fraction") * len(discrete_df)),
         max_features=kwargs.get("max_features", 3),
@@ -278,7 +278,7 @@ def run_sampling(results_path, discrete_df, metrics, score_fns, **kwargs):
             "num_scored": len(slice_finder.all_scores)
         }], file)
         
-def run_divexplore(results_path, discrete_df, metrics, score_fns, **kwargs):
+def run_divexplore(results_path, discrete_df, metrics, ranking_fns, **kwargs):
     metric_names = sorted(metrics.keys())
     div_df = pd.DataFrame(np.hstack([discrete_df.df.toarray() if isinstance(discrete_df.df, csr_matrix) else discrete_df.df,
                                      *(metrics[n].reshape(-1, 1) for n in metric_names)]))
@@ -292,7 +292,7 @@ def run_divexplore(results_path, discrete_df, metrics, score_fns, **kwargs):
     candidates = subgroups[subgroups['length'] <= kwargs.get("max_features", 3)].reset_index(drop=True)
     print(len(candidates), "candidates to score")
     scores = {}
-    for fn_name, fn in score_fns.items():
+    for fn_name, fn in ranking_fns.items():
         if fn["type"] == "OutcomeRate":
             scores[fn_name] = candidates[fn["metric"]]
         elif fn["type"] == "SliceSize":

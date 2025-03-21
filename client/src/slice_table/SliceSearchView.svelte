@@ -45,7 +45,7 @@
 
   export let hoveredSlice: Slice | null = null;
 
-  export let scoreWeights: any = {};
+  export let rankingWeights: any = {};
 
   export let fixedFeatureOrder: Array<any> = [];
   export let searchBaseSlice: any = null;
