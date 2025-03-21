@@ -132,15 +132,15 @@
     <div class="px-2 my-2 flex gap-2 items-center">
       <div class="font-bold">Type</div>
       <select class="flat-select flex-auto" bind:value={editingConfig.type}>
-        <option value="OutcomeRateScore">Outcome Rate</option>
-        <option value="OutcomeShareScore">Outcome Share</option>
-        <option value="MeanDifferenceScore">Mean Difference</option>
-        <option value="SliceSizeScore">Slice Size</option>
-        <option value="NumFeaturesScore">Slice Complexity</option>
+        <option value="OutcomeRate">Outcome Rate</option>
+        <option value="OutcomeShare">Outcome Share</option>
+        <option value="MeanDifference">Mean Difference</option>
+        <option value="SubgroupSize">Subgroup Size</option>
+        <option value="SimpleRule">Rule Complexity</option>
       </select>
     </div>
     <div class="px-2 w-full">
-      {#if editingConfig.type == 'OutcomeRateScore'}
+      {#if editingConfig.type == 'OutcomeRate'}
         <div class="text-xs text-slate-700 mb-2">
           Prioritize slices where the binary expression is more often <select
             class="mx-1 flat-select-small flex-auto"
@@ -157,7 +157,7 @@
           placeholder="Type a binary expression using metrics"
           {metricNames}
         />
-      {:else if editingConfig.type == 'OutcomeShareScore'}
+      {:else if editingConfig.type == 'OutcomeShare'}
         <div class="text-xs text-slate-700 mb-2">
           Prioritize slices where most of the instances matching the binary
           expression are included:
@@ -169,7 +169,7 @@
           placeholder="Type a binary expression using metrics"
           {metricNames}
         />
-      {:else if editingConfig.type == 'MeanDifferenceScore'}
+      {:else if editingConfig.type == 'MeanDifference'}
         <div class="text-xs text-slate-700 mb-2">
           Prioritize slices where the mean of the expression is different than
           average:
@@ -181,7 +181,7 @@
           placeholder="Type a continuous expression using metrics"
           {metricNames}
         />
-      {:else if editingConfig.type == 'SliceSizeScore'}
+      {:else if editingConfig.type == 'SubgroupSize'}
         <div class="text-xs text-slate-700 mb-2">
           Prioritize slices that match approximately this fraction of the
           dataset.
@@ -205,7 +205,7 @@
                 ) * 0.5)}
           />
         </div>
-      {:else if editingConfig.type == 'NumFeaturesScore'}
+      {:else if editingConfig.type == 'SimpleRule'}
         <div class="text-xs text-slate-700">
           Prioritize slices with fewer features in the rule.
         </div>

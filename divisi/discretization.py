@@ -4,6 +4,7 @@ import scipy.sparse as sps
 import tqdm
 import pickle
 from .projections import Projection
+import hashlib
 
 class DiscretizedData:
     def __init__(self, discrete_data, value_names):
@@ -54,6 +55,17 @@ class DiscretizedData:
         ]
         return DiscretizedData(np.hstack([d.df for d in dfs]),
                             new_value_names)
+        
+    def get_hash(self):
+        """
+        Returns a hash digest of the data and value names.
+        """
+        batch_size = 1000
+        hasher = hashlib.sha256()
+        for i in range(0, self.df.shape[0], batch_size):
+            hasher.update(self.df[i:i+batch_size].tobytes())
+        hasher.update(pickle.dumps(self.value_names))
+        return hasher.hexdigest()
         
     def __contains__(self, col_name):
         return col_name in self.inverse_value_mapping

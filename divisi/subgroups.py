@@ -494,7 +494,7 @@ class RankedSubgroupList:
             weighted_score += w * (score_df[w_name] / (score_df[w_name].max() if normalize else 1))
         original_score_indexes = original_score_indexes[~np.isnan(weighted_score)]
         weighted_score = weighted_score[~np.isnan(weighted_score)]
-        results = np.flip(np.argsort(weighted_score.values))
+        results = np.flip(np.argsort(weighted_score))
         if k is not None:
             results = results[:k]
         return original_score_indexes[results]

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse as sps
 from itertools import chain, combinations
+import hashlib
 
 class RankedList:
     """
@@ -103,3 +104,13 @@ def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
     s = list(iterable)
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
+
+# https://stackoverflow.com/a/44873382/2152503
+def sha256sum(filename):
+    h  = hashlib.sha256()
+    b  = bytearray(128*1024)
+    mv = memoryview(b)
+    with open(filename, 'rb', buffering=0) as f:
+        for n in iter(lambda : f.readinto(mv), 0):
+            h.update(mv[:n])
+    return h.hexdigest()

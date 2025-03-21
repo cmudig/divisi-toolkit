@@ -10,6 +10,8 @@ from multiprocessing import RawArray, Pool
 import time
 from functools import partial
 import torch
+import pickle
+import hashlib
 
 # Global variables for worker processes
 worker_inputs = None
@@ -389,6 +391,18 @@ class SamplingSubgroupSearch:
                             max_weight=self.max_weight,
                             similarity_threshold=self.similarity_threshold)
         
+    def clear_results(self):
+        self.all_scores = []
+        self.seen_slices = {} 
+        self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
+        self.results = RankedSubgroupList(list(set(self.all_scores)),
+                            self.inputs,
+                            self.ranking_fns,
+                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
+                            min_weight=self.min_weight,
+                            max_weight=self.max_weight,
+                            similarity_threshold=self.similarity_threshold)
+        
     def copy_spec(self, inputs=None, ranking_fns=None, **kwargs):
         return SamplingSubgroupSearch(
             self.inputs if inputs is None else inputs, 
@@ -411,6 +425,12 @@ class SamplingSubgroupSearch:
             scoring_fraction=kwargs.get("scoring_fraction", self.scoring_fraction),
             discovery_mask=kwargs.get("discovery_mask", self.discovery_mask)
         )
+        
+    def get_configuration_hash(self):
+        """
+        Returns a hash of the configuration of the sampler.
+        """
+        return hashlib.sha256(pickle.dumps(self.state_dict()["config"])).hexdigest()
         
     def state_dict(self):
         return {

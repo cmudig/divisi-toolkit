@@ -3,6 +3,7 @@ import anywidget
 import traitlets
 import threading
 import numpy as np
+import scipy.sparse as sps
 import pandas as pd
 import time
 import os
@@ -12,8 +13,8 @@ from .subgroups import Rule, RuleFeatureBase
 from .sampling import SamplingSubgroupSearch
 from .filters import *
 from .ranking import *
-from .discretization import DiscretizedData
-from .utils import detect_data_type
+from .discretization import DiscretizedData, discretize_data
+from .utils import detect_data_type, sha256sum
 from .projections import Projection
 from sklearn.neighbors import NearestNeighbors
 
@@ -41,6 +42,7 @@ class DivisiWidget(anywidget.AnyWidget):
     num_samples = traitlets.Int(50).tag(sync=True)
     should_rerun = traitlets.Bool(False).tag(sync=True)
     should_cancel = traitlets.Bool(False).tag(sync=True)
+    should_clear = traitlets.Bool(False).tag(sync=True)
     running_sampler = traitlets.Bool(False).tag(sync=True)
     num_samples_drawn = traitlets.Int(0).tag(sync=True)
     sampler_run_progress = traitlets.Float(0.0).tag(sync=True)
@@ -96,74 +98,61 @@ class DivisiWidget(anywidget.AnyWidget):
             self._css = DEV_CSS_URL if kwargs.get('dev', False) else (BUNDLE_DIR / "style.css").read_text()
         except FileNotFoundError:
             raise ValueError("No built widget source found, and dev is set to False. To resolve, run npx vite build from the client directory.")
-        
+
         self.search_engine = None
-        
-        metric_info = {}
-        for name, data in kwargs.get("metrics", {}).items():
-            if isinstance(data, dict):
-                # User-specified options
-                options = data
-                data = options["data"]
-            else:
-                options = {}
-            dtype = options.get("type", detect_data_type(data))
-            metric_info[name] = {
-                "type": dtype,
-                **{k: v for k, v in options.items() if k != "data"}
-            }
-            if dtype == "categorical":
-                metric_info[name]["values"] = [str(v) for v in np.unique(data)]
-        self.metric_info = metric_info
-                
-        # Generate score functions automatically if needed
-        score_fn_configs = {}
-        ranking_weights = kwargs.get("ranking_weights", {})
-        provided_score_weights = len(ranking_weights) > 0
-        for name, fn in kwargs.get("ranking_functions", {}).items():
-            if isinstance(fn, RankingFunctionBase):
-                score_fn_configs[name] = {"type": type(fn).__name__, "editable": False}
-            else:
-                score_fn_configs[name] = fn
-            if not provided_score_weights:
-                ranking_weights[name] = 1.0
-        if not score_fn_configs:
-            score_fn_configs["Slice Size"] = {"type": "SubgroupSize", "ideal_fraction": 0.1, "spread": 0.05}
-            ranking_weights["Slice Size"] = 0.5
-            score_fn_configs["Simple Rule"] = {"type": "SimpleRule"}
-            ranking_weights["Simple Rule"] = 0.5
-            
-            if len(self.metric_info):
-                first_metric = sorted(self.metric_info.keys())[0]
-                info = self.metric_info[first_metric]
-                if info["type"] == "binary":
-                    score_fn_configs[f"{first_metric} High"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": False}
-                    score_fn_configs[f"{first_metric} Low"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": True}
-                    ranking_weights[f"{first_metric} High"] = 1.0
-                    ranking_weights[f"{first_metric} Low"] = 0.0
-                elif info["type"] == "continuous":
-                    score_fn_configs[f"{first_metric} Different"] = {"type": "MeanDifferenceScore", "metric": f"{{{first_metric}}}"}
-                    ranking_weights[f"{first_metric} Different"] = 1.0
-                
-        self.discrete_data = discrete_data
-        self.metrics = kwargs.get("metrics", {})
-        self.derived_metrics = {**self.metrics}
-        self.derived_metric_config = {k: { "expression": f"{{{k}}}" } for k in self.metrics}
-        self.ranking_functions = kwargs.get("ranking_functions", {})
-        self.ranking_function_config = score_fn_configs
         self._slice_description_cache = {}
-        self.ranking_weights = ranking_weights
         self._score_cache = {}
+                
+        # Convert data to DiscretizedData if needed
+        if not isinstance(discrete_data, DiscretizedData):
+            if isinstance(discrete_data, pd.DataFrame):
+                discrete_data = discretize_data(discrete_data, 
+                                                {c: { 'method': 'unique' } for c in discrete_data.columns})
+            else:
+                discrete_data = discretize_data(pd.DataFrame(discrete_data), 
+                                                {i: { 'method': 'keep' } for i in np.arange(discrete_data.shape[1])})
+        self.discrete_data = discrete_data
+        self.projection = None
+        
+        self.metric_info = self.autogenerate_metric_info(kwargs.get("metrics", {}))        
+        self.metrics = kwargs.get("metrics", {})
         
         self.state_path = kwargs.get("state_path", None)
         self._read_state()
-        
+
+        # Generate metric information for display in the interface
+        self.derived_metrics = {**self.metrics}
+        if hasattr(self, "derived_metric_config"):
+            self.derived_metric_config = {**self.derived_metric_config, 
+                                          **{k: { "expression": f"{{{k}}}" } for k in self.metrics}}
+            self.update_derived_metrics()
+        else:
+            self.derived_metric_config = {k: { "expression": f"{{{k}}}" } for k in self.metrics}
+            
+        # Generate ranking functions and config objects
+        if kwargs.get("ranking_functions", {}) or not hasattr(self, "ranking_function_config") or not self.ranking_function_config:
+            ranking_fn_configs = {}
+            ranking_weights = kwargs.get("ranking_weights", {})
+            provided_score_weights = len(ranking_weights) > 0
+            for name, fn in kwargs.get("ranking_functions", {}).items():
+                if isinstance(fn, RankingFunctionBase):
+                    ranking_fn_configs[name] = {"type": type(fn).__name__, "editable": False}
+                else:
+                    ranking_fn_configs[name] = fn
+                if not provided_score_weights:
+                    ranking_weights[name] = 1.0
+            if not ranking_fn_configs:
+                self.ranking_function_config, self.ranking_weights = self.autogenerate_ranking_functions(self.metric_info)
+            else:
+                self.ranking_function_config = ranking_fn_configs
+                self.ranking_weights = ranking_weights
+                
         if self.search_engine is None:
             self.search_engine = SamplingSubgroupSearch(
                 self.discrete_data,
                 self.ranking_functions,
                 source_mask=parse_metric_expression(self.source_mask_expr, self.derived_metrics) if self.source_mask_expr else None,
-                min_items=len(data) * 0.5 * self.min_items_fraction,
+                min_items=len(discrete_data) * 0.5 * self.min_items_fraction,
                 holdout_fraction=0.5,
                 max_features=self.max_features,
                 positive_only=kwargs.get("positive_only", None),
@@ -173,9 +162,18 @@ class DivisiWidget(anywidget.AnyWidget):
         
         if not hasattr(self, "projection") or self.projection is None:
             if "projection" in kwargs:
-                self.projection = kwargs["projection"]
-            else:
-                self.projection = self.search_engine.eval_data.get_projection(method='tsne')
+                proj = kwargs["projection"]
+                if isinstance(proj, Projection):
+                    self.projection = proj
+                elif isinstance(proj, np.ndarray):
+                    if len(proj) == len(self.discrete_data): 
+                        proj = proj[~self.search_engine.discovery_mask]
+                    assert len(proj) == len(self.search_engine.eval_data), "Projection must have the same number of rows as the evaluation data"
+                    assert proj.shape[1] == 2, "Projection must have x and y columns"
+                    proj = (proj - proj.min(axis=0)) / (proj.max(axis=0) - proj.min(axis=0))
+                    self.projection = Projection(proj.astype(np.float32))
+            # else:
+            #     self.projection = self.search_engine.eval_data.get_projection(method='tsne')
             
         self.discovery_neighbors = NearestNeighbors(metric="cosine").fit(self.search_engine.discovery_data.one_hot_matrix)
         
@@ -185,19 +183,12 @@ class DivisiWidget(anywidget.AnyWidget):
         
         super().__init__(*args, **kwargs)
         self.positive_only = self.search_engine.positive_only
-        if isinstance(self.search_engine.inputs, DiscretizedData):
-            if isinstance(self.search_engine.inputs.value_names, dict):
-                self.value_names = self.search_engine.inputs.value_names
-            else:
-                self.value_names = {i: v for i, v in enumerate(self.search_engine.inputs.value_names)}
-        elif isinstance(self.search_engine.inputs, pd.DataFrame):
-            self.value_names = {col: sorted(self.search_engine.inputs[col].unique())
-                                for col in self.search_engine.inputs.columns}
+        if isinstance(self.search_engine.inputs.value_names, dict):
+            self.value_names = self.search_engine.inputs.value_names
         else:
-            self.value_names = {col: sorted(self.search_engine.inputs[:,col].unique())
-                                for col in range(self.search_engine.inputs.shape[1])}
-        
-        self.original_slice_finder = self.search_engine
+            self.value_names = {i: v for i, v in enumerate(self.search_engine.inputs.value_names)}
+
+        self.original_search_engine = self.search_engine
         # for cluster enriched features
         self.idf = 1 / (1e-3 + self.search_engine.eval_data.one_hot_matrix.mean(axis=0))
         self.update_selected_slices()
@@ -212,30 +203,52 @@ class DivisiWidget(anywidget.AnyWidget):
             return
         if not os.path.isdir(self.state_path):
             raise ValueError("State path should be a directory")
+        
+        data_hash = self.discrete_data.get_hash()
+        
+        # First read search engine state
+        if not os.path.exists(os.path.join(self.state_path, "search_state.pkl")):
+            return
+        
+        # Search state is valid as long as the input data matches by hash
+        with open(os.path.join(self.state_path, "search_state.pkl"), "rb") as file:
+            sf_state = pickle.load(file)
+        if sf_state.get("data_hash", None) != data_hash:
+            print("Data hashes don't match, not loading state")
+            return
+        
+        self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state["search_state"])
+        self.search_engine.results.score_cache = self._score_cache
+
+        search_engine_hash = self.search_engine.get_configuration_hash()
+        
+        # Projection data is valid as long as the search engine hash matches
         if os.path.exists(os.path.join(self.state_path, "projection.pkl")):
             with open(os.path.join(self.state_path, "projection.pkl"), "rb") as file:
-                self.projection = Projection.from_dict(pickle.load(file))
-        if os.path.exists(os.path.join(self.state_path, "state.json")):
-            with open(os.path.join(self.state_path, "state.json"), "r") as file:
+                projection_data = pickle.load(file)
+                if projection_data["search_engine_hash"] == search_engine_hash:
+                    self.projection = Projection.from_dict(projection_data["projection"])
+                else:
+                    print("Search engine hashes don't match, not loading projection")
+
+        if os.path.exists(os.path.join(self.state_path, "interface_state.json")):
+            with open(os.path.join(self.state_path, "interface_state.json"), "r") as file:
                 state = json.load(file)
             if "metric_info" in state: self.metric_info = state["metric_info"]
             if "derived_metric_config" in state: self.derived_metric_config = state["derived_metric_config"]
             if "ranking_function_config" in state: self.ranking_function_config = state["ranking_function_config"]
+            if "ranking_weights" in state: self.ranking_weights = state["ranking_weights"]
             if "saved_slices" in state: self.saved_slices = state["saved_slices"]
             if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
             if "custom_slices" in state: self.custom_slices = state["custom_slices"]
             if "overlap_plot_metric" in state: self.overlap_plot_metric = state["overlap_plot_metric"]
-        if os.path.exists(os.path.join(self.state_path, "search_engine.pkl")):
-            with open(os.path.join(self.state_path, "search_engine.pkl"), "rb") as file:
-                sf_state = pickle.load(file)
-            self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state)
-            self.search_engine.results.score_cache = self._score_cache
-            self.original_slice_finder = self.search_engine
-            if self.search_scope_info: self.update_search_scopes()
+
+        self.original_search_engine = self.search_engine
+        if self.search_scope_info: self.update_search_scopes()
         
     @traitlets.observe("metric_info", "derived_metric_config", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
     def _write_state(self, change=None):
-        if self.search_engine is None: return
+        if not hasattr(self, "original_search_engine") or self.original_search_engine is None: return
         
         if not hasattr(self, "state_path") or self.state_path is None:
             return
@@ -244,15 +257,26 @@ class DivisiWidget(anywidget.AnyWidget):
         if not os.path.isdir(self.state_path):
             raise ValueError("State path should be a directory")
 
-        if not os.path.exists(os.path.join(self.state_path, "projection.pkl")):
+        with open(os.path.join(self.state_path, "search_state.pkl"), "wb") as file:
+            pickle.dump({
+                "data_hash": self.discrete_data.get_hash(),
+                "search_state": self.original_search_engine.state_dict()
+            }, file)
+
+        if self.projection is not None and (not hasattr(self, "_projection_save_hash") or not os.path.exists(os.path.join(self.state_path, "projection.pkl"))):
+            self._projection_save_hash = self.original_search_engine.get_configuration_hash()
             with open(os.path.join(self.state_path, "projection.pkl"), "wb") as file:
-                pickle.dump(self.projection.to_dict(), file)
+                pickle.dump({
+                    "search_engine_hash": self._projection_save_hash,
+                    "projection": self.projection.to_dict()
+                }, file)
                 
-        with open(os.path.join(self.state_path, "state.json"), "w") as file:
+        with open(os.path.join(self.state_path, "interface_state.json"), "w") as file:
             json.dump({
                 "metric_info": self.metric_info,
                 "derived_metric_config": self.derived_metric_config,
                 "ranking_function_config": self.ranking_function_config,
+                "ranking_weights": self.ranking_weights,
                 "search_scope_info": self.search_scope_info,
                 "saved_slices": self.saved_slices,
                 "selected_slices": self.selected_slices,   
@@ -260,10 +284,48 @@ class DivisiWidget(anywidget.AnyWidget):
                 "custom_slices": self.custom_slices
             }, file)
 
-        if self.original_slice_finder is not None:
-            with open(os.path.join(self.state_path, "search_engine.pkl"), "wb") as file:
-                pickle.dump(self.original_slice_finder.state_dict(), file)
-            
+         
+    def autogenerate_metric_info(self, metrics):
+        metric_info = {}
+        for name, data in (metrics or {}).items():
+            if isinstance(data, dict):
+                # User-specified options
+                options = data
+                data = options["data"]
+            else:
+                options = {}
+            dtype = options.get("type", detect_data_type(data))
+            metric_info[name] = {
+                "type": dtype,
+                **{k: v for k, v in options.items() if k != "data"}
+            }
+            if dtype == "categorical":
+                metric_info[name]["values"] = [str(v) for v in np.unique(data)]
+        return metric_info
+
+    def autogenerate_ranking_functions(self, metric_info):
+        ranking_fn_configs = {}
+        ranking_weights = {}
+        
+        ranking_fn_configs["Slice Size"] = {"type": "SubgroupSize", "ideal_fraction": 0.1, "spread": 0.05}
+        ranking_weights["Slice Size"] = 0.5
+        ranking_fn_configs["Simple Rule"] = {"type": "SimpleRule"}
+        ranking_weights["Simple Rule"] = 0.5
+        
+        if len(metric_info):
+            first_metric = sorted(metric_info.keys())[0]
+            info = metric_info[first_metric]
+            if info["type"] == "binary":
+                ranking_fn_configs[f"{first_metric} High"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": False}
+                ranking_fn_configs[f"{first_metric} Low"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": True}
+                ranking_weights[f"{first_metric} High"] = 1.0
+                ranking_weights[f"{first_metric} Low"] = 0.0
+            elif info["type"] == "continuous":
+                ranking_fn_configs[f"{first_metric} Different"] = {"type": "MeanDifference", "metric": f"{{{first_metric}}}"}
+                ranking_weights[f"{first_metric} Different"] = 1.0
+        
+        return ranking_fn_configs, ranking_weights
+    
     def get_slice_description(self, slice_obj):
         """
         Retrieves a description of the given slice (either from a cache or from
@@ -297,6 +359,13 @@ class DivisiWidget(anywidget.AnyWidget):
                 self.should_rerun = False
             else:
                 self.rerun_sampler()
+                
+    @traitlets.observe("should_clear")
+    def clear_flag_changed(self, change):
+        if change.new:
+            self.search_engine.clear_results()
+            self.should_clear = False
+            self._write_state()
             
     def rerun_sampler(self):
         self.thread_starter(self._rerun_sampler_background)
@@ -415,7 +484,7 @@ class DivisiWidget(anywidget.AnyWidget):
         search_info = self.search_scope_info
         
         if not search_info:
-            self.search_engine = self.original_slice_finder
+            self.search_engine = self.original_search_engine
             self.ranking_weights = {s: w for s, w in self.ranking_weights.items() if not s.startswith("Search Scope")}
             self.search_scope_mask = None
             self.search_scope_for_results = {}
@@ -424,7 +493,7 @@ class DivisiWidget(anywidget.AnyWidget):
             self.rerank_results()
             return
         
-        base_finder = self.original_slice_finder
+        base_finder = self.original_search_engine
         new_score_fns = {}
         initial_slice = base_finder.initial_slice
         new_source_mask = (base_finder.source_mask.copy() 
@@ -606,7 +675,7 @@ class DivisiWidget(anywidget.AnyWidget):
         self.slice_intersection_counts = intersect_counts 
         self.slice_intersection_labels = labels
 
-        if self.projection is not None and overlap_metric:
+        if self.projection is not None and overlap_metric and hasattr(self, "search_scope_mask"):
             error_metric = self.derived_metrics[overlap_metric]
             if isinstance(error_metric, dict): error_metric = error_metric["data"]
             error_metric = error_metric[~self.search_engine.discovery_mask]

@@ -163,7 +163,7 @@ def _nanstd(tensor, dim=None, keepdim=False):
     output = output.sqrt()
     return output
 
-class MeanDifferenceScore(RankingFunctionBase):
+class MeanDifference(RankingFunctionBase):
     """
     A score function that returns higher values when the absolute difference in
     means inside and outside the slice is higher.
@@ -182,7 +182,7 @@ class MeanDifferenceScore(RankingFunctionBase):
         return np.abs(slice_sum / slice_count - self._mean) / self._std
         
     def subslice(self, indexes):
-        return MeanDifferenceScore(self.data[indexes]).to(self.device)
+        return MeanDifference(self.data[indexes]).to(self.device)
     
     def meta_dict(self):
         base = super().meta_dict()
@@ -190,12 +190,12 @@ class MeanDifferenceScore(RankingFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return MeanDifferenceScore(data)
+        return MeanDifference(data)
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
-        return MeanDifferenceScore(metric)
+        return MeanDifference(metric)
     
 class SubgroupSize(RankingFunctionBase):
     """
