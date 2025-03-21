@@ -134,7 +134,9 @@
       <select class="flat-select flex-auto" bind:value={editingConfig.type}>
         <option value="OutcomeRate">Outcome Rate</option>
         <option value="OutcomeShare">Outcome Share</option>
+        <option value="InteractionEffect">Interaction Effect</option>
         <option value="MeanDifference">Mean Difference</option>
+        <option value="Entropy">Entropy</option>
         <option value="SubgroupSize">Subgroup Size</option>
         <option value="SimpleRule">Rule Complexity</option>
       </select>
@@ -142,7 +144,7 @@
     <div class="px-2 w-full">
       {#if editingConfig.type == 'OutcomeRate'}
         <div class="text-xs text-slate-700 mb-2">
-          Prioritize slices where the binary expression is more often <select
+          Prioritize subgroups where the binary expression is more often <select
             class="mx-1 flat-select-small flex-auto"
             bind:value={editingConfig.inverse}
           >
@@ -159,8 +161,21 @@
         />
       {:else if editingConfig.type == 'OutcomeShare'}
         <div class="text-xs text-slate-700 mb-2">
-          Prioritize slices where most of the instances matching the binary
+          Prioritize subgroups where most of the instances matching the binary
           expression are included:
+        </div>
+        <MetricExpressionEditor
+          bind:metricExpressionRequest
+          bind:metricExpressionResponse
+          bind:expression={editingConfig.metric}
+          placeholder="Type a binary expression using metrics"
+          {metricNames}
+        />
+      {:else if editingConfig.type == 'InteractionEffect'}
+        <div class="text-xs text-slate-700 mb-2">
+          Prioritize subgroups where the rate of this outcome is <em>higher</em>
+          than the rates of its parent subgroups (e.g. with features removed from
+          the rule).
         </div>
         <MetricExpressionEditor
           bind:metricExpressionRequest
@@ -171,8 +186,8 @@
         />
       {:else if editingConfig.type == 'MeanDifference'}
         <div class="text-xs text-slate-700 mb-2">
-          Prioritize slices where the mean of the expression is different than
-          average:
+          Prioritize subgroups where the mean of the expression is different
+          than average:
         </div>
         <MetricExpressionEditor
           bind:metricExpressionRequest
@@ -181,9 +196,31 @@
           placeholder="Type a continuous expression using metrics"
           {metricNames}
         />
+      {:else if editingConfig.type == 'Entropy'}
+        <div class="text-xs text-slate-700 mb-2">
+          Prioritize subgroups where the entropy of the given <strong
+            >integer or categorical</strong
+          >
+          expression is
+          <select
+            class="mx-1 flat-select-small flex-auto"
+            bind:value={editingConfig.inverse}
+          >
+            <option value={false}>lower</option>
+            <option value={true}>higher</option>
+          </select>
+          than average:
+        </div>
+        <MetricExpressionEditor
+          bind:metricExpressionRequest
+          bind:metricExpressionResponse
+          bind:expression={editingConfig.metric}
+          placeholder="Type an integer or categorical expression using metrics"
+          {metricNames}
+        />
       {:else if editingConfig.type == 'SubgroupSize'}
         <div class="text-xs text-slate-700 mb-2">
-          Prioritize slices that match approximately this fraction of the
+          Prioritize subgroups that match approximately this fraction of the
           dataset.
         </div>
         <div class="flex items-center">
@@ -207,7 +244,12 @@
         </div>
       {:else if editingConfig.type == 'SimpleRule'}
         <div class="text-xs text-slate-700">
-          Prioritize slices with fewer features in the rule.
+          Prioritize subgroups with fewer features in the rule.
+        </div>
+      {:else}
+        <div class="text-xs text-slate-700">
+          This ranking function was created using code and cannot be edited
+          within the interface.
         </div>
       {/if}
     </div>

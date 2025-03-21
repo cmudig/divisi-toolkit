@@ -84,28 +84,27 @@ def parse_metric_expression(expr, metrics):
         random_id = 'var_' + str(np.random.randint(0, 1e15))        
         local_vars[random_id] = data
         expr = expr.replace(f"{{{name}}}", random_id)
-    return eval(expr.replace("!", "~"), {}, local_vars)
+    return eval(expr.replace("!", "~"), {**np.__dict__}, local_vars)
     
 class Entropy(RankingFunctionBase):
     """
     A score function that compares the entropy of an outcome within the slice to
     the entropy outside the slice. The function can be configured to prioritize
-    slices with higher entropy or lower entropy using the `priority` parameter.
+    slices with higher entropy or lower entropy using the `inverse` parameter.
     """
 
-    def __init__(self, data, priority=None, eps=1e-6):
+    def __init__(self, data, inverse=False, eps=1e-6):
         """
         :param data: the discrete or binned outcome data over which to calculate
             entropy
-        :param priority: If 'high', score for greater entropy (broader distribution)
-            inside the slice. If 'low', score for lower entropy (sharper
+        :param inverse: If True, score for greater entropy (broader distribution)
+            inside the slice. If False (default), score for lower entropy (sharper
             distribution) inside the slice.
         :param eps: Small constant value to add to fractions
         """
         super().__init__("entropy", data)
-        assert priority in (None, "low", "high")
         assert not torch.is_floating_point(self.data), "Entropy can only be calculated on integer inputs"
-        self.priority = priority
+        self.inverse = inverse
         self.eps = eps
         
         self._unique_vals = torch.unique(self.data)
@@ -114,7 +113,7 @@ class Entropy(RankingFunctionBase):
        
     def _calc_entropy(self, mask):
         counts = (self._val_one_hot.unsqueeze(2).transpose(0, 1) * mask.view(mask.shape[0], -1)).transpose(0, 1).sum(0)
-        return -torch.sum((counts / self.data.shape[0]) * torch.log2(counts / self.data.shape[0]), 0)
+        return -torch.sum(torch.where(counts == 0, 0, (counts / self.data.shape[0]) * torch.log2(counts / self.data.shape[0])), 0)
 
     def high_entropy(self, mask):
         return (self.eps + self._calc_entropy(mask)) / (self.eps + self._base_entropy)
@@ -123,35 +122,35 @@ class Entropy(RankingFunctionBase):
         return (self.eps + self._base_entropy) / (self.eps + self._calc_entropy(mask))
 
     def calculate_score(self, slice, mask, univariate_masks):
-        if self.priority == 'high':
+        if self.inverse:
             return self.high_entropy(mask)
         return self.low_entropy(mask)
     
     def subslice(self, indexes):
-        return Entropy(self.data[indexes], priority=self.priority, eps=self.eps).to(self.device)
+        return Entropy(self.data[indexes], inverse=self.inverse, eps=self.eps).to(self.device)
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         slice_hist = slice_hist[slice_hist > 0]
         slice_entropy = -np.sum((slice_hist / slice_count) * np.log2(slice_hist / slice_count))
         if np.isnan(slice_entropy):
             print(slice_hist, slice_count, np.log2(slice_hist / slice_count), (slice_hist / slice_count) * np.log2(slice_hist / slice_count))
-        if self.priority == 'high':
+        if self.inverse:
             return (self.eps + slice_entropy) / (self.eps + self._base_entropy)
         return (self.eps + self._base_entropy) / (self.eps + slice_entropy)
     
     def meta_dict(self):
         base = super().meta_dict()
-        base.update({"priority": self.priority, "eps": self.eps})
+        base.update({"inverse": self.inverse, "eps": self.eps})
         return base
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return Entropy(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
+        return Entropy(data, inverse=meta_dict["inverse"], eps=meta_dict["eps"])
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
-        return Entropy(metric, priority=meta_dict.get("priority", None), eps=meta_dict.get("eps", 1e-6))
+        return Entropy(metric, inverse=meta_dict.get("inverse", None), eps=meta_dict.get("eps", 1e-6))
     
 def _nanvar(tensor, dim=None, keepdim=False):
     tensor_mean = tensor.nanmean(dim=dim, keepdim=True)

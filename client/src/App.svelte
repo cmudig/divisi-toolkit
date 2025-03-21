@@ -64,6 +64,7 @@
     'metric_expression_response',
     null
   );
+  let hiddenMetrics = traitlet(model, 'hidden_metrics', null);
 
   let valueNames = traitlet(model, 'value_names', {});
 
@@ -124,16 +125,16 @@
     }
     console.log('overlap metric:', $overlapPlotMetric);
   }
-  let hiddenMetrics: string[] | null = null;
 
-  $: if (!!$metricInfo && hiddenMetrics === null) {
+  $: if (!!$metricInfo && $hiddenMetrics === null) {
     console.log('metric info obj:', $metricInfo);
-    hiddenMetrics = [];
+    let hidden = [];
     Object.entries($metricInfo).forEach(([n, info]) => {
-      if (!(info.visible ?? true) && !hiddenMetrics.includes(n)) {
-        hiddenMetrics.push(n);
+      if (!(info.visible ?? true) && !hidden.includes(n)) {
+        hidden.push(n);
       }
     });
+    $hiddenMetrics = hidden;
   }
 
   let allowedValues;
@@ -368,7 +369,7 @@
             ) && !areObjectsEqual($searchScopeInfo, {})}
             bind:searchScopeInfo={$searchScopeInfo}
             bind:derivedMetricConfigs={$derivedMetricConfigs}
-            bind:hiddenMetrics
+            bind:hiddenMetrics={$hiddenMetrics}
             bind:scoreFunctionConfigs={$scoreFunctionConfigs}
             bind:rankingWeights={$rankingWeights}
             bind:metricExpressionRequest={$metricExpressionRequest}
@@ -399,7 +400,7 @@
           sliceColorMap={$sliceColorMap}
           {allowedValues}
           baseSlice={$baseSlice}
-          bind:hiddenMetrics
+          bind:hiddenMetrics={$hiddenMetrics}
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           bind:searchScopeInfo={$searchScopeInfo}

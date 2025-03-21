@@ -594,6 +594,8 @@ class RankedSubgroupList:
         
         # Get the top num_to_rescore using the training scores
         top_train_indexes = self._rank_weighted_indexes(self.train_scores, weights, num_to_rescore)
+        if not len(top_train_indexes):
+            return []
 
         # Rescore these using evaluation data and rank
         eval_scored_slices, eval_scores, mask_mat = self.rescore(top_train_indexes, return_masks=True)

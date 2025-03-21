@@ -9,6 +9,7 @@ import time
 import os
 import json
 import pickle
+import traceback
 from .subgroups import Rule, RuleFeatureBase
 from .sampling import SamplingSubgroupSearch
 from .filters import *
@@ -53,6 +54,7 @@ class DivisiWidget(anywidget.AnyWidget):
     metric_info = traitlets.Dict({}).tag(sync=True)
     derived_metrics = traitlets.Dict({})
     derived_metric_config = traitlets.Dict({}).tag(sync=True)
+    hidden_metrics = traitlets.List(None).tag(sync=True)
     
     positive_only = traitlets.Bool(False).tag(sync=True)
     
@@ -199,54 +201,58 @@ class DivisiWidget(anywidget.AnyWidget):
         """
         Load widget state from the state_path if it exists.
         """
-        if self.state_path is None or not os.path.exists(self.state_path):
-            return
-        if not os.path.isdir(self.state_path):
-            raise ValueError("State path should be a directory")
-        
-        data_hash = self.discrete_data.get_hash()
-        
-        # First read search engine state
-        if not os.path.exists(os.path.join(self.state_path, "search_state.pkl")):
-            return
-        
-        # Search state is valid as long as the input data matches by hash
-        with open(os.path.join(self.state_path, "search_state.pkl"), "rb") as file:
-            sf_state = pickle.load(file)
-        if sf_state.get("data_hash", None) != data_hash:
-            print("Data hashes don't match, not loading state")
-            return
-        
-        self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state["search_state"])
-        self.search_engine.results.score_cache = self._score_cache
+        try:
+            if self.state_path is None or not os.path.exists(self.state_path):
+                return
+            if not os.path.isdir(self.state_path):
+                raise ValueError("State path should be a directory")
+            
+            data_hash = self.discrete_data.get_hash()
+            
+            # First read search engine state
+            if not os.path.exists(os.path.join(self.state_path, "search_state.pkl")):
+                return
+            
+            # Search state is valid as long as the input data matches by hash
+            with open(os.path.join(self.state_path, "search_state.pkl"), "rb") as file:
+                sf_state = pickle.load(file)
+            if sf_state.get("data_hash", None) != data_hash:
+                print("Data hashes don't match, not loading state")
+                return
+            
+            self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state["search_state"])
+            self.search_engine.results.score_cache = self._score_cache
 
-        search_engine_hash = self.search_engine.get_configuration_hash()
-        
-        # Projection data is valid as long as the search engine hash matches
-        if os.path.exists(os.path.join(self.state_path, "projection.pkl")):
-            with open(os.path.join(self.state_path, "projection.pkl"), "rb") as file:
-                projection_data = pickle.load(file)
-                if projection_data["search_engine_hash"] == search_engine_hash:
-                    self.projection = Projection.from_dict(projection_data["projection"])
-                else:
-                    print("Search engine hashes don't match, not loading projection")
+            search_engine_hash = self.search_engine.get_configuration_hash()
+            
+            # Projection data is valid as long as the search engine hash matches
+            if os.path.exists(os.path.join(self.state_path, "projection.pkl")):
+                with open(os.path.join(self.state_path, "projection.pkl"), "rb") as file:
+                    projection_data = pickle.load(file)
+                    if projection_data["search_engine_hash"] == search_engine_hash:
+                        self.projection = Projection.from_dict(projection_data["projection"])
+                    else:
+                        print("Search engine hashes don't match, not loading projection")
 
-        if os.path.exists(os.path.join(self.state_path, "interface_state.json")):
-            with open(os.path.join(self.state_path, "interface_state.json"), "r") as file:
-                state = json.load(file)
-            if "metric_info" in state: self.metric_info = state["metric_info"]
-            if "derived_metric_config" in state: self.derived_metric_config = state["derived_metric_config"]
-            if "ranking_function_config" in state: self.ranking_function_config = state["ranking_function_config"]
-            if "ranking_weights" in state: self.ranking_weights = state["ranking_weights"]
-            if "saved_slices" in state: self.saved_slices = state["saved_slices"]
-            if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
-            if "custom_slices" in state: self.custom_slices = state["custom_slices"]
-            if "overlap_plot_metric" in state: self.overlap_plot_metric = state["overlap_plot_metric"]
+            if os.path.exists(os.path.join(self.state_path, "interface_state.json")):
+                with open(os.path.join(self.state_path, "interface_state.json"), "r") as file:
+                    state = json.load(file)
+                if "derived_metric_config" in state: self.derived_metric_config = state["derived_metric_config"]
+                if "hidden_metrics" in state: self.hidden_metrics = state["hidden_metrics"]
+                if "ranking_function_config" in state: self.ranking_function_config = state["ranking_function_config"]
+                if "ranking_weights" in state: self.ranking_weights = state["ranking_weights"]
+                if "saved_slices" in state: self.saved_slices = state["saved_slices"]
+                if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
+                if "custom_slices" in state: self.custom_slices = state["custom_slices"]
+                if "overlap_plot_metric" in state: self.overlap_plot_metric = state["overlap_plot_metric"]
 
-        self.original_search_engine = self.search_engine
-        if self.search_scope_info: self.update_search_scopes()
-        
-    @traitlets.observe("metric_info", "derived_metric_config", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
+            self.original_search_engine = self.search_engine
+            if self.search_scope_info: self.update_search_scopes()
+        except Exception as e:
+            print("Error loading state; resetting")
+            traceback.print_exc()
+            
+    @traitlets.observe("derived_metric_config", "hidden_metrics", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
     def _write_state(self, change=None):
         if not hasattr(self, "original_search_engine") or self.original_search_engine is None: return
         
@@ -273,9 +279,9 @@ class DivisiWidget(anywidget.AnyWidget):
                 
         with open(os.path.join(self.state_path, "interface_state.json"), "w") as file:
             json.dump({
-                "metric_info": self.metric_info,
                 "derived_metric_config": self.derived_metric_config,
                 "ranking_function_config": self.ranking_function_config,
+                "hidden_metrics": self.hidden_metrics,
                 "ranking_weights": self.ranking_weights,
                 "search_scope_info": self.search_scope_info,
                 "saved_slices": self.saved_slices,
