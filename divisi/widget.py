@@ -11,7 +11,7 @@ import pickle
 from .subgroups import Rule, RuleFeatureBase
 from .sampling import SamplingSubgroupSearch
 from .filters import *
-from .scores import *
+from .ranking import *
 from .discretization import DiscretizedData
 from .utils import detect_data_type
 from .projections import Projection
@@ -121,24 +121,24 @@ class DivisiWidget(anywidget.AnyWidget):
         score_weights = kwargs.get("score_weights", {})
         provided_score_weights = len(score_weights) > 0
         for name, fn in kwargs.get("score_functions", {}).items():
-            if isinstance(fn, ScoreFunctionBase):
+            if isinstance(fn, RankingFunctionBase):
                 score_fn_configs[name] = {"type": type(fn).__name__, "editable": False}
             else:
                 score_fn_configs[name] = fn
             if not provided_score_weights:
                 score_weights[name] = 1.0
         if not score_fn_configs:
-            score_fn_configs["Slice Size"] = {"type": "SliceSizeScore", "ideal_fraction": 0.1, "spread": 0.05}
+            score_fn_configs["Slice Size"] = {"type": "SubgroupSize", "ideal_fraction": 0.1, "spread": 0.05}
             score_weights["Slice Size"] = 0.5
-            score_fn_configs["Simple Rule"] = {"type": "NumFeaturesScore"}
+            score_fn_configs["Simple Rule"] = {"type": "SimpleRule"}
             score_weights["Simple Rule"] = 0.5
             
             if len(self.metric_info):
                 first_metric = sorted(self.metric_info.keys())[0]
                 info = self.metric_info[first_metric]
                 if info["type"] == "binary":
-                    score_fn_configs[f"{first_metric} High"] = {"type": "OutcomeRateScore", "metric": f"{{{first_metric}}}", "inverse": False}
-                    score_fn_configs[f"{first_metric} Low"] = {"type": "OutcomeRateScore", "metric": f"{{{first_metric}}}", "inverse": True}
+                    score_fn_configs[f"{first_metric} High"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": False}
+                    score_fn_configs[f"{first_metric} Low"] = {"type": "OutcomeRate", "metric": f"{{{first_metric}}}", "inverse": True}
                     score_weights[f"{first_metric} High"] = 1.0
                     score_weights[f"{first_metric} Low"] = 0.0
                 elif info["type"] == "continuous":
@@ -346,7 +346,7 @@ class DivisiWidget(anywidget.AnyWidget):
             weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.search_engine.score_fns}
             # # add weights for interaction effect scores
             # for n, config in self.score_function_config.items():
-            #     if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRateScore":
+            #     if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRate":
             #         weights_to_use[f"{n}_interaction"] = weights_to_use[n]
             ranked_results = self.search_engine.results.rank(weights_to_use, 
                                                             n_slices=self.num_slices)
@@ -437,8 +437,8 @@ class DivisiWidget(anywidget.AnyWidget):
             if contained_in_slice.feature != RuleFeatureBase():
                 raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
                 ref_mask = contained_in_slice.make_mask(raw_inputs).cpu().numpy()
-                new_score_fns["Search Scope Pos"] = OutcomeRateScore(ref_mask)
-                new_score_fns["Search Scope Neg"] = OutcomeRateScore(~ref_mask, inverse=True)
+                new_score_fns["Search Scope Pos"] = OutcomeRate(ref_mask)
+                new_score_fns["Search Scope Neg"] = OutcomeRate(~ref_mask, inverse=True)
                 new_source_mask &= ref_mask
                 self.search_scope_mask = ref_mask
             self.update_selected_slices()
@@ -468,8 +468,8 @@ class DivisiWidget(anywidget.AnyWidget):
                 all_mask[self.search_engine.results.eval_indexes] = mask
                 self.search_scope_mask = all_mask
                 
-                new_score_fns["Search Scope Pos"] = OutcomeRateScore(self.search_scope_mask)
-                new_score_fns["Search Scope Neg"] = OutcomeRateScore(~self.search_scope_mask, inverse=True)
+                new_score_fns["Search Scope Pos"] = OutcomeRate(self.search_scope_mask)
+                new_score_fns["Search Scope Neg"] = OutcomeRate(~self.search_scope_mask, inverse=True)
                 new_source_mask &= self.search_scope_mask
             else:
                 print("No clusters in ID set:", ids, self.map_clusters, np.unique(self.map_clusters))
@@ -504,11 +504,11 @@ class DivisiWidget(anywidget.AnyWidget):
         sf = {}
         for n, config in self.score_function_config.items():
             if config.get("editable", True):
-                sf[n] = ScoreFunctionBase.from_configuration(config, self.derived_metrics) 
+                sf[n] = RankingFunctionBase.from_configuration(config, self.derived_metrics) 
             elif n in self.score_functions:
                 sf[n] = self.score_functions[n]
-            # if n in sf and config['type'] == 'OutcomeRateScore':
-            #     sf[f"{n}_interaction"] = InteractionEffectScore((1 - sf[n].data) if sf[n].inverse else sf[n].data)
+            # if n in sf and config['type'] == 'OutcomeRate':
+            #     sf[f"{n}_interaction"] = InteractionEffect((1 - sf[n].data) if sf[n].inverse else sf[n].data)
         self.score_functions = sf
         if self.search_engine is not None:
             self.search_engine.rescore(self.score_functions)

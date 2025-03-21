@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from .utils import powerset
 
-class ScoreFunctionBase:
+class RankingFunctionBase:
     """
     Base class for score functions that take as input a Slice object and a
     boolean mask, and return a non-negative numerical score value.
@@ -47,7 +47,7 @@ class ScoreFunctionBase:
             
         :return: a new score function object
         """
-        return ScoreFunctionBase(self.score_type, self.data[indexes]).to(self.device)
+        return RankingFunctionBase(self.score_type, self.data[indexes]).to(self.device)
     
     def meta_dict(self):
         """A metadata dictionary for the score function, excluding the data."""
@@ -86,7 +86,7 @@ def parse_metric_expression(expr, metrics):
         expr = expr.replace(f"{{{name}}}", random_id)
     return eval(expr.replace("!", "~"), {}, local_vars)
     
-class EntropyScore(ScoreFunctionBase):
+class Entropy(RankingFunctionBase):
     """
     A score function that compares the entropy of an outcome within the slice to
     the entropy outside the slice. The function can be configured to prioritize
@@ -128,7 +128,7 @@ class EntropyScore(ScoreFunctionBase):
         return self.low_entropy(mask)
     
     def subslice(self, indexes):
-        return EntropyScore(self.data[indexes], priority=self.priority, eps=self.eps).to(self.device)
+        return Entropy(self.data[indexes], priority=self.priority, eps=self.eps).to(self.device)
     
     def calculate_score_fast(self, slice, slice_sum, slice_hist, slice_count, total_count, univariate_masks):
         slice_hist = slice_hist[slice_hist > 0]
@@ -146,12 +146,12 @@ class EntropyScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return EntropyScore(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
+        return Entropy(data, priority=meta_dict["priority"], eps=meta_dict["eps"])
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
-        return EntropyScore(metric, priority=meta_dict.get("priority", None), eps=meta_dict.get("eps", 1e-6))
+        return Entropy(metric, priority=meta_dict.get("priority", None), eps=meta_dict.get("eps", 1e-6))
     
 def _nanvar(tensor, dim=None, keepdim=False):
     tensor_mean = tensor.nanmean(dim=dim, keepdim=True)
@@ -163,7 +163,7 @@ def _nanstd(tensor, dim=None, keepdim=False):
     output = output.sqrt()
     return output
 
-class MeanDifferenceScore(ScoreFunctionBase):
+class MeanDifferenceScore(RankingFunctionBase):
     """
     A score function that returns higher values when the absolute difference in
     means inside and outside the slice is higher.
@@ -197,7 +197,7 @@ class MeanDifferenceScore(ScoreFunctionBase):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
         return MeanDifferenceScore(metric)
     
-class SliceSizeScore(ScoreFunctionBase):
+class SubgroupSize(RankingFunctionBase):
     """
     A score function that returns higher values when the slice size is closer
     to a desired value. The score function is calculated using a Gaussian curve
@@ -225,7 +225,7 @@ class SliceSizeScore(ScoreFunctionBase):
         return np.exp(-0.5 * ((frac - self.ideal_fraction) / self.spread) ** 2)
     
     def subslice(self, indexes):
-        return SliceSizeScore(ideal_fraction=self.ideal_fraction, spread=self.spread).to(self.device)
+        return SubgroupSize(ideal_fraction=self.ideal_fraction, spread=self.spread).to(self.device)
 
     def meta_dict(self):
         base = super().meta_dict()
@@ -234,13 +234,13 @@ class SliceSizeScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return SliceSizeScore(ideal_fraction=meta_dict["ideal_fraction"], spread=meta_dict["spread"])
+        return SubgroupSize(ideal_fraction=meta_dict["ideal_fraction"], spread=meta_dict["spread"])
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
-        return SliceSizeScore(ideal_fraction=meta_dict.get("ideal_fraction", 0.25), spread=meta_dict.get("spread", 0.2))
+        return SubgroupSize(ideal_fraction=meta_dict.get("ideal_fraction", 0.25), spread=meta_dict.get("spread", 0.2))
 
-class NumFeaturesScore(ScoreFunctionBase):
+class SimpleRule(RankingFunctionBase):
     """
     A score function that penalizes slices with too many feature values
     specified, favoring simpler slices.
@@ -256,7 +256,7 @@ class NumFeaturesScore(ScoreFunctionBase):
         return self.calculate_score(slice, None, univariate_masks)
     
     def subslice(self, indexes):
-        return NumFeaturesScore().to(self.device)
+        return SimpleRule().to(self.device)
 
     def meta_dict(self):
         base = super().meta_dict()
@@ -264,13 +264,13 @@ class NumFeaturesScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return NumFeaturesScore()
+        return SimpleRule()
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
-        return NumFeaturesScore()
+        return SimpleRule()
     
-class OutcomeRateScore(ScoreFunctionBase):
+class OutcomeRate(RankingFunctionBase):
     """
     A score function that compares the rate of a binary outcome within a slice
     to the rate outside the slice.
@@ -305,11 +305,11 @@ class OutcomeRateScore(ScoreFunctionBase):
         return (self.eps + mean) / (self.eps + self._mean)
     
     # def within_mask(self, new_data):
-    #     return OutcomeRateScore(self.data & new_data if not self.inverse else
+    #     return OutcomeRate(self.data & new_data if not self.inverse else
     #                             self., inverse=self.inverse, eps=self.eps).to(self.device)
     
     def subslice(self, indexes):
-        return OutcomeRateScore(self.data[indexes], inverse=self.inverse, eps=self.eps).to(self.device)
+        return OutcomeRate(self.data[indexes], inverse=self.inverse, eps=self.eps).to(self.device)
 
     def meta_dict(self):
         base = super().meta_dict()
@@ -318,14 +318,14 @@ class OutcomeRateScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return OutcomeRateScore(data, inverse=meta_dict["inverse"], eps=meta_dict["eps"])
+        return OutcomeRate(data, inverse=meta_dict["inverse"], eps=meta_dict["eps"])
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
-        return OutcomeRateScore(metric, inverse=meta_dict.get("inverse", False), eps=meta_dict.get("eps", 1e-6))
+        return OutcomeRate(metric, inverse=meta_dict.get("inverse", False), eps=meta_dict.get("eps", 1e-6))
 
-class OutcomeShareScore(ScoreFunctionBase):
+class OutcomeShare(RankingFunctionBase):
     """
     A score function that prioritizes slices that contain a higher percentage
     of the total in a set of binary outcomes. For example, if the outcome is
@@ -348,10 +348,10 @@ class OutcomeShareScore(ScoreFunctionBase):
         return slice_sum / self._sum
     
     def subslice(self, indexes):
-        return OutcomeShareScore(self.data[indexes]).to(self.device)
+        return OutcomeShare(self.data[indexes]).to(self.device)
 
     # def within_mask(self, new_data):
-    #     return OutcomeShareScore(new_data).to(self.device)
+    #     return OutcomeShare(new_data).to(self.device)
     
     def meta_dict(self):
         base = super().meta_dict()
@@ -359,12 +359,12 @@ class OutcomeShareScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return OutcomeShareScore(data)
+        return OutcomeShare(data)
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
-        return OutcomeShareScore(metric)
+        return OutcomeShare(metric)
 
 # map from # features to matrix where rows are mask indexes and columns are 
 # positions in the return mask matrix where each mask should be applied. for
@@ -393,7 +393,7 @@ def _build_superslice_mask(masks):
         mask_mat[...,mask_pos[i]] &= m.unsqueeze(-1)
     return mask_mat
 
-class InteractionEffectScore(ScoreFunctionBase):
+class InteractionEffect(RankingFunctionBase):
     """
     A score function that calculates the ratio between the outcome rate score
     of the given slice and the best outcome rate score of all superslices of the
@@ -447,10 +447,10 @@ class InteractionEffectScore(ScoreFunctionBase):
         return max(0, overall_effect / itemized_effect)
     
     def subslice(self, indexes):
-        return InteractionEffectScore(self.data[indexes]).to(self.device)
+        return InteractionEffect(self.data[indexes]).to(self.device)
 
     # def within_mask(self, new_data):
-    #     return InteractionEffectScore(new_data, eps=self.eps).to(self.device)
+    #     return InteractionEffect(new_data, eps=self.eps).to(self.device)
     
     def meta_dict(self):
         base = super().meta_dict()
@@ -459,15 +459,15 @@ class InteractionEffectScore(ScoreFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return InteractionEffectScore(data, eps=meta_dict["eps"])
+        return InteractionEffect(data, eps=meta_dict["eps"])
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["metric"], metrics)
-        return InteractionEffectScore(metric, eps=meta_dict.get("eps", 1e-6))
+        return InteractionEffect(metric, eps=meta_dict.get("eps", 1e-6))
 
 
-class SliceSimilarityScore(ScoreFunctionBase):
+class SliceSimilarityScore(RankingFunctionBase):
     """
     A score function whose value is higher when a given slice mask has high
     Jaccard similarity, superslice overlap, or subslice overlap to a particular

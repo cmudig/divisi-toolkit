@@ -62,8 +62,8 @@ def load_adult():
 
     metrics = {"error": discrete_outcomes.values}
     score_fns = {
-        "error_rate": {"fn": divisi.OutcomeRateScore(discrete_outcomes.values), "type": "OutcomeRate", "metric": "error"},
-        "slice_size": {"fn": divisi.SliceSizeScore(1, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
+        "error_rate": {"fn": divisi.OutcomeRate(discrete_outcomes.values), "type": "OutcomeRate", "metric": "error"},
+        "slice_size": {"fn": divisi.SubgroupSize(1, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
     }
     
     return discrete_df, metrics, score_fns, {
@@ -109,8 +109,8 @@ def load_reviews():
 
     metrics = {"polarity": criterion}
     score_fns = {
-        "wrong_polarity": {"fn": sf.OutcomeRateScore(criterion), "type": "OutcomeRate", "metric": "polarity"},
-        "slice_size": {"fn": sf.SliceSizeScore(1.0, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
+        "wrong_polarity": {"fn": sf.OutcomeRate(criterion), "type": "OutcomeRate", "metric": "polarity"},
+        "slice_size": {"fn": sf.SubgroupSize(1.0, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
     }
     print(len(discrete_data))
     
@@ -204,9 +204,9 @@ def load_airline():
     
     metrics = { "dissatisfaction": 1 - y.values}
     score_fns = {
-        # "error": divisi.OutcomeRateScore(is_error.values),
-        "dissatisfaction": {"fn": divisi.OutcomeRateScore(1 - y.values), "type": "OutcomeRate", "metric": "dissatisfaction"},
-        "slice_size": {"fn": divisi.SliceSizeScore(1, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
+        # "error": divisi.OutcomeRate(is_error.values),
+        "dissatisfaction": {"fn": divisi.OutcomeRate(1 - y.values), "type": "OutcomeRate", "metric": "dissatisfaction"},
+        "slice_size": {"fn": divisi.SubgroupSize(1, spread=0.5), "type": "SliceSize", "mean": 1.0, "std": 0.5},
     }
 
     return discrete_df, metrics, score_fns, {
@@ -219,7 +219,7 @@ def load_airline():
 
 def run_recursive(results_path, discrete_df, metrics, score_fns, **kwargs):
     a = time.time()
-    results, num_scored = divisi.find_slices_recursive(
+    results, num_scored = divisi.search_subgroups_recursive(
         discrete_df.df, 
         {n: fn['fn'] for n, fn in score_fns.items()}, 
         kwargs.get("max_features", 3), 
@@ -245,7 +245,7 @@ def run_recursive(results_path, discrete_df, metrics, score_fns, **kwargs):
 
 def run_sampling(results_path, discrete_df, metrics, score_fns, **kwargs):
     a = time.time()
-    slice_finder = divisi.sampling.SamplingSliceFinder(
+    slice_finder = divisi.sampling.SamplingSubgroupSearch(
         discrete_df,
         {n: fn['fn'] for n, fn in score_fns.items()},
         source_mask=kwargs.get("source_mask", None),

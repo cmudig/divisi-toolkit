@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from .utils import RankedList, powerset
 from .subgroups import *
-from .scores import ScoreFunctionBase
+from .ranking import RankingFunctionBase
 import tqdm
 import os
 from scipy import sparse as sps
@@ -61,12 +61,12 @@ def worker_global_init(device,
         
     worker_score_fns = {}
     for i, name in enumerate(double_score_names):
-        worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], double_mat[:,i]).to(device)
+        worker_score_fns[name] = RankingFunctionBase.from_dict(score_dicts[name], double_mat[:,i]).to(device)
     for i, name in enumerate(int_score_names):
-        worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], int_mat[:,i]).to(device)
+        worker_score_fns[name] = RankingFunctionBase.from_dict(score_dicts[name], int_mat[:,i]).to(device)
     for name in score_dicts:
         if name not in worker_score_fns:
-            worker_score_fns[name] = ScoreFunctionBase.from_dict(score_dicts[name], None).to(device)
+            worker_score_fns[name] = RankingFunctionBase.from_dict(score_dicts[name], None).to(device)
             
     worker_seen_slices = seen_slices
     
