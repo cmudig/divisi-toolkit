@@ -77,7 +77,7 @@ class DiscretizedData:
         :return: A dictionary corresponding to the slice's `feature_values`,
             but using column and value names from pre-discretization.
         """
-        from .slices import SliceFeature
+        from .subgroups import RuleFeature
 
         def transform(feature):
             col_values = self.value_names[feature.feature_name]
@@ -86,7 +86,7 @@ class DiscretizedData:
                 if val not in col_values[1]:
                     raise KeyError(f"{val} not in value map for {col_values[0]} ({feature.feature_name}): {col_values[1]}")
                 transformed_values.append(col_values[1][val])
-            return SliceFeature(col_values[0], transformed_values)
+            return RuleFeature(col_values[0], transformed_values)
         return slice_obj.feature.transform_features(transform).to_dict()
     
     def encode_slice(self, decoded_feature_values):
@@ -94,14 +94,14 @@ class DiscretizedData:
         Creates a Slice representing the given feature value dictionary, but
         converted back into the discretized numerical representation.
         """
-        from .slices import Slice, SliceFeatureBase, SliceFeature
+        from .subgroups import Rule, RuleFeatureBase, RuleFeature
         
-        described_slice = SliceFeatureBase.from_dict(decoded_feature_values)
+        described_slice = RuleFeatureBase.from_dict(decoded_feature_values)
         def invert(feature):
             enc_key, enc_mapping = self.inverse_value_mapping[feature.feature_name]
-            return SliceFeature(enc_key, [enc_mapping[dec_value] for dec_value in feature.allowed_values])
+            return RuleFeature(enc_key, [enc_mapping[dec_value] for dec_value in feature.allowed_values])
         
-        return Slice(described_slice.transform_features(invert))
+        return Rule(described_slice.transform_features(invert))
     
     def encode_filter(self, filter_obj):
         """

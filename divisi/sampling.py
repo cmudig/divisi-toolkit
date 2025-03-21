@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from .utils import RankedList, powerset
-from .slices import *
+from .subgroups import *
 from .scores import ScoreFunctionBase
 import tqdm
 import os
@@ -181,7 +181,7 @@ def explore_groups_beam_search(inputs,
                                num_candidates=20,
                                device='cpu'):
     scored_slices = set()
-    if initial_slice is None: initial_slice = IntersectionSlice([])
+    if initial_slice is None: initial_slice = IntersectionRule([])
     if num_candidates is not None:
         # Maintain a ranking for each function separately, as different slices may
         # maximize different functions
@@ -230,7 +230,7 @@ def explore_groups_beam_search(inputs,
                 # Skip if only slicing using positive values and the row has a negative value
                 if positive_only and not source_row[col]: continue
                 # Skip if we've already looked at this column
-                feature_to_add = SliceFeature(col, (source_row[col],))
+                feature_to_add = RuleFeature(col, (source_row[col],))
                 if feature_to_add in base_slice: continue
                 
                 new_slice = base_slice.subslice(feature_to_add)
@@ -250,7 +250,7 @@ def explore_groups_beam_search(inputs,
                 else:
                     # features_to_score.append(feature_to_add)
                     new_slice_scores = {}
-                    slice_mask = Slice(feature_to_add).make_mask(mat_for_masks, existing_mask=base_mask, univariate_masks=univariate_masks, device=device)
+                    slice_mask = Rule(feature_to_add).make_mask(mat_for_masks, existing_mask=base_mask, univariate_masks=univariate_masks, device=device)
                     if slice_mask.sum() < min_items:
                         seen_slices[new_slice] = None
                         continue
@@ -313,7 +313,7 @@ def explore_groups_beam_search(inputs,
         
     return list(scored_slices), row_use_counts.cpu().numpy()
 
-class SamplingSliceFinder:
+class SamplingSubgroupSearch:
     """
     A class that finds slices by sampling input rows and expanding slices that
     contain each sample row. This class can be instantiated and used multiple
@@ -381,7 +381,7 @@ class SamplingSliceFinder:
         self.discovery_data = self.inputs.filter(self.discovery_mask)
         self.eval_data = self.inputs.filter(~self.discovery_mask) if self.holdout_fraction > 0.0 else None
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
-        self.results = RankedSliceList(list(set(self.all_scores)),
+        self.results = RankedSubgroupList(list(set(self.all_scores)),
                             self.inputs,
                             self.score_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
@@ -390,7 +390,7 @@ class SamplingSliceFinder:
                             similarity_threshold=self.similarity_threshold)
         
     def copy_spec(self, inputs=None, score_fns=None, **kwargs):
-        return SamplingSliceFinder(
+        return SamplingSubgroupSearch(
             self.inputs if inputs is None else inputs, 
             self.score_fns if score_fns is None else score_fns, 
             source_mask=kwargs.get("source_mask", self.source_mask), 
@@ -440,14 +440,14 @@ class SamplingSliceFinder:
         
     @classmethod
     def from_state_dict(self, inputs, score_fns, data):
-        sf = SamplingSliceFinder(inputs, score_fns, **data["config"])
+        sf = SamplingSubgroupSearch(inputs, score_fns, **data["config"])
         sf.sampled_idxs = np.array(data["results"]["sampled_idxs"])
         all_scores = []
         for s in data["results"]["all_scores"]:
-            slice_obj = Slice.from_dict(s)
-            all_scores.append(IntersectionSlice(slice_obj.univariate_features(), slice_obj.score_values))
+            slice_obj = Rule.from_dict(s)
+            all_scores.append(IntersectionRule(slice_obj.univariate_features(), slice_obj.score_values))
         sf.all_scores = all_scores
-        sf.results = RankedSliceList(list(set(sf.all_scores)),
+        sf.results = RankedSubgroupList(list(set(sf.all_scores)),
                             sf.inputs,
                             sf.score_fns,
                             eval_indexes=~sf.discovery_mask if sf.holdout_fraction > 0.0 else None,
@@ -573,7 +573,7 @@ class SamplingSliceFinder:
         discovery_score_fns = {fn_name: fn.subslice(self.discovery_mask)
                             for fn_name, fn in new_score_fns.items()}
         univariate_masks = {}
-        rescored_slices = score_slices_batch(self.all_scores,
+        rescored_slices = score_subgroups_batch(self.all_scores,
                                                 discovery_inputs,
                                                 discovery_score_fns,
                                                 self.max_features,
@@ -591,7 +591,7 @@ class SamplingSliceFinder:
                 self.seen_slices[old_slice] = None
                 
         self.score_fns = new_score_fns
-        self.results = RankedSliceList(list(set(self.all_scores)),
+        self.results = RankedSubgroupList(list(set(self.all_scores)),
                             self.inputs,
                             self.score_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
@@ -727,7 +727,7 @@ class SamplingSliceFinder:
             for superslice_features in powerset(univariate):
                 if len(superslice_features) == 0 or len(superslice_features) == len(univariate):
                     continue
-                superslice = IntersectionSlice(superslice_features)
+                superslice = IntersectionRule(superslice_features)
                 if superslice in slices_to_score: continue
                 slices_to_score.add(superslice)
         print("After adding superslices:", len(slices_to_score))
@@ -740,7 +740,7 @@ class SamplingSliceFinder:
             
         print("Scoring collected slices", len(slices_to_score))
         univariate_masks = {}
-        rescored_slices = score_slices_batch(slices_to_score,
+        rescored_slices = score_subgroups_batch(slices_to_score,
                                                 discovery_inputs,
                                                 discovery_score_fns,
                                                 self.max_features,
@@ -764,7 +764,7 @@ class SamplingSliceFinder:
             self.seen_slices[new_slice] = new_slice.score_values
             
             
-        self.results = RankedSliceList(list(set(self.all_scores)),
+        self.results = RankedSubgroupList(list(set(self.all_scores)),
                             self.inputs,
                             self.score_fns,
                             eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
@@ -827,7 +827,7 @@ def find_slices_by_sampling(inputs,
     :return: a `RankedSliceList` object containing the identified slices.
     """
     
-    finder = SamplingSliceFinder(inputs,
+    finder = SamplingSubgroupSearch(inputs,
                                 score_fns,
                                 source_mask=source_mask, 
                                 group_filter=group_filter, 

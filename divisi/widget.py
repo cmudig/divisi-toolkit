@@ -8,12 +8,12 @@ import time
 import os
 import json
 import pickle
-from .slices import Slice, SliceFeatureBase
-from .sampling import SamplingSliceFinder
+from .subgroups import Rule, RuleFeatureBase
+from .sampling import SamplingSubgroupSearch
 from .filters import *
 from .scores import *
 from .discretization import DiscretizedData
-from .utils import powerset, detect_data_type
+from .utils import detect_data_type
 from .projections import Projection
 from sklearn.neighbors import NearestNeighbors
 
@@ -32,7 +32,7 @@ DEV_CSS_URL = ""
 # from `npx vite build`
 BUNDLE_DIR = pathlib.Path(__file__).parent / "static"
     
-class SliceFinderWidget(anywidget.AnyWidget):
+class DivisiWidget(anywidget.AnyWidget):
     name = traitlets.Unicode().tag(sync=True)
     
     slice_color_map = traitlets.Dict({}).tag(sync=True)
@@ -97,7 +97,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         except FileNotFoundError:
             raise ValueError("No built widget source found, and dev is set to False. To resolve, run npx vite build from the client directory.")
         
-        self.slice_finder = None
+        self.search_engine = None
         
         metric_info = {}
         for name, data in kwargs.get("metrics", {}).items():
@@ -158,8 +158,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.state_path = kwargs.get("state_path", None)
         self._read_state()
         
-        if self.slice_finder is None:
-            self.slice_finder = SamplingSliceFinder(
+        if self.search_engine is None:
+            self.search_engine = SamplingSubgroupSearch(
                 self.discrete_data,
                 self.score_functions,
                 source_mask=parse_metric_expression(self.source_mask_expr, self.derived_metrics) if self.source_mask_expr else None,
@@ -169,37 +169,37 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 positive_only=kwargs.get("positive_only", None),
                 similarity_threshold=0.9
             )
-            self.slice_finder.results.score_cache = self._score_cache
+            self.search_engine.results.score_cache = self._score_cache
         
         if not hasattr(self, "projection") or self.projection is None:
             if "projection" in kwargs:
                 self.projection = kwargs["projection"]
             else:
-                self.projection = self.slice_finder.eval_data.get_projection(method='tsne')
+                self.projection = self.search_engine.eval_data.get_projection(method='tsne')
             
-        self.discovery_neighbors = NearestNeighbors(metric="cosine").fit(self.slice_finder.discovery_data.one_hot_matrix)
+        self.discovery_neighbors = NearestNeighbors(metric="cosine").fit(self.search_engine.discovery_data.one_hot_matrix)
         
         # this is in the combined discovery and eval sets
         self.search_scope_mask = None
         self.map_clusters = None
         
         super().__init__(*args, **kwargs)
-        self.positive_only = self.slice_finder.positive_only
-        if isinstance(self.slice_finder.inputs, DiscretizedData):
-            if isinstance(self.slice_finder.inputs.value_names, dict):
-                self.value_names = self.slice_finder.inputs.value_names
+        self.positive_only = self.search_engine.positive_only
+        if isinstance(self.search_engine.inputs, DiscretizedData):
+            if isinstance(self.search_engine.inputs.value_names, dict):
+                self.value_names = self.search_engine.inputs.value_names
             else:
-                self.value_names = {i: v for i, v in enumerate(self.slice_finder.inputs.value_names)}
-        elif isinstance(self.slice_finder.inputs, pd.DataFrame):
-            self.value_names = {col: sorted(self.slice_finder.inputs[col].unique())
-                                for col in self.slice_finder.inputs.columns}
+                self.value_names = {i: v for i, v in enumerate(self.search_engine.inputs.value_names)}
+        elif isinstance(self.search_engine.inputs, pd.DataFrame):
+            self.value_names = {col: sorted(self.search_engine.inputs[col].unique())
+                                for col in self.search_engine.inputs.columns}
         else:
-            self.value_names = {col: sorted(self.slice_finder.inputs[:,col].unique())
-                                for col in range(self.slice_finder.inputs.shape[1])}
+            self.value_names = {col: sorted(self.search_engine.inputs[:,col].unique())
+                                for col in range(self.search_engine.inputs.shape[1])}
         
-        self.original_slice_finder = self.slice_finder
+        self.original_slice_finder = self.search_engine
         # for cluster enriched features
-        self.idf = 1 / (1e-3 + self.slice_finder.eval_data.one_hot_matrix.mean(axis=0))
+        self.idf = 1 / (1e-3 + self.search_engine.eval_data.one_hot_matrix.mean(axis=0))
         self.update_selected_slices()
         self.rerank_results()
         self._write_state()
@@ -225,17 +225,17 @@ class SliceFinderWidget(anywidget.AnyWidget):
             if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
             if "custom_slices" in state: self.custom_slices = state["custom_slices"]
             if "overlap_plot_metric" in state: self.overlap_plot_metric = state["overlap_plot_metric"]
-        if os.path.exists(os.path.join(self.state_path, "slice_finder.pkl")):
-            with open(os.path.join(self.state_path, "slice_finder.pkl"), "rb") as file:
+        if os.path.exists(os.path.join(self.state_path, "search_engine.pkl")):
+            with open(os.path.join(self.state_path, "search_engine.pkl"), "rb") as file:
                 sf_state = pickle.load(file)
-            self.slice_finder = SamplingSliceFinder.from_state_dict(self.discrete_data, self.score_functions, sf_state)
-            self.slice_finder.results.score_cache = self._score_cache
-            self.original_slice_finder = self.slice_finder
+            self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.score_functions, sf_state)
+            self.search_engine.results.score_cache = self._score_cache
+            self.original_slice_finder = self.search_engine
             if self.search_scope_info: self.update_search_scopes()
         
     @traitlets.observe("metric_info", "derived_metric_config", "score_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
     def _write_state(self, change=None):
-        if self.slice_finder is None: return
+        if self.search_engine is None: return
         
         if not hasattr(self, "state_path") or self.state_path is None:
             return
@@ -261,7 +261,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             }, file)
 
         if self.original_slice_finder is not None:
-            with open(os.path.join(self.state_path, "slice_finder.pkl"), "wb") as file:
+            with open(os.path.join(self.state_path, "search_engine.pkl"), "wb") as file:
                 pickle.dump(self.original_slice_finder.state_dict(), file)
             
     def get_slice_description(self, slice_obj):
@@ -269,10 +269,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
         Retrieves a description of the given slice (either from a cache or from
         the slice finder results).
         """
-        if not self.slice_finder or not self.slice_finder.results: return {}
+        if not self.search_engine or not self.search_engine.results: return {}
         if slice_obj not in self._slice_description_cache:
-            slice_obj = slice_obj.rescore(self.slice_finder.results.score_slice(slice_obj))
-            self._slice_description_cache[slice_obj] = self.slice_finder.results.generate_slice_description(slice_obj, metrics=self.derived_metrics)
+            slice_obj = slice_obj.rescore(self.search_engine.results.score_slice(slice_obj))
+            self._slice_description_cache[slice_obj] = self.search_engine.results.generate_slice_description(slice_obj, metrics=self.derived_metrics)
         return self._slice_description_cache[slice_obj]
         
     @traitlets.observe("derived_metrics")
@@ -280,7 +280,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         for m_name, m in self.derived_metrics.items():
             data = m["data"] if isinstance(m, dict) else m
             assert isinstance(data, np.ndarray) and len(data.shape) == 1, f"Metric data '{m_name}' must be 1D ndarray"
-        if not self.slice_finder or not self.slice_finder.results: return
+        if not self.search_engine or not self.search_engine.results: return
         self._slice_description_cache = {}
         self.slices = []
         self.rerank_results()
@@ -318,9 +318,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
             while i < self.num_samples:
                 def update_sampler_progress(progress, total):
                     self.sampler_run_progress = base_progress + progress / self.num_samples
-                self.slice_finder.progress_fn = update_sampler_progress
+                self.search_engine.progress_fn = update_sampler_progress
                 
-                results, sampled_idxs = self.slice_finder.sample(min(sample_step, self.num_samples - i))
+                results, sampled_idxs = self.search_engine.sample(min(sample_step, self.num_samples - i))
                 results.score_cache = self._score_cache
                 self.num_samples_drawn += len(sampled_idxs)
                 self.rerank_results()
@@ -340,21 +340,21 @@ class SliceFinderWidget(anywidget.AnyWidget):
 
     @traitlets.observe("score_weights", "num_slices")
     def rerank_results(self, change=None):
-        if not self.slice_finder or not self.slice_finder.results: 
+        if not self.search_engine or not self.search_engine.results: 
             self.update_slices([])
         else:    
-            weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.slice_finder.score_fns}
+            weights_to_use = {n: w for n, w in self.score_weights.items() if n in self.search_engine.score_fns}
             # # add weights for interaction effect scores
             # for n, config in self.score_function_config.items():
             #     if n in weights_to_use and n in self.score_functions and config["type"] == "OutcomeRateScore":
             #         weights_to_use[f"{n}_interaction"] = weights_to_use[n]
-            ranked_results = self.slice_finder.results.rank(weights_to_use, 
+            ranked_results = self.search_engine.results.rank(weights_to_use, 
                                                             n_slices=self.num_slices)
             self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results):
         self.update_custom_slices()
-        self.base_slice = self.get_slice_description(Slice(SliceFeatureBase()))
+        self.base_slice = self.get_slice_description(Rule(RuleFeatureBase()))
         self.slices = [
             self.get_slice_description(slice_obj)
             for slice_obj in ranked_results
@@ -362,16 +362,16 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):
-        if not self.slice_finder or not self.slice_finder.results: return
-        encoded_slices = [self.slice_finder.results.encode_slice(s['feature']) 
+        if not self.search_engine or not self.search_engine.results: return
+        encoded_slices = [self.search_engine.results.encode_slice(s['feature']) 
                           for s in self.custom_slices]
         self.custom_slice_results = {s['stringRep']: {**self.get_slice_description(enc), "stringRep": s['stringRep']}
                                      for s, enc in zip(self.custom_slices, encoded_slices)}
 
     @traitlets.observe("slice_score_requests")
     def slice_score_request(self, change=None):
-        if not self.slice_finder or not self.slice_finder.results: return
-        self.slice_score_results = {k: self.get_slice_description(self.slice_finder.results.encode_slice(f)) 
+        if not self.search_engine or not self.search_engine.results: return
+        self.slice_score_results = {k: self.get_slice_description(self.search_engine.results.encode_slice(f)) 
                                     for k, f in self.slice_score_requests.items()}
         
     def _base_score_weights_for_spec(self, search_specs, spec, slice_finder):
@@ -384,10 +384,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
     def update_top_feature(self, change=None):
         mask = None
         if self.hovered_slice or 'within_slice' in self.search_scope_info:
-            hover_slice = self.slice_finder.results.encode_slice(self.search_scope_info.get('within_slice', self.hovered_slice.get('feature')))
-            mask = hover_slice.make_mask(self.slice_finder.results.eval_df,
-                                         univariate_masks=self.slice_finder.results.univariate_masks,
-                                         device=self.slice_finder.results.device)
+            hover_slice = self.search_engine.results.encode_slice(self.search_scope_info.get('within_slice', self.hovered_slice.get('feature')))
+            mask = hover_slice.make_mask(self.search_engine.results.eval_df,
+                                         univariate_masks=self.search_engine.results.univariate_masks,
+                                         device=self.search_engine.results.device)
         elif 'within_selection' in self.search_scope_info and len(self.search_scope_info['within_selection']):
             if self.map_clusters is None:
                 print("Can't get top feature for selection without map_clusters")
@@ -398,10 +398,10 @@ class SliceFinderWidget(anywidget.AnyWidget):
             mask = self.map_clusters.isin(ids)
         
         if mask is not None:
-            one_hot = self.slice_finder.eval_data.one_hot_matrix
+            one_hot = self.search_engine.eval_data.one_hot_matrix
             feature_means = np.array(one_hot[mask].mean(axis=0))
             top_feature = np.argmax(feature_means * self.idf)
-            self.search_scope_enriched_features = [self.slice_finder.eval_data.one_hot_labels[top_feature]]
+            self.search_scope_enriched_features = [self.search_engine.eval_data.one_hot_labels[top_feature]]
         else:
             self.search_scope_enriched_features = []
         
@@ -410,12 +410,12 @@ class SliceFinderWidget(anywidget.AnyWidget):
         self.search_scope_mask = None
         
     def update_search_scopes(self):
-        if not self.slice_finder: return
+        if not self.search_engine: return
         
         search_info = self.search_scope_info
         
         if not search_info:
-            self.slice_finder = self.original_slice_finder
+            self.search_engine = self.original_slice_finder
             self.score_weights = {s: w for s, w in self.score_weights.items() if not s.startswith("Search Scope")}
             self.search_scope_mask = None
             self.search_scope_for_results = {}
@@ -434,7 +434,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
         if "within_slice" in search_info and not search_info.get("partial", False):
             contained_in_slice = base_finder.results.encode_slice(search_info["within_slice"])
-            if contained_in_slice.feature != SliceFeatureBase():
+            if contained_in_slice.feature != RuleFeatureBase():
                 raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
                 ref_mask = contained_in_slice.make_mask(raw_inputs).cpu().numpy()
                 new_score_fns["Search Scope Pos"] = OutcomeRateScore(ref_mask)
@@ -452,20 +452,20 @@ class SliceFinderWidget(anywidget.AnyWidget):
             if mask.sum() > 0:
                 # convert this to the full dataset by finding the nearest
                 # neighbors in the discovery set to the points in the evaluation set
-                selection_vectors = self.slice_finder.eval_data.one_hot_matrix[mask]
+                selection_vectors = self.search_engine.eval_data.one_hot_matrix[mask]
                 nearest_discovery_points = self.discovery_neighbors.kneighbors(selection_vectors, 
-                                                                               n_neighbors=int(np.ceil((1 - self.slice_finder.holdout_fraction) / self.slice_finder.holdout_fraction)) * 5,
+                                                                               n_neighbors=int(np.ceil((1 - self.search_engine.holdout_fraction) / self.search_engine.holdout_fraction)) * 5,
                                                                                return_distance=False).flatten()
                 uniques, counts = np.unique(nearest_discovery_points, return_counts=True)
                 # these indexes are in the discovery mask space
-                topk = uniques[np.flip(np.argsort(counts))[:int(mask.sum() * (1 - self.slice_finder.holdout_fraction) / self.slice_finder.holdout_fraction)]]
+                topk = uniques[np.flip(np.argsort(counts))[:int(mask.sum() * (1 - self.search_engine.holdout_fraction) / self.search_engine.holdout_fraction)]]
                 disc_mask = np.zeros(base_finder.discovery_mask.sum(), dtype=np.uint8)
                 disc_mask[topk] = 1
                 print(f"Found {len(topk)} nearest neighbors for a selection with {mask.sum()} points in eval set")
                 
                 all_mask = np.zeros_like(base_finder.discovery_mask)
                 all_mask[base_finder.discovery_mask] = disc_mask
-                all_mask[self.slice_finder.results.eval_indexes] = mask
+                all_mask[self.search_engine.results.eval_indexes] = mask
                 self.search_scope_mask = all_mask
                 
                 new_score_fns["Search Scope Pos"] = OutcomeRateScore(self.search_scope_mask)
@@ -493,7 +493,7 @@ class SliceFinderWidget(anywidget.AnyWidget):
             group_filter=new_filter,
             initial_slice=initial_slice,
         )
-        self.slice_finder = new_finder
+        self.search_engine = new_finder
         self.score_weights = {**{n: w for n, w in self.score_weights.items() if n in base_finder.score_fns},
                               **{n: 1.0 for n in new_score_fns}}
         self._slice_description_cache = {}
@@ -510,8 +510,8 @@ class SliceFinderWidget(anywidget.AnyWidget):
             # if n in sf and config['type'] == 'OutcomeRateScore':
             #     sf[f"{n}_interaction"] = InteractionEffectScore((1 - sf[n].data) if sf[n].inverse else sf[n].data)
         self.score_functions = sf
-        if self.slice_finder is not None:
-            self.slice_finder.rescore(self.score_functions)
+        if self.search_engine is not None:
+            self.search_engine.rescore(self.score_functions)
             self.rerank_results()
 
     @traitlets.observe("derived_metric_config")
@@ -545,13 +545,13 @@ class SliceFinderWidget(anywidget.AnyWidget):
     @traitlets.observe("hovered_slice")
     def update_hovered_slice(self, change=None):
         # Show which clusters contain at least 50% of this slice in the map
-        if not self.hovered_slice or not self.slice_finder or not self.slice_finder.results or self.map_clusters is None:
+        if not self.hovered_slice or not self.search_engine or not self.search_engine.results or self.map_clusters is None:
             self.hover_map_indexes = {}
         else:
-            hover_slice = self.slice_finder.results.encode_slice(self.hovered_slice['feature']) 
-            mask = hover_slice.make_mask(self.slice_finder.results.eval_df,
-                                         univariate_masks=self.slice_finder.results.univariate_masks,
-                                         device=self.slice_finder.results.device)
+            hover_slice = self.search_engine.results.encode_slice(self.hovered_slice['feature']) 
+            mask = hover_slice.make_mask(self.search_engine.results.eval_df,
+                                         univariate_masks=self.search_engine.results.univariate_masks,
+                                         device=self.search_engine.results.device)
             cluster_rates = pd.Series(mask).groupby(self.map_clusters).mean()
             self.hover_map_indexes = {
                 "slice": self.hovered_slice,
@@ -560,14 +560,14 @@ class SliceFinderWidget(anywidget.AnyWidget):
         
     @traitlets.observe("selected_slices")
     def update_selected_slices(self, change=None, overlap_metric=None):
-        if self.slice_finder is None or self.slice_finder.results is None: return
+        if self.search_engine is None or self.search_engine.results is None: return
         
         overlap_metric = overlap_metric if overlap_metric is not None else self.overlap_plot_metric
         
         slice_masks = {}
         
         # Calculate the sizes of all intersections of the given sets
-        manager = self.slice_finder.results
+        manager = self.search_engine.results
         for s in self.selected_slices:
             slice_obj = manager.encode_slice(s['feature'])
             slice_masks[slice_obj] = manager.slice_mask(slice_obj).cpu().numpy()
@@ -609,20 +609,20 @@ class SliceFinderWidget(anywidget.AnyWidget):
         if self.projection is not None and overlap_metric:
             error_metric = self.derived_metrics[overlap_metric]
             if isinstance(error_metric, dict): error_metric = error_metric["data"]
-            error_metric = error_metric[~self.slice_finder.discovery_mask]
+            error_metric = error_metric[~self.search_engine.discovery_mask]
             
             layout, cluster_labels = self.projection.generate_groups({
                 "outcome": error_metric,
                 **({"slices": np.vstack([slice_masks[o] for i, o in enumerate(slice_order)])}
                    if slice_order else {}),
-                **({"search_scope": self.search_scope_mask[self.slice_finder.results.eval_indexes]}
+                **({"search_scope": self.search_scope_mask[self.search_engine.results.eval_indexes]}
                    if self.search_scope_mask is not None else {})
             }, task_id=(overlap_metric, tuple(s.string_rep() for s in slice_order), None) if self.search_scope_mask is None else None)
             
-            one_hot = self.slice_finder.eval_data.one_hot_matrix
+            one_hot = self.search_engine.eval_data.one_hot_matrix
             cluster_sums = pd.DataFrame(one_hot).groupby(cluster_labels).agg('mean')
             top_features = np.argmax(cluster_sums.values * self.idf, axis=1)
-            enriched_cluster_features = {cluster: [self.slice_finder.eval_data.one_hot_labels[top_features[i]]]
+            enriched_cluster_features = {cluster: [self.search_engine.eval_data.one_hot_labels[top_features[i]]]
                                          for i, cluster in enumerate(cluster_sums.index)}
             
 
@@ -638,9 +638,9 @@ class SliceFinderWidget(anywidget.AnyWidget):
                 # Rewrite the cluster indexes to match the new values based on the existing search scope mask
                 self.search_scope_info = {
                     **self.search_scope_info, 
-                    "within_selection": np.unique(self.map_clusters[self.search_scope_mask[self.slice_finder.results.eval_indexes]]).tolist(),
+                    "within_selection": np.unique(self.map_clusters[self.search_scope_mask[self.search_engine.results.eval_indexes]]).tolist(),
                     "partial": True, # this means that the clusters have been rewritten due to layout, so don't update the search
-                    "proportion": self.search_scope_mask[self.slice_finder.results.eval_indexes].sum() / len(self.search_scope_mask[self.slice_finder.results.eval_indexes])
+                    "proportion": self.search_scope_mask[self.search_engine.results.eval_indexes].sum() / len(self.search_scope_mask[self.search_engine.results.eval_indexes])
                 }
                 print("Edited search scope info", self.search_scope_info)
                 

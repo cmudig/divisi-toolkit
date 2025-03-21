@@ -7,7 +7,7 @@ from .discretization import DiscretizedData
 import torch
 import collections
 
-class SliceFeatureBase:
+class RuleFeatureBase:
     def __init__(self):
         self.empty = True
         self.num_univariate_features = 0
@@ -19,10 +19,10 @@ class SliceFeatureBase:
         return False
     
     def __eq__(self, other):
-        return type(other) is SliceFeatureBase
+        return type(other) is RuleFeatureBase
     
     def __lt__(self, other):
-        return type(other) is not SliceFeatureBase
+        return type(other) is not RuleFeatureBase
     
     def make_mask(self, inputs, univariate_masks=None, device='cpu'):
         return torch.ones(inputs.shape[0]).bool().to(device)
@@ -36,15 +36,15 @@ class SliceFeatureBase:
     @staticmethod
     def from_dict(data):
         if data["type"] == "base":
-            return SliceFeatureBase()
+            return RuleFeatureBase()
         elif data["type"] == "feature":
-            return SliceFeature(data["col"], data["vals"])
+            return RuleFeature(data["col"], data["vals"])
         elif data["type"] == "negation":
-            return SliceFeatureNegation(SliceFeatureBase.from_dict(data["feature"]))
+            return RuleFeatureNegation(RuleFeatureBase.from_dict(data["feature"]))
         elif data["type"] == "and":
-            return SliceFeatureAnd(SliceFeatureBase.from_dict(data["lhs"]), SliceFeatureBase.from_dict(data["rhs"]))
+            return RuleFeatureAnd(RuleFeatureBase.from_dict(data["lhs"]), RuleFeatureBase.from_dict(data["rhs"]))
         elif data["type"] == "or":
-            return SliceFeatureOr(SliceFeatureBase.from_dict(data["lhs"]), SliceFeatureBase.from_dict(data["rhs"]))
+            return RuleFeatureOr(RuleFeatureBase.from_dict(data["lhs"]), RuleFeatureBase.from_dict(data["rhs"]))
         raise ValueError(f"Unknown data type '{data['type']}'")
         
     def transform_features(self, transform_func):
@@ -61,7 +61,7 @@ class SliceFeatureBase:
     def __repr__(self):
         return str(self)
 
-class SliceFeature(SliceFeatureBase):
+class RuleFeature(RuleFeatureBase):
     def __init__(self, feature_name, allowed_values):
         super().__init__()
         self.empty = False
@@ -78,10 +78,10 @@ class SliceFeature(SliceFeatureBase):
         return f"{self.feature_name} = {self.allowed_values[0]}"
     
     def __eq__(self, other):
-        return isinstance(other, SliceFeature) and other.feature_name == self.feature_name and other.allowed_values == self.allowed_values
+        return isinstance(other, RuleFeature) and other.feature_name == self.feature_name and other.allowed_values == self.allowed_values
     
     def __lt__(self, other):
-        if isinstance(other, SliceFeature):
+        if isinstance(other, RuleFeature):
             return self.feature_name < other.feature_name
         return True
     
@@ -127,7 +127,7 @@ class SliceFeature(SliceFeatureBase):
 
         return univ_mask
     
-class SliceFeatureNegation(SliceFeatureBase):
+class RuleFeatureNegation(RuleFeatureBase):
     def __init__(self, feature):
         super().__init__()
         self.empty = False
@@ -144,7 +144,7 @@ class SliceFeatureNegation(SliceFeatureBase):
         return {"type": "negation", "feature": self.feature.to_dict()}
     
     def transform_features(self, transform_func):
-        return SliceFeatureNegation(self.feature.transform_features(transform_func))
+        return RuleFeatureNegation(self.feature.transform_features(transform_func))
 
     def __hash__(self):
         return hash(self.feature)
@@ -153,7 +153,7 @@ class SliceFeatureNegation(SliceFeatureBase):
         return self == f or self.feature == f
 
     def __eq__(self, other):
-        return isinstance(other, SliceFeatureNegation) and other.feature == self.feature
+        return isinstance(other, RuleFeatureNegation) and other.feature == self.feature
     
     def __lt__(self, other):
         return self.feature < other
@@ -161,7 +161,7 @@ class SliceFeatureNegation(SliceFeatureBase):
     def __str__(self):
         return f"~({str(self.feature)})"
     
-class SliceFeatureAnd(SliceFeatureBase):
+class RuleFeatureAnd(RuleFeatureBase):
     def __init__(self, lhs, rhs):
         super().__init__()
         self.empty = False
@@ -180,7 +180,7 @@ class SliceFeatureAnd(SliceFeatureBase):
         return {"type": "and", "lhs": self.lhs.to_dict(), "rhs": self.rhs.to_dict()}
 
     def transform_features(self, transform_func):
-        return SliceFeatureAnd(self.lhs.transform_features(transform_func),
+        return RuleFeatureAnd(self.lhs.transform_features(transform_func),
                                self.rhs.transform_features(transform_func))
 
     def __hash__(self):
@@ -190,7 +190,7 @@ class SliceFeatureAnd(SliceFeatureBase):
         return self == f or f in self.lhs or f in self.rhs
 
     def __eq__(self, other):
-        return isinstance(other, SliceFeatureAnd) and other.lhs == self.lhs and other.rhs == self.rhs
+        return isinstance(other, RuleFeatureAnd) and other.lhs == self.lhs and other.rhs == self.rhs
     
     def __lt__(self, other):
         return self.lhs < other.lhs
@@ -198,7 +198,7 @@ class SliceFeatureAnd(SliceFeatureBase):
     def __str__(self):
         return f"({str(self.lhs)} & {str(self.rhs)})"
         
-class SliceFeatureOr(SliceFeatureBase):
+class RuleFeatureOr(RuleFeatureBase):
     def __init__(self, lhs, rhs):
         super().__init__()
         self.empty = False
@@ -217,7 +217,7 @@ class SliceFeatureOr(SliceFeatureBase):
         return {"type": "or", "lhs": self.lhs.to_dict(), "rhs": self.rhs.to_dict()}
 
     def transform_features(self, transform_func):
-        return SliceFeatureOr(self.lhs.transform_features(transform_func),
+        return RuleFeatureOr(self.lhs.transform_features(transform_func),
                               self.rhs.transform_features(transform_func))
 
     def __hash__(self):
@@ -227,7 +227,7 @@ class SliceFeatureOr(SliceFeatureBase):
         return self == f or f in self.lhs or f in self.rhs
 
     def __eq__(self, other):
-        return isinstance(other, SliceFeatureOr) and other.lhs == self.lhs and other.rhs == self.rhs
+        return isinstance(other, RuleFeatureOr) and other.lhs == self.lhs and other.rhs == self.rhs
     
     def __lt__(self, other):
         return self.lhs < other.lhs
@@ -235,14 +235,14 @@ class SliceFeatureOr(SliceFeatureBase):
     def __str__(self):
         return f"({str(self.lhs)} | {str(self.rhs)})"
 
-class Slice:
+class Rule:
     def __init__(self, feature, score_values=None):
         """
 
         :param feature: a SliceFeatureBase instance describing the slice
         :param score_values: dictionary of score function to score values
         """
-        assert isinstance(feature, SliceFeatureBase)
+        assert isinstance(feature, RuleFeatureBase)
         self.feature = feature
         self.score_values = score_values or {}
         
@@ -251,13 +251,13 @@ class Slice:
     
     @staticmethod
     def from_dict(d):
-        return Slice(SliceFeatureBase.from_dict(d["feature"]), score_values=d["score_values"])        
+        return Rule(RuleFeatureBase.from_dict(d["feature"]), score_values=d["score_values"])        
                 
     def __hash__(self):
         return hash(self.feature)
     
     def __eq__(self, other):
-        return isinstance(other, Slice) and other.feature == self.feature
+        return isinstance(other, Rule) and other.feature == self.feature
     
     def __contains__(self, f):
         return f in self.feature
@@ -267,15 +267,15 @@ class Slice:
         Creates a new Slice object with the given slice feature.
         """
         if self.feature.empty:
-            return Slice(other_feature)
-        return Slice(SliceFeatureAnd(self.feature, other_feature))
+            return Rule(other_feature)
+        return Rule(RuleFeatureAnd(self.feature, other_feature))
     
     def rescore(self, new_scores):
         """
         Returns a Slice object with identical feature values but a new dictionary
         of scores.
         """
-        return Slice(self.feature, new_scores)
+        return Rule(self.feature, new_scores)
 
     def univariate_features(self):
         return self.feature.univariate_features()
@@ -322,7 +322,7 @@ class Slice:
     def string_rep(self):
         return str(self.feature)
 
-class IntersectionSlice(Slice):
+class IntersectionRule(Rule):
     """
     A special case of a Slice that consists of an AND'ed set of features, where
     each feature can be a SliceFeature or a SliceFeatureOr. Unlike normal Slice
@@ -334,11 +334,11 @@ class IntersectionSlice(Slice):
             feature = rule
         else:
             if not features:
-                feature = SliceFeatureBase()
+                feature = RuleFeatureBase()
             else:
                 feature = features[-1]
                 for i in range(len(features) - 2, -1, -1):
-                    feature = SliceFeatureAnd(features[i], feature)
+                    feature = RuleFeatureAnd(features[i], feature)
         super().__init__(feature, score_values=score_values)
         self.base_features = tuple(sorted(features))
         
@@ -346,15 +346,15 @@ class IntersectionSlice(Slice):
         return hash(self.base_features)
     
     def __eq__(self, other):
-        return isinstance(other, IntersectionSlice) and other.base_features == self.base_features
+        return isinstance(other, IntersectionRule) and other.base_features == self.base_features
     
     def subslice(self, other_feature):
         """
         Creates a new Slice object with the given slice feature.
         """
         if self.feature.empty:
-            return IntersectionSlice([other_feature])
-        return IntersectionSlice((*self.base_features, other_feature))
+            return IntersectionRule([other_feature])
+        return IntersectionRule((*self.base_features, other_feature))
 
     def rescore(self, new_scores):
         """
@@ -362,7 +362,7 @@ class IntersectionSlice(Slice):
         of scores.
         """
         # make sure the order of the slice is preserved
-        return IntersectionSlice(self.base_features, new_scores, rule=self.feature)
+        return IntersectionRule(self.base_features, new_scores, rule=self.feature)
     
     def sort_features(self, score_fn=None):
         """
@@ -373,14 +373,14 @@ class IntersectionSlice(Slice):
         slice will be placed first.
         """
         base_score = score_fn(self)
-        ablated_slices = [(exclude_feature, IntersectionSlice([f for f in self.base_features if f != exclude_feature]))
+        ablated_slices = [(exclude_feature, IntersectionRule([f for f in self.base_features if f != exclude_feature]))
                           for exclude_feature in self.base_features]
         ablated_scores = [(*s, base_score - score_fn(s[1])) for s in ablated_slices]
-        return IntersectionSlice([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
+        return IntersectionRule([x[0] for x in sorted(ablated_scores, key=lambda x: x[-1], reverse=True)],
                                  self.score_values)
         
 
-def score_slices_batch(slices_to_score, inputs, score_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
+def score_subgroups_batch(slices_to_score, inputs, score_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
     univariate_masks = univariate_masks if univariate_masks is not None else {}
     scored_slices = {}
     
@@ -430,10 +430,10 @@ def score_slices_batch(slices_to_score, inputs, score_fns, max_features, min_ite
     #                 scored_slices[new_slice] = scored_slice
     return scored_slices
 
-class RankedSliceList:
+class RankedSubgroupList:
     """
     A type that manages a list of slices and associated scores. When the
-    `RankedSliceList` is initialized, it contains results that are determined
+    `RankedSubgroupList` is initialized, it contains results that are determined
     from a discovery set of points. When the `rank` method is called, the best
     slices are re-scored using an evaluation set of points (ideally held out
     from the discovery set), and ranked according to a given set of weights.
@@ -507,7 +507,7 @@ class RankedSliceList:
         try:
             return self.data.encode_slice(feature_set)
         except AttributeError:
-            return Slice(feature_set)
+            return Rule(feature_set)
         
     def score_slice(self, slice_obj, return_mask=False):
         if self.score_cache is not None and slice_obj in self.score_cache:
@@ -615,7 +615,7 @@ class RankedSliceList:
         def _score(slice_obj):
             scores = self.score_slice(slice_obj)
             return sum(scores.get(n, 0) * w for n, w in weights.items())
-        ranked_results = [slice_obj.sort_features(_score) if isinstance(slice_obj, IntersectionSlice) and order_features else slice_obj
+        ranked_results = [slice_obj.sort_features(_score) if isinstance(slice_obj, IntersectionRule) and order_features else slice_obj
                           for slice_obj in ranked_results]
         return ranked_results
     

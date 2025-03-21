@@ -1,5 +1,5 @@
 import itertools
-from .slices import Slice, IntersectionSlice, SliceFeature
+from .subgroups import Rule, IntersectionRule, RuleFeature
 from .utils import RankedList
 import numpy as np
 import tqdm
@@ -42,7 +42,7 @@ def calculate_scores(discrete_df, score_functions, weights, feature_set, combina
     # here a combination is set of discrete values for a particular feature set
     num_scored = 0
     for combination in combinations:
-        current_slice = IntersectionSlice([SliceFeature(f, [val]) for f, val in zip(feature_set, combination)])
+        current_slice = IntersectionRule([RuleFeature(f, [val]) for f, val in zip(feature_set, combination)])
         if scored_slices is not None and current_slice in scored_slices: continue 
         mask = current_slice.make_mask(discrete_df, univariate_masks=univariate_masks)
         num_scored += 1
@@ -104,13 +104,13 @@ def populate_slices(discrete_df, score_functions, weights, M, top_k_slices, posi
     print("Done for: ", M, ", scored", num_scored, "slices")
     return num_scored
 
-def find_slices_recursive(discrete_df,
-                          score_functions, 
-                          max_features_to_consider, 
-                          desired_top_slice_count,
-                          positive_only=False,
-                          weights=None,
-                          min_items=None):
+def search_subgroups_recursive(discrete_df,
+                                score_functions, 
+                                max_features_to_consider, 
+                                desired_top_slice_count,
+                                positive_only=False,
+                                weights=None,
+                                min_items=None):
     """
     Api to find top k slices considering at max m features for a dataset
     
@@ -192,7 +192,7 @@ def find_slices_recursive(discrete_df,
             else:
                 values_to_try = list(range(discrete_df[:,new_feature].max() + 1))
             for v in values_to_try:
-                _find_slices_recursive(base_slice.subslice(SliceFeature(new_feature, [v])))
+                _find_slices_recursive(base_slice.subslice(RuleFeature(new_feature, [v])))
             
-    _find_slices_recursive(IntersectionSlice([]))
+    _find_slices_recursive(IntersectionRule([]))
     return top_k_slices.items, num_scored

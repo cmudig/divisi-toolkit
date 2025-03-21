@@ -2,9 +2,9 @@ import importlib.metadata
 
 __version__ = importlib.metadata.version("divisi-toolkit")
 
-from .widget import SliceFinderWidget
+from .widget import DivisiWidget
 from .sampling import find_slices_by_sampling
-from .recursive import find_slices_recursive
+from .recursive import search_subgroups_recursive
 from .scores import *
 from .filters import *
 from .discretization import DiscretizedData, discretize_data, discretize_token_sets
@@ -61,7 +61,7 @@ def find_slices(df, score_functions, max_features=3, min_weight=0.0, max_weight=
         assert 'n_slices' in kwargs, "n_slices parameter must be passed to find_slices for recursive algorithm"
         n_slices = kwargs['n_slices']
         del kwargs['n_slices']
-        return find_slices_recursive(
+        return search_subgroups_recursive(
             df_to_run,
             score_functions,
             max_features,
