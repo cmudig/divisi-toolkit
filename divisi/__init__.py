@@ -7,7 +7,15 @@ from .sampling import find_slices_by_sampling
 from .recursive import search_subgroups_recursive
 from .ranking import *
 from .filters import *
-from .discretization import DiscretizedData, discretize_data, discretize_token_sets
+from .discretization import (
+    DiscretizedData, 
+    discretize_data, 
+    discretize_token_sets,
+    keep_values,
+    unique_values,
+    transform_values,
+    bin_values
+)
 
 def find_slices(df, ranking_functions, max_features=3, min_weight=0.0, max_weight=5.0, algorithm='recursive', **kwargs):
     """

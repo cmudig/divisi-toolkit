@@ -4,6 +4,7 @@ import scipy.sparse as sps
 import tqdm
 import pickle
 from .projections import Projection
+from .utils import detect_data_type
 import hashlib
 
 class DiscretizedData:
@@ -37,6 +38,13 @@ class DiscretizedData:
         """new_names should be a dictionary of old names to new names"""
         return DiscretizedData(self.df, {i: (new_names.get(c, c), v) for i, (c, v) in self.value_names.items()})
     
+    def describe_column(self, col_name):
+        return f"{col_name}: " + ", ".join(f"{raw} - '{value}' ({(self.df[:,self.inverse_value_mapping[col_name][0]] == raw).mean():.2%})"
+                                           for value, raw in self.inverse_value_mapping[col_name][1].items())
+        
+    def __repr__(self):
+        return "<DiscretizedData:\n\t" + "\n\t".join(self.describe_column(c) for c in self.inverse_value_mapping) + "\n>"
+        
     @staticmethod
     def concat(dfs):
         """Concatenates the discrete dataframes horizontally. Assumes all column
@@ -278,12 +286,12 @@ class DiscretizedData:
         return dd
     
 def _represent_bin(bins, i, quantile=False):
-    if quantile:
-        if i == 0:
-            return f"< {bins[0] * 100:.5g}%"
-        elif i == len(bins):
-            return f"> {bins[-1] * 100:.5g}%"
-        return f"{bins[i - 1] * 100:.5g}% - {bins[i] * 100:.5g}%"
+    # if quantile:
+    #     if i == 0:
+    #         return f"< {bins[0] * 100:.5g}%"
+    #     elif i == len(bins):
+    #         return f"> {bins[-1] * 100:.5g}%"
+    #     return f"{bins[i - 1] * 100:.5g}% - {bins[i] * 100:.5g}%"
     if i == 0:
         return f"< {bins[0]:.5g}"
     elif i == len(bins):
@@ -292,16 +300,45 @@ def _represent_bin(bins, i, quantile=False):
 
 def discretize_column(column_name, column_data, col_spec):
     if callable(col_spec["method"]):
-        result, desc = col_spec["method"](column_data, column_name)
+        function_result = col_spec["method"](column_data, column_name)
+        if isinstance(function_result, tuple):
+            result, desc = function_result
+        else:
+            result = function_result
+            desc = {v: v for v in np.unique(result)}
+        assert np.issubdtype(result.dtype, np.integer), "Value results for custom discretization function must be integers"
         column_desc = (column_name, desc)
     elif col_spec["method"] == "keep":
         result = column_data.values
+        assert np.issubdtype(result.dtype, np.integer), "Values must be integers for column with method 'keep'"
         column_desc = (column_name, {v: v for v in column_data.unique()})
     elif col_spec["method"] == "bin":
         if "bins" in col_spec:
-            bins = np.array(col_spec["bins"])                
+            if isinstance(col_spec["bins"], (list, np.ndarray)):
+                bins = np.array(col_spec["bins"])                
+            else:
+                assert col_spec["bins"] > 1, "Number of bins must be greater than 1"
+                min_val = np.nanmin(column_data)
+                max_val = np.nanmax(column_data)
+                data_range = max_val - min_val
+                bin_scale = np.floor(np.log10(data_range))
+                print(min_val, max_val, data_range, bin_scale)
+                min_val = np.floor(min_val / (10 ** bin_scale)) * (10 ** bin_scale)
+                max_val = np.ceil(max_val / (10 ** bin_scale)) * (10 ** bin_scale)
+                if col_spec.get("log", False):
+                    bins = 10 ** np.histogram_bin_edges(np.log10(column_data), 
+                                                  bins=col_spec["bins"], 
+                                                  range=(np.log10(min_val), np.log10(max_val)))
+                else:
+                    bins = np.histogram_bin_edges(column_data, bins=col_spec["bins"], range=(min_val, max_val))
+                print(min_val, max_val, bins)
+                bins = bins[1:-1]
+
         elif "quantiles" in col_spec:
-            bins = np.quantile(column_data, col_spec["quantiles"])
+            if isinstance(col_spec["quantiles"], (list, np.ndarray)):
+                bins = np.quantile(column_data, col_spec["quantiles"])
+            else:
+                bins = np.quantile(column_data, np.linspace(0, 1, col_spec["quantiles"] + 1)[1:-1])
         else:
             raise ValueError("One of 'bins' or 'quantiles' must be passed for binning discretization")
         result = np.digitize(column_data, bins)
@@ -312,31 +349,71 @@ def discretize_column(column_name, column_data, col_spec):
             col_names = {i: _represent_bin(bins, i, quantile="quantiles" in col_spec)
                                         for i in range(len(bins) + 1)}
         if "nan_name" in col_spec:
-            # Set the nan value to the max plus one
-            result[pd.isna(column_data)] = len(bins) + 1
-            col_names[len(bins) + 1] = col_spec["nan_name"]
+            nan_mask = pd.isna(column_data)
+            if nan_mask.sum() > 0:
+                # Set the nan value to the max plus one
+                result[nan_mask] = len(bins) + 1
+                col_names[len(bins) + 1] = col_spec["nan_name"]
             
         column_desc = (column_name, col_names)
     elif col_spec["method"] == "unique":
         codes, uniques = pd.factorize(column_data.astype(str), sort=True)
         unique_vals = sorted(uniques)
-        result = np.where(pd.isna(column_data), np.nan, codes)
+        nan_mask = pd.isna(column_data)
+        result = np.where(nan_mask, np.nan, codes)
         col_names = {i: v for i, v in enumerate(uniques)}
         
-        if "nan_name" in col_spec:
+        if "nan_name" in col_spec and nan_mask.sum() > 0:
             # Set the nan value to the max plus one
-            result[pd.isna(column_data)] = len(uniques)
+            result[nan_mask] = len(uniques)
             col_names[len(unique_vals)] = col_spec["nan_name"]
         column_desc = (column_name, col_names)
     
     return result, column_desc
     
-def discretize_data(df, spec, sparse=False):
+def keep_values():
+    return {"method": "keep"}
+
+def unique_values(nan_name=None):
+    return {"method": "unique", **({"nan_name": nan_name} if nan_name is not None else {})}
+
+def bin_values(bins=None, quantiles=None, names=None, log=False, nan_name=None):
     """
-    Discretizes the data according to the given set of rules.
+    bins or quantiles should be either an integer (to choose evenly spaced bins
+    or quantiles) or an array of numerical bins. The first and last bin/quantile
+    cutoffs are open. If names is provided, it should have exactly one more 
+    value than the number of bins or quantiles to correspond to the open first
+    and last bins.
+    """
+    assert (bins is not None) != (quantiles is not None), "Exactly one of bins or quantiles must be provided"
+    return {"method": "bin", 
+            "log": log,
+            **({"bins": bins} if bins is not None else {"quantiles": quantiles}),
+            **({"names": names} if names is not None else {}),
+            **({"nan_name": nan_name} if nan_name is not None else {})}
+    
+def transform_values(func):
+    """
+    The provided function should take two arguments: the column value series 
+    and the column name. It should return an integer-valued series/array, or a 
+    tuple containing the integer-valued series/array and a dictionary of mappings
+    from numbers in the array to human-readable labels.
+    """
+    return {"method": func}
+    
+def discretize_data(df, custom_cols=None, spec=None, remove_cols=None, sparse=False):
+    """
+    Discretizes the data either automatically or according to the given set of 
+    rules. Automatic discretization works by keeping the unique values for any
+    categorical/string columns or columns with at most 5 unique values, and
+    binning other numerical columns into 5 bins using a histogram strategy.
     
     :param df: A dataframe containing possibly continuous values.
+    :param custom_cols: A dictionary of column names to discretization methods,
+        in the same format as `spec`. Every column name must be present in the
+        original dataframe.
     :param spec: A dict specification of rules for each feature to discretize.
+        If provided, only the columns in this dictionary will be discretized.
         The keys of this dictionary should be columns in the source dataframe,
         and the values should be dictionaries containing the following keys:
         - method (required): a way to discretize the data. If 'keep', then the
@@ -353,19 +430,42 @@ def discretize_data(df, spec, sparse=False):
         - quantiles: If method is 'bin', providing this key specifies quantiles
             at which the values will be binned. Binning follows the same rules as
             for the bins key.
+    :param remove_cols: A list of column names to remove from the discretized 
+        version of the dataframe. Not used if `spec` is provided.
     :param sparse: If true, the resulting object will be backed by a sparse matrix.
         (The method still temporarily materializes a dense matrix even if sparse 
         is set to True.)
             
     :return: A DiscretizedData instance representing the dataframe.
     """
-    discrete_columns = np.zeros((len(df), len(spec)), dtype=np.uint8)
     column_descriptions = {}
-    for col_idx, (col, col_spec) in enumerate(spec.items()):
-        try:
-            discrete_columns[:,col_idx], column_descriptions[col_idx] = discretize_column(col, df[col], col_spec)
-        except Exception as e:
-            raise ValueError(f"Error discretizing column '{col}': {e}")
+    if spec is not None:
+        discrete_columns = np.zeros((len(df), len(spec)), dtype=np.uint8)
+        for col_idx, (col, col_spec) in enumerate(spec.items()):
+            try:
+                discrete_columns[:,col_idx], column_descriptions[col_idx] = discretize_column(col, df[col], col_spec)
+            except Exception as e:
+                raise ValueError(f"Error discretizing column '{col}': {e}")
+    else:
+        # Auto discretization
+        col_names = [c for c in df.columns if c not in (remove_cols or [])]
+        discrete_columns = np.zeros((len(df), len(col_names)), dtype=np.uint8)
+        for col_idx, col in enumerate(col_names):
+            try:
+                if col in custom_cols:
+                    col_spec = custom_cols[col]
+                else:
+                    data_type = detect_data_type(df[col].values)
+                    if data_type == 'binary':
+                        col_spec = {"method": "bin", "bins": [0.5], "names": ["False", "True"], "nan_name": "N/A"}
+                    elif data_type == 'categorical':
+                        col_spec = {"method": "unique", "nan_name": "N/A"}
+                    else:
+                        col_spec = {"method": "bin", "bins": 5, "nan_name": "N/A"}
+                
+                discrete_columns[:,col_idx], column_descriptions[col_idx] = discretize_column(col, df[col], col_spec)
+            except Exception as e:
+                raise ValueError(f"Error discretizing column '{col}': {e}")
     return DiscretizedData(sps.csr_matrix(discrete_columns) if sparse else discrete_columns,
                            column_descriptions)
 
