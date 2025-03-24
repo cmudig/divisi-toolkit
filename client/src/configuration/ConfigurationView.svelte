@@ -8,17 +8,25 @@
     faChevronRight,
     faEye,
     faEyeSlash,
+    faFilter,
     faPlus,
     faPlusCircle,
+    faTrash,
   } from '@fortawesome/free-solid-svg-icons';
   import { sortMetrics } from '../utils/utils';
   import SearchScopeConfiguration from './SearchScopeConfiguration.svelte';
+  import { type RuleFilter, RuleFilterType } from './rulefilters';
+  import RuleFilterEditor from './RuleFilterEditor.svelte';
 
   export let showSearchScopeConfig: boolean = true;
   export let searchScopeNeedsRerun: boolean = false;
   export let searchScopeInfo: any = {};
   export let positiveOnly: boolean = false;
   export let allowedValues: { [key: string]: string[] } | null = null;
+
+  export let showFilterConfig: boolean = true;
+  export let ruleFilter: RuleFilter | null = null;
+  export let filterConfigExpanded: boolean = false;
 
   export let metricInfo: {
     [key: string]: {
@@ -249,6 +257,59 @@
         bind:metricExpressionRequest
         bind:metricExpressionResponse
       />
+    {/if}
+  {/if}
+
+  {#if showFilterConfig}
+    <div class="px-2 mb-2 mt-4 flex items-center gap-2">
+      <button
+        class="hover:text-slate-600 text-slate-400 bg-transparent py-1 pr-1 shrink-0 grow-0"
+        on:click={(e) => (filterConfigExpanded = !filterConfigExpanded)}
+        ><Fa
+          icon={filterConfigExpanded ? faChevronDown : faChevronRight}
+          class="inline"
+        /></button
+      >
+      <div class="flex-auto">
+        <div class="font-bold">RULE FILTER</div>
+        <div class="text-xs text-slate-600">
+          Define feature values that should be excluded or required in returned
+          subgroup rules.
+        </div>
+      </div>
+      {#if !ruleFilter}
+        <button
+          class="hover:text-slate-600 text-slate-400 bg-transparent text-lg ml-2 py-1 px-1 shrink-0 grow-0"
+          on:click={(e) => {
+            ruleFilter = {
+              type: 'constraint',
+              logic: RuleFilterType.exclude,
+              features: [],
+              values: [],
+            };
+            filterConfigExpanded = true;
+          }}><Fa icon={faPlusCircle} class="inline" /></button
+        >
+      {/if}
+    </div>
+
+    {#if filterConfigExpanded}
+      {#if !!ruleFilter}
+        <RuleFilterEditor
+          bind:ruleFilter
+          on:delete={(e) => {
+            ruleFilter = null;
+          }}
+          topLevel
+          {allowedValues}
+        />
+      {:else}
+        <div
+          class="w-full bg-slate-100 rounded-md p-4 text-slate-600 text-center mb-2"
+        >
+          Click the + to add a rule filter.
+        </div>
+      {/if}
     {/if}
   {/if}
 

@@ -92,6 +92,9 @@ class DivisiWidget(anywidget.AnyWidget):
     search_scope_info = traitlets.Dict({}).tag(sync=True)
     search_scope_enriched_features = traitlets.List([]).tag(sync=True)
     
+    rule_filter_config = traitlets.Dict(None, allow_none=True).tag(sync=True)
+    rule_filter = traitlets.Instance(RuleFilterBase, None, allow_none=True)
+    
     state_path = traitlets.Unicode(None, allow_none=True)
     
     def __init__(self, discrete_data, *args, **kwargs):
@@ -157,10 +160,14 @@ class DivisiWidget(anywidget.AnyWidget):
                 min_items=len(discrete_data) * 0.5 * self.min_items_fraction,
                 holdout_fraction=0.5,
                 max_features=self.max_features,
-                positive_only=kwargs.get("positive_only", None),
+                rule_filter=kwargs.get("rule_filter", None),
                 similarity_threshold=0.9
             )
+            self.rule_filter = self.search_engine.rule_filter
             self.search_engine.results.score_cache = self._score_cache
+        else:
+            if "rule_filter" in kwargs:
+                self.rule_filter = kwargs["rule_filter"]
         
         if not hasattr(self, "projection") or self.projection is None:
             if "projection" in kwargs:
@@ -222,6 +229,7 @@ class DivisiWidget(anywidget.AnyWidget):
             
             self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state["search_state"])
             self.search_engine.results.score_cache = self._score_cache
+            self.rule_filter = self.search_engine.rule_filter
 
             search_engine_hash = self.search_engine.get_configuration_hash()
             
@@ -252,7 +260,7 @@ class DivisiWidget(anywidget.AnyWidget):
             print("Error loading state; resetting")
             traceback.print_exc()
             
-    @traitlets.observe("derived_metric_config", "hidden_metrics", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric")
+    @traitlets.observe("derived_metric_config", "hidden_metrics", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric", "rule_filter")
     def _write_state(self, change=None):
         if not hasattr(self, "original_search_engine") or self.original_search_engine is None: return
         
@@ -552,10 +560,10 @@ class DivisiWidget(anywidget.AnyWidget):
         else:
             return
 
-        new_filter = base_finder.rule_filter
+        new_filter = self.rule_filter
         if exclusion_criteria is not None:
             if new_filter is not None:
-                new_filter = ExcludeIfAny([new_filter, exclusion_criteria])
+                new_filter = ExcludeIfAny(new_filter, exclusion_criteria)
             else:
                 new_filter = exclusion_criteria
         # subslice any outcomes 
@@ -569,6 +577,7 @@ class DivisiWidget(anywidget.AnyWidget):
             initial_slice=initial_slice,
         )
         self.search_engine = new_finder
+        self.rule_filter = new_filter
         self.ranking_weights = {**{n: w for n, w in self.ranking_weights.items() if n in base_finder.ranking_fns},
                               **{n: 1.0 for n in new_score_fns}}
         self._slice_description_cache = {}
@@ -741,3 +750,33 @@ class DivisiWidget(anywidget.AnyWidget):
             
         if self.hovered_slice:
             self.update_hovered_slice()
+        
+    @traitlets.observe("rule_filter")    
+    def update_rule_filter_config(self, change=None):
+        if hasattr(self, "_updating_rule_filter"): return
+        self._updating_rule_filter = True
+        
+        new_filter = change.new if change is not None else self.rule_filter
+        self.search_engine.rule_filter = new_filter
+        self.rule_filter_config = new_filter.to_dict() if new_filter else None
+        self.search_engine.results = self.search_engine.refilter_results()
+        self.rerank_results()
+        
+        delattr(self, "_updating_rule_filter")
+        
+    @traitlets.observe("rule_filter_config") 
+    def update_rule_filter(self, change=None):
+        if hasattr(self, "_updating_rule_filter"): return
+        self._updating_rule_filter = True
+        
+        new_filter_config = change.new if change is not None else self.rule_filter_config
+        if new_filter_config is None:
+            new_filter = None
+        else:
+            new_filter = RuleFilterBase.from_dict(self.discrete_data, new_filter_config)
+        self.search_engine.rule_filter = new_filter
+        self.rule_filter = new_filter
+        self.search_engine.results = self.search_engine.refilter_results()
+        self.rerank_results()
+        
+        delattr(self, "_updating_rule_filter")

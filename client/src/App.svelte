@@ -2,7 +2,6 @@
   import SliceTable from './slice_table/SliceTable.svelte';
   import { traitlet } from './stores';
   import ScoreWeightMenu from './utils/ScoreWeightMenu.svelte';
-  import Fa from 'svelte-fa/src/fa.svelte';
   import {
     faBookBookmark,
     faChevronLeft,
@@ -29,6 +28,7 @@
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
   import ResizablePanel from './utils/ResizablePanel.svelte';
   import * as d3 from 'd3';
+  import Fa from 'svelte-fa';
 
   export let model;
 
@@ -79,6 +79,8 @@
   );
   let sliceScoreRequests = traitlet(model, 'slice_score_requests', {});
   let sliceScoreResults = traitlet(model, 'slice_score_results', {});
+
+  let ruleFilterConfig = traitlet(model, 'rule_filter_config', null);
 
   let sliceIntersectionCounts = traitlet(
     model,
@@ -374,6 +376,7 @@
             bind:rankingWeights={$rankingWeights}
             bind:metricExpressionRequest={$metricExpressionRequest}
             bind:metricExpressionResponse={$metricExpressionResponse}
+            bind:ruleFilter={$ruleFilterConfig}
           />
         </div>
       </ResizablePanel>

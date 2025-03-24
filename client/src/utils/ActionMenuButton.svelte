@@ -35,7 +35,10 @@
         if (!container || !button) return;
         let bounds = button.getBoundingClientRect();
         let containerBounds = container.getBoundingClientRect();
-        menuX = bounds.left - containerBounds.left;
+        if (align == 'left') menuX = bounds.left - containerBounds.left;
+        else if (align == 'right') menuX = bounds.right - containerBounds.left;
+        else if (align == 'center')
+          menuX = bounds.left + bounds.width / 2 - containerBounds.left;
         menuY = bounds.bottom - containerBounds.top;
       });
       observer.observe(button);
@@ -99,8 +102,9 @@
       on:keydown={(e) => {}}
     >
       <div
-        class="absolute rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none transition-opacity duration-200"
-        style="top: {menuY}px; left: {menuX}px; opacity: {optionsMenuOpacity}; width: {menuWidth}px; transform: translate({align ==
+        class="absolute rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none transition-opacity duration-200 overflow-y-auto"
+        style="top: {menuY}px; max-height: calc(100% - {menuY +
+          12}px); left: {menuX}px; opacity: {optionsMenuOpacity}; width: {menuWidth}px; transform: translate({align ==
         'right'
           ? '-100%'
           : align == 'center'
@@ -113,7 +117,7 @@
         on:click|stopPropagation={singleClick ? hideOptionsMenu : () => {}}
         on:keydown={(e) => {}}
       >
-        <div class="menu-options py-1" role="none">
+        <div class="menu-options my-1" role="none">
           <slot name="options" {dismiss} />
         </div>
       </div>

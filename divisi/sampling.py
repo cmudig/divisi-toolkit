@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from .filters import ExcludeIfAny
 from .utils import RankedList, powerset
 from .subgroups import *
 from .ranking import RankingFunctionBase
@@ -330,7 +331,6 @@ class SamplingSubgroupSearch:
                  min_items=100, 
                  num_candidates=20,
                  final_num_candidates=None,
-                 positive_only=None,
                  holdout_fraction=0.0,
                  min_weight=0.0,
                  max_weight=5.0,
@@ -360,7 +360,8 @@ class SamplingSubgroupSearch:
         self.scoring_fraction = scoring_fraction
         self.device = device
         
-        if n_workers is None: self.n_workers = max(1, os.cpu_count() // 2)
+        if n_workers is None: 
+            self.n_workers = max(1, os.cpu_count() // 2) if len(self.inputs) > 10000 else 1
         else: self.n_workers = n_workers
         
         self.explore_fn = explore_groups_beam_search
@@ -368,11 +369,9 @@ class SamplingSubgroupSearch:
         if isinstance(self.raw_inputs, sps.csr_matrix):
             if self.raw_inputs.max() > 1:
                 raise ValueError("Sparse matrices must be binary")
-            if positive_only == False:
-                raise ValueError("positive_only must be True or None for sparse matrices")
             self.positive_only = True
         else:
-            self.positive_only = positive_only or False
+            self.positive_only = False
 
         self.all_scores = []
         self.seen_slices = {} 
@@ -383,25 +382,13 @@ class SamplingSubgroupSearch:
         self.discovery_data = self.inputs.filter(self.discovery_mask)
         self.eval_data = self.inputs.filter(~self.discovery_mask) if self.holdout_fraction > 0.0 else None
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
-        self.results = RankedSubgroupList(list(set(self.all_scores)),
-                            self.inputs,
-                            self.ranking_fns,
-                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
-                            min_weight=self.min_weight,
-                            max_weight=self.max_weight,
-                            similarity_threshold=self.similarity_threshold)
+        self.results = self.refilter_results()
         
     def clear_results(self):
         self.all_scores = []
         self.seen_slices = {} 
         self.sampled_idxs = np.zeros(self.raw_inputs.shape[0], dtype=bool)
-        self.results = RankedSubgroupList(list(set(self.all_scores)),
-                            self.inputs,
-                            self.ranking_fns,
-                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
-                            min_weight=self.min_weight,
-                            max_weight=self.max_weight,
-                            similarity_threshold=self.similarity_threshold)
+        self.results = self.refilter_results()
         
     def copy_spec(self, inputs=None, ranking_fns=None, **kwargs):
         return SamplingSubgroupSearch(
@@ -413,7 +400,6 @@ class SamplingSubgroupSearch:
             min_items=kwargs.get("min_items", self.min_items), 
             num_candidates=kwargs.get("num_candidates", self.num_candidates),
             final_num_candidates=kwargs.get("final_num_candidates", self.final_num_candidates),
-            positive_only=kwargs.get("positive_only", self.positive_only),
             holdout_fraction=kwargs.get("holdout_fraction", self.holdout_fraction),
             min_weight=kwargs.get("min_weight", self.min_weight),
             max_weight=kwargs.get("max_weight", self.max_weight),
@@ -441,7 +427,6 @@ class SamplingSubgroupSearch:
                 "min_items": self.min_items, 
                 "num_candidates": self.num_candidates,
                 "final_num_candidates": self.final_num_candidates,
-                "positive_only": self.positive_only,
                 "holdout_fraction": self.holdout_fraction,
                 "min_weight": self.min_weight,
                 "max_weight": self.max_weight,
@@ -467,13 +452,7 @@ class SamplingSubgroupSearch:
             slice_obj = Rule.from_dict(s)
             all_scores.append(IntersectionRule(slice_obj.univariate_features(), slice_obj.score_values))
         sf.all_scores = all_scores
-        sf.results = RankedSubgroupList(list(set(sf.all_scores)),
-                            sf.inputs,
-                            sf.ranking_fns,
-                            eval_indexes=~sf.discovery_mask if sf.holdout_fraction > 0.0 else None,
-                            min_weight=sf.min_weight,
-                            max_weight=sf.max_weight,
-                            similarity_threshold=sf.similarity_threshold)
+        sf.results = sf.refilter_results()
         return sf
         
     def _create_worker_initializer(self, discovery_inputs, discovery_score_fns, sample_size=None):
@@ -611,14 +590,7 @@ class SamplingSubgroupSearch:
                 self.seen_slices[old_slice] = None
                 
         self.ranking_fns = new_score_fns
-        self.results = RankedSubgroupList(list(set(self.all_scores)),
-                            self.inputs,
-                            self.ranking_fns,
-                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
-                            min_weight=self.min_weight,
-                            max_weight=self.max_weight,
-                            similarity_threshold=self.similarity_threshold,
-                            device=self.device)
+        self.results = self.refilter_results()
         return self.results
         
     def make_discovery_inputs(self):
@@ -675,6 +647,8 @@ class SamplingSubgroupSearch:
         else:
             sample_size = self.scoring_fraction
         
+        rule_filter = self.get_rule_filter()
+        
         slices_to_score = set()
         if self.final_num_candidates is not None:
             best_groups = {fn_name: RankedList(self.final_num_candidates)
@@ -683,7 +657,7 @@ class SamplingSubgroupSearch:
             worker_inputs = discovery_inputs.cpu().numpy() if isinstance(discovery_inputs, torch.Tensor) else discovery_inputs
             init_fn, init_args = self._create_worker_initializer(worker_inputs, discovery_score_fns, sample_size=sample_size)
             
-            worker = partial(explore_groups_worker, rule_filter=self.rule_filter,
+            worker = partial(explore_groups_worker, rule_filter=rule_filter,
                                                     max_features=self.max_features,
                                                     min_items=self.min_items * sample_size,
                                                     initial_slice=self.initial_slice,
@@ -721,7 +695,7 @@ class SamplingSubgroupSearch:
                                                     worker_score_fns,
                                                     source_row,
                                                     seen_slices=self.seen_slices,
-                                                    rule_filter=self.rule_filter,
+                                                    rule_filter=rule_filter,
                                                     max_features=self.max_features,
                                                     min_items=self.min_items * sample_size,
                                                     initial_slice=self.initial_slice,
@@ -783,16 +757,37 @@ class SamplingSubgroupSearch:
             self.all_scores.append(new_slice)
             self.seen_slices[new_slice] = new_slice.score_values
             
-            
-        self.results = RankedSubgroupList(list(set(self.all_scores)),
-                            self.inputs,
-                            self.ranking_fns,
-                            eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
-                            min_weight=self.min_weight,
-                            max_weight=self.max_weight,
-                            similarity_threshold=self.similarity_threshold,
-                            device=self.device)
+        self.results = self.refilter_results()
         return self.results, sample_idxs
+    
+    def get_rule_filter(self):
+        if isinstance(self.inputs, DiscretizedData):
+            base_filter = self.inputs.filter_single_values()
+            if self.rule_filter is not None and base_filter is not None:
+                rule_filter = ExcludeIfAny(base_filter, self.inputs.encode_filter(self.rule_filter))
+            elif self.rule_filter is not None:
+                rule_filter = self.inputs.encode_filter(self.rule_filter)
+            else:
+                rule_filter = base_filter
+        else:
+            rule_filter = self.rule_filter
+        return rule_filter
+    
+    def refilter_results(self):
+        """
+        Returns a ranked subgroup list of only the results that match the current filter.
+        """
+        rule_filter = self.get_rule_filter()
+        results = RankedSubgroupList([r for r in set(self.all_scores)
+                                      if not rule_filter or rule_filter(r)],
+                    self.inputs,
+                    self.ranking_fns,
+                    eval_indexes=~self.discovery_mask if self.holdout_fraction > 0.0 else None,
+                    min_weight=self.min_weight,
+                    max_weight=self.max_weight,
+                    similarity_threshold=self.similarity_threshold,
+                    device=self.device)
+        return results
     
 def find_slices_by_sampling(inputs, 
                             ranking_fns, 

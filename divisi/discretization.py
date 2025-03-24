@@ -131,41 +131,39 @@ class DiscretizedData:
         
         from .filters import (ExcludeIfAny, 
                               ExcludeIfAll,
-                              ExcludeFeatureValue, 
                               ExcludeFeatureValueSet, 
-                              IncludeOnlyFeatureValue, 
                               IncludeOnlyFeatureValueSet,
-                              SliceFilterBase)
+                              RuleFilterBase)
         
         def replacer(f):
-            if isinstance(f, (ExcludeFeatureValue, IncludeOnlyFeatureValue)):
-                feature_name = f.feature
-                if feature_name not in self.inverse_value_mapping:
-                    return SliceFilterBase()
-                enc_key, enc_values = self.inverse_value_mapping[feature_name]
-                return type(f)(enc_key, enc_values[f.value])
-            elif isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
-                features = f.features
-                allowed_values = f.values
-                encoded_allowed = {}
-                for feature in features:
-                    if feature not in self.inverse_value_mapping: continue
-                    enc_key, enc_values = self.inverse_value_mapping[feature]
-                    f_allowed_vals = tuple(sorted(enc_values[v] for v in allowed_values if v in enc_values))
-                    if not f_allowed_vals: continue
-                    if f_allowed_vals not in encoded_allowed:
-                        encoded_allowed[f_allowed_vals] = type(f)([enc_key], f_allowed_vals)
-                    else:
-                        existing_filter = encoded_allowed[f_allowed_vals]
-                        encoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, enc_key], f_allowed_vals)
-                if len(encoded_allowed) == 0:
-                    return SliceFilterBase()
-                elif len(encoded_allowed) == 1:
-                    return list(encoded_allowed.values())[0]
-                elif isinstance(f, ExcludeFeatureValueSet):
-                    return ExcludeIfAny(list(encoded_allowed.values()))
-                elif isinstance(f, IncludeOnlyFeatureValueSet):
-                    return ExcludeIfAll(list(encoded_allowed.values()))
+            if not isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
+                return
+            features = f.features
+            allowed_values = f.values
+            encoded_allowed = {}
+            for feature in features:
+                if feature not in self.inverse_value_mapping: continue
+                enc_key, enc_values = self.inverse_value_mapping[feature]
+                f_allowed_vals = tuple(sorted(enc_values[v] for v in allowed_values if v in enc_values))
+                if not f_allowed_vals: continue
+                if f_allowed_vals not in encoded_allowed:
+                    encoded_allowed[f_allowed_vals] = type(f)([enc_key], f_allowed_vals)
+                else:
+                    existing_filter = encoded_allowed[f_allowed_vals]
+                    encoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, enc_key], f_allowed_vals)
+            if len(encoded_allowed) == 0:
+                return RuleFilterBase()
+            elif len(encoded_allowed) == 1:
+                return list(encoded_allowed.values())[0]
+            else:
+                encoded_allowed = list(encoded_allowed.values())
+                result = encoded_allowed[0]
+                for encoded_child in encoded_allowed[1:]:
+                    if isinstance(f, ExcludeFeatureValueSet):
+                        result = ExcludeIfAny(result, encoded_child)
+                    elif isinstance(f, IncludeOnlyFeatureValueSet):
+                        result = ExcludeIfAll(result, encoded_child)
+                return result
                 
         return filter_obj.replace(replacer)
     
@@ -177,37 +175,57 @@ class DiscretizedData:
         
         from .filters import (ExcludeIfAny, 
                               ExcludeIfAll,
-                              ExcludeFeatureValue, 
                               ExcludeFeatureValueSet, 
-                              IncludeOnlyFeatureValue, 
                               IncludeOnlyFeatureValueSet)
         
         def replacer(f):
-            if isinstance(f, (ExcludeFeatureValue, IncludeOnlyFeatureValue)):
-                feature_name = f.feature
-                dec_key, dec_values = self.value_names[feature_name]
-                return type(f)(dec_key, dec_values[f.value])
-            elif isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
-                features = f.features
-                allowed_values = f.values
-                decoded_allowed = {}
-                for feature in features:
-                    dec_key, dec_values = self.value_names[feature]
-                    f_allowed_vals = tuple(sorted(dec_values[v] for v in allowed_values if v in dec_values))
-                    if f_allowed_vals not in decoded_allowed:
-                        decoded_allowed[f_allowed_vals] = type(f)([dec_key], f_allowed_vals)
-                    else:
-                        existing_filter = decoded_allowed[f_allowed_vals]
-                        decoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, dec_key], f_allowed_vals)
-                if len(decoded_allowed) == 1:
-                    return list(decoded_allowed.values())[0]
-                elif isinstance(f, ExcludeFeatureValueSet):
-                    return ExcludeIfAny(list(decoded_allowed.values()))
-                elif isinstance(f, IncludeOnlyFeatureValueSet):
-                    return ExcludeIfAll(list(decoded_allowed.values()))
+            if not isinstance(f, (ExcludeFeatureValueSet, IncludeOnlyFeatureValueSet)):
+                return
+            features = f.features
+            allowed_values = f.values
+            decoded_allowed = {}
+            for feature in features:
+                dec_key, dec_values = self.value_names[feature]
+                f_allowed_vals = tuple(sorted(dec_values[v] for v in allowed_values if v in dec_values))
+                if f_allowed_vals not in decoded_allowed:
+                    decoded_allowed[f_allowed_vals] = type(f)([dec_key], f_allowed_vals)
+                else:
+                    existing_filter = decoded_allowed[f_allowed_vals]
+                    decoded_allowed[f_allowed_vals] = type(f)([*existing_filter.features, dec_key], f_allowed_vals)
+            if len(decoded_allowed) == 1:
+                return list(decoded_allowed.values())[0]
+            else:
+                decoded_allowed = list(decoded_allowed.values())
+                result = decoded_allowed[0]
+                for decoded_child in decoded_allowed[1:]:
+                    if isinstance(f, ExcludeFeatureValueSet):
+                        result = ExcludeIfAny(result, decoded_child)
+                    elif isinstance(f, IncludeOnlyFeatureValueSet):
+                        result = ExcludeIfAll(result, decoded_child)
+                return result
                 
         return filter_obj.replace(replacer)
     
+    def filter_single_values(self):
+        """
+        Creates a filter to exclude any columns that only have one unique value.
+        """
+        from .filters import ExcludeIfAny, ExcludeFeatureValueSet
+        # Exclude any features that have only one value
+        single_value_filters = {}
+        for col_idx, (col, value_pairs) in self.value_names.items():
+            unique_vals = np.unique(self.df[:,col_idx])
+            if len(unique_vals) <= 1:
+                single_value_filters.setdefault(unique_vals[0], []).append(col_idx)
+                
+        if single_value_filters:
+            single_value_filters = [ExcludeFeatureValueSet(cols, [v]) for v, cols in single_value_filters.items()]
+            result = single_value_filters[0]
+            for child in single_value_filters[1:]:
+                result = ExcludeIfAny(result, child)
+            return result
+        return None
+
     @property
     def one_hot_matrix(self):
         if self._one_hot_matrix is None:
