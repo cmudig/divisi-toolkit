@@ -3,8 +3,9 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 
 class Projection:
-    def __init__(self, coords, map_neighbor_dists=None, map_neighbors=None):
+    def __init__(self, coords, method='custom', map_neighbor_dists=None, map_neighbors=None):
         self.coords = coords
+        self.method = method
         if map_neighbor_dists is not None and map_neighbors is not None:
             self.map_neighbor_dists = map_neighbor_dists
             self.map_neighbors = map_neighbors

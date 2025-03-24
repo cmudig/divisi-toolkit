@@ -93,7 +93,15 @@
     []
   );
   let overlapPlotMetric = traitlet(model, 'overlap_plot_metric', '');
-  let groupedMapLayout = traitlet(model, 'grouped_map_layout', {});
+  let groupedMapLayout = traitlet(model, 'grouped_map_layout', null);
+  let shouldComputeProjection = traitlet(
+    model,
+    'should_compute_projection',
+    false
+  );
+  let shouldClearProjection = traitlet(model, 'should_clear_projection', false);
+  let loadingProjection = traitlet(model, 'loading_projection', false);
+  let projectionMethod = traitlet(model, 'projection_method', '');
 
   let viewingTab = 0; // 0 = search, 1 = curation
 
@@ -233,7 +241,7 @@
 
 <main
   class="w-full flex flex-col bg-white"
-  style={isFullScreen ? 'height: 100vh;' : 'height: 720px; max-height: 90vh;'}
+  style={isFullScreen ? 'height: 100vh;' : 'height: 720px; max-height: 80vh;'}
   bind:this={parentElement}
 >
   <div
@@ -377,6 +385,11 @@
             bind:metricExpressionRequest={$metricExpressionRequest}
             bind:metricExpressionResponse={$metricExpressionResponse}
             bind:ruleFilter={$ruleFilterConfig}
+            bind:shouldComputeProjection={$shouldComputeProjection}
+            bind:shouldClearProjection={$shouldClearProjection}
+            bind:loadingProjection={$loadingProjection}
+            bind:projectionMethod={$projectionMethod}
+            hasProjection={$groupedMapLayout != null}
           />
         </div>
       </ResizablePanel>
@@ -463,7 +476,7 @@
           : ''}"
       >
         <div class="w-full h-full relative">
-          {#if $overlapPlotMetric != null}
+          {#if $groupedMapLayout != null}
             <SliceOverlapPlot
               bind:errorKey={$overlapPlotMetric}
               bind:selectedSlices={$selectedSlices}
@@ -480,6 +493,12 @@
               labels={$sliceIntersectionLabels}
               groupedLayout={$groupedMapLayout}
             />
+          {:else}
+            <div
+              class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
+            >
+              <div class="text-slate-600">No projection computed yet.</div>
+            </div>
           {/if}
         </div></ResizablePanel
       >

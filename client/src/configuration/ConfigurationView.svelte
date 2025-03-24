@@ -9,6 +9,7 @@
     faEye,
     faEyeSlash,
     faFilter,
+    faPlay,
     faPlus,
     faPlusCircle,
     faTrash,
@@ -27,6 +28,14 @@
   export let showFilterConfig: boolean = true;
   export let ruleFilter: RuleFilter | null = null;
   export let filterConfigExpanded: boolean = false;
+
+  export let showProjectionConfig: boolean = true;
+  export let projectionConfigExpanded: boolean = false;
+  export let hasProjection: boolean = false;
+  export let shouldComputeProjection: boolean = false;
+  export let shouldClearProjection: boolean = false;
+  export let loadingProjection: boolean = false;
+  export let projectionMethod: string = '';
 
   export let metricInfo: {
     [key: string]: {
@@ -320,5 +329,62 @@
       {searchScopeNeedsRerun}
       {positiveOnly}
     />
+  {/if}
+
+  {#if showProjectionConfig}
+    <div class="px-2 mb-2 mt-4 flex items-center gap-2">
+      <button
+        class="hover:text-slate-600 text-slate-400 bg-transparent py-1 pr-1 shrink-0 grow-0"
+        on:click={(e) => (projectionConfigExpanded = !projectionConfigExpanded)}
+        ><Fa
+          icon={projectionConfigExpanded ? faChevronDown : faChevronRight}
+          class="inline"
+        /></button
+      >
+      <div class="flex-auto">
+        <div class="font-bold">SUBGROUP MAP</div>
+        <div class="text-xs text-slate-600">
+          Configure the projection used in the Subgroup Map visualization.
+        </div>
+      </div>
+    </div>
+
+    {#if projectionConfigExpanded}
+      <div class="w-full bg-slate-100 rounded-md px-4 py-2 mb-2">
+        {#if loadingProjection}
+          <div class="w-full py-2 text-center text-slate-700">
+            Loading projection...
+          </div>
+        {:else if !hasProjection}
+          <div class="flex text-sm items-center gap-2">
+            <div>Projection Method</div>
+            <select class="flat-select" bind:value={projectionMethod}
+              ><option value="pca">PCA</option>
+              <option value="tsne">TSNE</option>
+              <option value="umap">UMAP</option></select
+            >
+            <div class="flex-auto" />
+            <button
+              class="hover:text-slate-600 text-slate-800 bg-transparent"
+              on:click={() => (shouldComputeProjection = true)}
+              ><Fa icon={faPlay} /></button
+            >
+          </div>
+        {:else}
+          <div class="flex text-sm items-center gap-2">
+            <div class="flex-auto">
+              Projection Method: <span class="font-mono font-bold"
+                >{projectionMethod}</span
+              >
+            </div>
+            <button
+              class="hover:text-slate-600 text-slate-800 bg-transparent"
+              on:click={() => (shouldClearProjection = true)}
+              ><Fa icon={faTrash} /></button
+            >
+          </div>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>

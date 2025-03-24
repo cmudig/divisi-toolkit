@@ -81,7 +81,14 @@ class DivisiWidget(anywidget.AnyWidget):
     selected_slices = traitlets.List([]).tag(sync=True)
     slice_intersection_labels = traitlets.List([]).tag(sync=True)
     slice_intersection_counts = traitlets.List([]).tag(sync=True)
-    grouped_map_layout = traitlets.Dict({}).tag(sync=True)
+    
+    loading_projection = traitlets.Bool(False).tag(sync=True)
+    should_compute_projection = traitlets.Bool(False).tag(sync=True)
+    should_clear_projection = traitlets.Bool(False).tag(sync=True)
+    projection_method = traitlets.Unicode("tsne").tag(sync=True)
+    projection = traitlets.Instance(Projection, allow_none=True)
+    
+    grouped_map_layout = traitlets.Dict({}, allow_none=True).tag(sync=True)
     overlap_plot_metric = traitlets.Unicode("").tag(sync=True)
     hover_map_indexes = traitlets.Dict({}).tag(sync=True)
     selected_intersection_index = traitlets.Int(-1).tag(sync=True)
@@ -181,8 +188,6 @@ class DivisiWidget(anywidget.AnyWidget):
                     assert proj.shape[1] == 2, "Projection must have x and y columns"
                     proj = (proj - proj.min(axis=0)) / (proj.max(axis=0) - proj.min(axis=0))
                     self.projection = Projection(proj.astype(np.float32))
-            # else:
-            #     self.projection = self.search_engine.eval_data.get_projection(method='tsne')
             
         self.discovery_neighbors = NearestNeighbors(metric="cosine").fit(self.search_engine.discovery_data.one_hot_matrix)
         
@@ -200,7 +205,7 @@ class DivisiWidget(anywidget.AnyWidget):
         self.original_search_engine = self.search_engine
         # for cluster enriched features
         self.idf = 1 / (1e-3 + self.search_engine.eval_data.one_hot_matrix.mean(axis=0))
-        self.update_selected_slices()
+        self.update_grouped_map_layout()
         self.rerank_results()
         self._write_state()
         
@@ -253,6 +258,7 @@ class DivisiWidget(anywidget.AnyWidget):
                 if "selected_slices" in state: self.selected_slices = state["selected_slices"]            
                 if "custom_slices" in state: self.custom_slices = state["custom_slices"]
                 if "overlap_plot_metric" in state: self.overlap_plot_metric = state["overlap_plot_metric"]
+                if "projection_method" in state: self.projection_method = state["projection_method"]
 
             self.original_search_engine = self.search_engine
             if self.search_scope_info: self.update_search_scopes()
@@ -277,13 +283,7 @@ class DivisiWidget(anywidget.AnyWidget):
                 "search_state": self.original_search_engine.state_dict()
             }, file)
 
-        if self.projection is not None and (not hasattr(self, "_projection_save_hash") or not os.path.exists(os.path.join(self.state_path, "projection.pkl"))):
-            self._projection_save_hash = self.original_search_engine.get_configuration_hash()
-            with open(os.path.join(self.state_path, "projection.pkl"), "wb") as file:
-                pickle.dump({
-                    "search_engine_hash": self._projection_save_hash,
-                    "projection": self.projection.to_dict()
-                }, file)
+        self._save_projection()
                 
         with open(os.path.join(self.state_path, "interface_state.json"), "w") as file:
             json.dump({
@@ -295,9 +295,21 @@ class DivisiWidget(anywidget.AnyWidget):
                 "saved_slices": self.saved_slices,
                 "selected_slices": self.selected_slices,   
                 "overlap_plot_metric": self.overlap_plot_metric,
-                "custom_slices": self.custom_slices
+                "custom_slices": self.custom_slices,
+                "projection_method": self.projection_method
             }, file)
 
+    def _save_projection(self):
+        if self.projection is not None and (not hasattr(self, "_projection_save_hash") or not os.path.exists(os.path.join(self.state_path, "projection.pkl"))):
+            self._projection_save_hash = self.original_search_engine.get_configuration_hash()
+            with open(os.path.join(self.state_path, "projection.pkl"), "wb") as file:
+                pickle.dump({
+                    "search_engine_hash": self._projection_save_hash,
+                    "projection": self.projection.to_dict()
+                }, file)
+        elif self.projection is None and os.path.exists(os.path.join(self.state_path, "projection.pkl")):
+            # delete the file
+            os.remove(os.path.join(self.state_path, "projection.pkl"))
          
     def autogenerate_metric_info(self, metrics):
         metric_info = {}
@@ -360,7 +372,7 @@ class DivisiWidget(anywidget.AnyWidget):
         self._slice_description_cache = {}
         self.slices = []
         self.rerank_results()
-        self.update_selected_slices()
+        self.update_grouped_map_layout()
         self.slice_score_request()
             
     @traitlets.observe("should_rerun")
@@ -524,7 +536,7 @@ class DivisiWidget(anywidget.AnyWidget):
                 new_score_fns["Search Scope Neg"] = OutcomeRate(~ref_mask, inverse=True)
                 new_source_mask &= ref_mask
                 self.search_scope_mask = ref_mask
-            self.update_selected_slices()
+            self.update_grouped_map_layout()
         elif "within_selection" in search_info and not search_info.get("partial", False):
             if self.map_clusters is None:
                 print("Can't perform a selection-based search without map_clusters")
@@ -624,7 +636,7 @@ class DivisiWidget(anywidget.AnyWidget):
         
     @traitlets.observe("overlap_plot_metric")
     def overlap_plot_metric_changed(self, change):
-        self.update_selected_slices(change=None, overlap_metric=change.new)
+        self.update_grouped_map_layout(change=None, overlap_metric=change.new)
         
     @traitlets.observe("hovered_slice")
     def update_hovered_slice(self, change=None):
@@ -642,8 +654,8 @@ class DivisiWidget(anywidget.AnyWidget):
                 "clusters": cluster_rates[cluster_rates >= 0.5].index.tolist()
             }
         
-    @traitlets.observe("selected_slices")
-    def update_selected_slices(self, change=None, overlap_metric=None):
+    @traitlets.observe("selected_slices", "projection")        
+    def update_grouped_map_layout(self, change=None, overlap_metric=None):
         if self.search_engine is None or self.search_engine.results is None: return
         
         overlap_metric = overlap_metric if overlap_metric is not None else self.overlap_plot_metric
@@ -741,15 +753,41 @@ class DivisiWidget(anywidget.AnyWidget):
                 } for i in range(len(self.map_layout))]
             }'''
         else:
-            self.grouped_map_layout = {
-                'overlap_plot_metric': overlap_metric,
-                'labels': self.slice_intersection_labels,
-                'layout': {}
-            }
+            self.grouped_map_layout = None
             self.map_clusters = None
             
         if self.hovered_slice:
             self.update_hovered_slice()
+      
+    @traitlets.observe("should_clear_projection")
+    def clear_projection(self, change=None):
+        if change is None or change.new:
+            self.projection = None
+            self._save_projection()
+        self.should_clear_projection = False
+            
+    @traitlets.observe("should_compute_projection")
+    def compute_projection(self, change=None):
+        if change is None or change.new:
+            self.thread_starter(self._compute_projection_background)
+          
+    def _compute_projection_background(self):
+        self.should_compute_projection = False
+        if self.loading_projection: return
+        self.loading_projection = True
+
+        try:
+            self.projection = self.search_engine.eval_data.get_projection(method=self.projection_method)
+            self._write_state()
+        except:
+            print("Error occurred while loading projection")
+            traceback.print_exc()
+        finally:
+            self.loading_projection = False
+        
+    @traitlets.observe("projection_method")
+    def _update_projection_method(self, change=None):
+        if self.projection is None: self._write_state()
         
     @traitlets.observe("rule_filter")    
     def update_rule_filter_config(self, change=None):

@@ -259,25 +259,30 @@ class DiscretizedData:
         Creates a Projection if it does not already exist, using the given method.
         """
         if method not in self.projections:    
-            if self.one_hot_matrix.shape[1] > 100:
-                from sklearn.decomposition import TruncatedSVD
-                lo_d = TruncatedSVD(n_components=100).fit_transform(self.one_hot_matrix)
+            if method == 'pca':
+                from sklearn.decomposition import PCA
+                coords = PCA(n_components=2).fit_transform(self.one_hot_matrix)
             else:
-                lo_d = self.one_hot_matrix
-            if method.lower() == 'tsne':
-                from sklearn.manifold import TSNE
-                coords = TSNE(verbose=False, metric='cosine').fit_transform(lo_d)
-            elif method.lower() == 'umap':
-                try:
-                    from umap import UMAP
-                except:
-                    raise ValueError("Package 'umap-learn' required to use method 'umap'")
+                if self.one_hot_matrix.shape[1] > 100:
+                    from sklearn.decomposition import TruncatedSVD
+                    lo_d = TruncatedSVD(n_components=100).fit_transform(self.one_hot_matrix)
                 else:
-                    coords = UMAP().fit_transform(lo_d)                
-            else:
-                raise ValueError(f"Unsupported projection method '{method}'")
+                    lo_d = self.one_hot_matrix
+                if method.lower() == 'tsne':
+                    from sklearn.manifold import TSNE
+                    coords = TSNE(verbose=False, metric='cosine').fit_transform(lo_d)
+                elif method.lower() == 'umap':
+                    try:
+                        from umap import UMAP
+                    except:
+                        raise ValueError("Package 'umap-learn' required to use method 'umap'")
+                    else:
+                        coords = UMAP().fit_transform(lo_d)                
+                else:
+                    raise ValueError(f"Unsupported projection method '{method}'")
+                
             coords = (coords - coords.min(axis=0)) / (coords.max(axis=0) - coords.min(axis=0))
-            self.projections[method] = Projection(coords.astype(np.float32))
+            self.projections[method] = Projection(coords.astype(np.float32), method=method)
             
         return self.projections[method]
         
