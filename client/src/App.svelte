@@ -110,7 +110,8 @@
   }
 
   let metricNames: Array<string> = [];
-  let binaryMetrics: Array<string> = [];
+  let colorMetricOptions: string[] = [];
+  let colorMetricLegend = traitlet(model, 'overlap_metric_legend', {});
   $: {
     let testSlice = $slices.find((s) => !s.isEmpty) ?? $baseSlice;
 
@@ -119,14 +120,10 @@
       if (!areSetsEqual(new Set(metricNames), new Set(newMetricNames))) {
         metricNames = newMetricNames;
         metricNames.sort();
-        binaryMetrics = metricNames.filter(
-          (m) => testSlice.metrics[m].type == 'binary'
-        );
-        if (
-          !$overlapPlotMetric ||
-          !binaryMetrics.includes($overlapPlotMetric)
-        ) {
-          if (binaryMetrics.length > 0) $overlapPlotMetric = binaryMetrics[0];
+        colorMetricOptions = metricNames.filter((n) => n != 'Count');
+        if (!$overlapPlotMetric) {
+          if (colorMetricOptions.length > 0)
+            $overlapPlotMetric = colorMetricOptions[0];
           else $overlapPlotMetric = null;
         }
       }
@@ -366,7 +363,7 @@
         width={360}
         class="border-r border-slate-400"
       >
-        <div class="w-full h-full overflow-y-auto">
+        <div class="w-full h-full overflow-y-auto overscroll-contain">
           <ConfigurationView
             metricInfo={$metricInfo}
             {allowedValues}
@@ -387,6 +384,8 @@
             bind:shouldClearProjection={$shouldClearProjection}
             bind:loadingProjection={$loadingProjection}
             bind:projectionMethod={$projectionMethod}
+            bind:projectionColorMetric={$overlapPlotMetric}
+            projectionColorOptions={colorMetricOptions}
             bind:samplerParameters={$samplerParameters}
             hasProjection={$groupedMapLayout != null}
           />
@@ -475,15 +474,7 @@
           : ''}"
       >
         <div class="w-full h-full relative">
-          {#if !$overlapPlotMetric}
-            <div
-              class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
-            >
-              <div class="text-slate-600">
-                No binary metrics are available to plot.
-              </div>
-            </div>
-          {:else if $loadingProjection}
+          {#if $loadingProjection}
             <div
               class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
             >
@@ -505,12 +496,12 @@
               areObjectsEqual($hoveredSlice, $hoverMapIndexes.slice)
                 ? new Set($hoverMapIndexes.clusters)
                 : new Set()}
-              colorMetricOptions={binaryMetrics}
               bind:savedSlices={$savedSlices}
               bind:sliceColorMap={$sliceColorMap}
               intersectionCounts={$sliceIntersectionCounts}
               labels={$sliceIntersectionLabels}
               groupedLayout={$groupedMapLayout}
+              colorMetricLegend={$colorMetricLegend}
             />
           {/if}
         </div></ResizablePanel

@@ -27,7 +27,7 @@ class Projection:
     def from_dict(cls, data):
         return cls(data["coords"], map_neighbor_dists=data["map_neighbor_dists"], map_neighbors=data["map_neighbors"])
         
-    def generate_groups(self, identity_labels, task_id=None):
+    def generate_groups(self, identity_labels, task_id=None, other_labels=None):
         """
         Generates a grouping for the projection using the given identity labels.
         If task_id is provided, it should be a hashable object that uniquely 
@@ -64,7 +64,9 @@ class Projection:
         metadata = (pd.DataFrame({'point_index': np.arange(self.coords.shape[0]),
                                   'cluster': cluster_labels,
                                   **{n: identity.T.tolist() if len(identity.shape) > 1 else identity 
-                                     for n, identity in identity_labels.items()}})
+                                     for n, identity in identity_labels.items()},
+                                  **({n: other_label.T.tolist() if len(other_label.shape) > 1 else other_label 
+                                     for n, other_label in other_labels.items()} if other_labels is not None else {})})
                     .groupby(cluster_labels)
                     .agg('first'))
         sizes = pd.Series(cluster_labels, name="size").groupby(cluster_labels).size()

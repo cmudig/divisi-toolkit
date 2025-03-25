@@ -102,6 +102,7 @@ class DivisiWidget(anywidget.AnyWidget):
     
     grouped_map_layout = traitlets.Dict({}, allow_none=True).tag(sync=True)
     overlap_plot_metric = traitlets.Unicode("", allow_none=True).tag(sync=True)
+    overlap_metric_legend = traitlets.Dict({}).tag(sync=True)
     hover_map_indexes = traitlets.Dict({}).tag(sync=True)
     selected_intersection_index = traitlets.Int(-1).tag(sync=True)
     
@@ -737,6 +738,12 @@ class DivisiWidget(anywidget.AnyWidget):
                     data_type = options.get("type", detect_data_type(data))
                     if data_type == "binary":
                         info[metric_name] = data[base_mask[current_mask]].sum()
+                    elif data_type == "categorical":
+                        allowed_values = np.unique(data)
+                        info[metric_name] = [{"value": v, "count": (data[base_mask[current_mask]] == v).sum()}
+                                             for v in allowed_values]
+                    elif data_type == "continuous":
+                        info[metric_name] = data[base_mask[current_mask]].mean()
 
                 intersect_counts.append(info)
                 return
@@ -748,18 +755,56 @@ class DivisiWidget(anywidget.AnyWidget):
         self.slice_intersection_counts = intersect_counts 
         self.slice_intersection_labels = labels
 
-        if self.projection is not None and overlap_metric and hasattr(self, "search_scope_mask"):
-            error_metric = self.derived_metrics[overlap_metric]
-            if isinstance(error_metric, dict): error_metric = error_metric["data"]
-            error_metric = error_metric[~self.search_engine.discovery_mask]
+        if self.projection is not None and hasattr(self, "search_scope_mask"):
+            if overlap_metric:
+                if isinstance(self.derived_metrics[overlap_metric], dict):
+                    options = self.derived_metrics[overlap_metric]
+                    error_metric = options["data"]
+                else:
+                    error_metric = self.derived_metrics[overlap_metric]
+                    options = {}
+                data_type = options.get("type", detect_data_type(error_metric))
+                error_metric = error_metric[~self.search_engine.discovery_mask]
+                if data_type == "continuous":
+                    non_identity_outcome = (error_metric - np.nanmin(error_metric)) / (np.nanmax(error_metric) - np.nanmin(error_metric))
+                    identity_outcome = None
+                    self.overlap_metric_legend = {
+                        "type": "continuous",
+                        "min": np.nanmin(error_metric),
+                        "max": np.nanmax(error_metric)
+                    }
+                elif data_type == "categorical":
+                    dummies = pd.get_dummies(pd.Series(error_metric), prefix="", prefix_sep="")
+                    identity_outcome = dummies.values.T
+                    non_identity_outcome = np.argmax(dummies.values, axis=1).astype(float) / (len(dummies.columns) - 1)
+                    self.overlap_metric_legend = {
+                        "type": "categorical",
+                        "categories": [{"name": c, "value": i / (len(dummies.columns) - 1)}
+                                       for i, c in enumerate(dummies.columns)]
+                    }
+                else:
+                    identity_outcome = error_metric
+                    non_identity_outcome = error_metric
+                    self.overlap_metric_legend = {
+                        "type": "categorical",
+                        "categories": [{"name": "False", "value": 0},
+                                       {"name": "True", "value": 1}]
+                    }
+            else:
+                identity_outcome = None
+                non_identity_outcome = None
+                self.overlap_metric_legend = {}
             
-            layout, cluster_labels = self.projection.generate_groups({
-                "outcome": error_metric,
-                **({"slices": np.vstack([slice_masks[o] for i, o in enumerate(slice_order)])}
-                   if slice_order else {}),
-                **({"search_scope": self.search_scope_mask[self.search_engine.results.eval_indexes]}
-                   if self.search_scope_mask is not None else {})
-            }, task_id=(overlap_metric, tuple(s.string_rep() for s in slice_order), None) if self.search_scope_mask is None else None)
+            layout, cluster_labels = self.projection.generate_groups(
+                {
+                    "categorical_outcome": identity_outcome if identity_outcome is not None else np.zeros(len(self.search_engine.eval_data)),
+                    **({"slices": np.vstack([slice_masks[o] for i, o in enumerate(slice_order)])}
+                    if slice_order else {}),
+                    **({"search_scope": self.search_scope_mask[self.search_engine.results.eval_indexes]}
+                    if self.search_scope_mask is not None else {})
+                }, 
+                task_id=(overlap_metric, tuple(s.string_rep() for s in slice_order), None) if self.search_scope_mask is None else None,
+                other_labels={"outcome": non_identity_outcome if non_identity_outcome is not None else np.zeros(len(self.search_engine.eval_data))})
             
             one_hot = self.search_engine.eval_data.one_hot_matrix
             cluster_sums = pd.DataFrame(one_hot).groupby(cluster_labels).agg('mean')
@@ -772,7 +817,8 @@ class DivisiWidget(anywidget.AnyWidget):
                 'overlap_plot_metric': overlap_metric,
                 'labels': labels,
                 'layout': {k: {'slices': [], **v} for k, v in layout.items()},
-                'enriched_cluster_features': enriched_cluster_features
+                'enriched_cluster_features': enriched_cluster_features,
+                'overlap_metric_legend': self.overlap_metric_legend
             }
             self.map_clusters = cluster_labels
 

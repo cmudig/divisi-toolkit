@@ -2,11 +2,29 @@
 import * as d3 from 'd3';
 
 export enum OutcomeColors {
-  False = '#fff',
-  True = '#172554',
+  False = '#fafaf9',
+  True = '#0c0a09',
 }
 
-export const GlyphBorderColor = '#cbd5e1';
+export const outcomeColorStops = [
+  OutcomeColors.False,
+  '#d6d3d1',
+  '#44403c',
+  OutcomeColors.True,
+];
+const outcomeInterpolator = d3.piecewise(d3.interpolateRgb, outcomeColorStops);
+
+export function outcomeCategoricalColorScale(numColors: number) {
+  return d3
+    .range(numColors)
+    .map((v) => outcomeInterpolator(v / (numColors - 1)));
+}
+
+export function getOutcomeColor(val: number): string {
+  return outcomeInterpolator(val);
+}
+
+export const GlyphBorderColor = '#57534e';
 export const GlyphOutlineColor = '#7dd3fc';
 
 export function drawSliceGlyphCanvas(
@@ -14,7 +32,7 @@ export function drawSliceGlyphCanvas(
   slices: number[],
   sliceColors: string[],
   radius: number = 12,
-  outcome: boolean = false,
+  outcome: number = 0,
   alpha: number = 1.0,
   numSlices: number | null = null,
   outlineWidth: number = 0
@@ -28,7 +46,7 @@ export function drawSliceGlyphCanvas(
   ctx.strokeStyle = GlyphBorderColor;
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = outcome ? OutcomeColors.True : OutcomeColors.False;
+  ctx.fillStyle = getOutcomeColor(outcome);
   ctx.fill();
   let lw = radius * 0.3;
   ctx.lineWidth = lw;
@@ -57,7 +75,7 @@ export function drawSliceGlyphHTML(
   slices: number[],
   sliceColors: string[],
   radius: number = 12,
-  outcome: boolean = false,
+  outcome: number = 0,
   alpha: number = 1.0,
   numSlices: number | null = null
 ) {
@@ -75,7 +93,7 @@ export function drawSliceGlyphHTML(
     .attr('cy', radius)
     .attr('r', radius * (numSlices > 0 ? 0.4 : 0.5))
     .attr('stroke', GlyphBorderColor)
-    .attr('fill', outcome ? OutcomeColors.True : OutcomeColors.False);
+    .attr('fill', getOutcomeColor(outcome));
 
   let lw = radius * 0.3;
   let sliceR = radius * 0.55;

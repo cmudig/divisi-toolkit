@@ -80,7 +80,7 @@ def detect_data_type(arr):
     if len(uniques) == 2 and (np.issubdtype(uniques.dtype, np.number) or np.issubdtype(uniques.dtype, np.bool_)) and np.allclose(uniques, np.arange(2)):
         return 'binary'
     
-    if len(uniques) < 5:
+    if len(uniques) <= 10:
         return 'categorical'
     
     return 'continuous'

@@ -17,6 +17,8 @@
 
   export let order: Array<string> = [];
 
+  $: console.log('category bar', order, counts);
+
   interface Datum {
     name: string;
     start: number;
@@ -133,7 +135,9 @@
         xRange={[0, width ?? 1]}
         yScale={scaleOrdinal()}
         yDomain={range(counts.length)}
-        yRange={schemeTableau10}
+        yRange={Array.isArray(colorScale)
+          ? colorScale
+          : range(0, 1.00001, 1 / (data.length - 1)).map((v) => colorScale(v))}
         {data}
         custom={{
           hoveredGet: (d) => d.index == hoveredIndex,
@@ -148,7 +152,7 @@
     </div>
     <div class="text-xs text-slate-800">
       {#if $$slots.caption}
-        <slot name="caption" />
+        <slot name="caption" {hoveredIndex} />
       {:else if hoveredIndex != null}
         {@html makeTooltipText(data[hoveredIndex])}
       {:else if !!mostCommonDatum}

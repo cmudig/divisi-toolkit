@@ -37,6 +37,8 @@
   export let shouldClearProjection: boolean = false;
   export let loadingProjection: boolean = false;
   export let projectionMethod: string = '';
+  export let projectionColorMetric: string | null = null;
+  export let projectionColorOptions: string[] = [];
 
   export let showSamplerConfig: boolean = true;
   export let samplerConfigExpanded: boolean = false;
@@ -79,6 +81,13 @@
     success: boolean;
     error?: string;
   } | null = null;
+
+  const ProjectionMethods = {
+    custom: 'Custom',
+    pca: 'PCA',
+    tsne: 'tSNE',
+    umap: 'UMAP',
+  };
 
   function toggleMetric(metricName: string) {
     if (hiddenMetrics.includes(metricName))
@@ -395,9 +404,9 @@
           <div class="flex text-sm items-center gap-2">
             <div>Projection Method</div>
             <select class="flat-select" bind:value={projectionMethod}
-              ><option value="pca">PCA</option>
-              <option value="tsne">TSNE</option>
-              <option value="umap">UMAP</option></select
+              ><option value="pca">{ProjectionMethods.pca}</option>
+              <option value="tsne">{ProjectionMethods.tsne}</option>
+              <option value="umap">{ProjectionMethods.umap}</option></select
             >
             <div class="flex-auto" />
             <button
@@ -410,7 +419,7 @@
           <div class="flex text-sm items-center gap-2">
             <div class="flex-auto">
               Projection Method: <span class="font-mono font-bold"
-                >{projectionMethod}</span
+                >{ProjectionMethods[projectionMethod]}</span
               >
             </div>
             <button
@@ -420,6 +429,18 @@
             >
           </div>
         {/if}
+      </div>
+      <div class="mt-1 mb-4 flex items-center w-full gap-2">
+        <div>Color by:</div>
+        <select
+          class="flat-select flex-auto"
+          bind:value={projectionColorMetric}
+        >
+          <option value={null}>None</option>
+          {#each projectionColorOptions as metric}
+            <option value={metric}>{metric}</option>
+          {/each}
+        </select>
       </div>
     {/if}
   {/if}

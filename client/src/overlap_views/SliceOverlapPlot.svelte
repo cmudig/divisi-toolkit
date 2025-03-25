@@ -21,7 +21,15 @@
   } from '@fortawesome/free-solid-svg-icons';
   import { faHeart as faHeartOutline } from '@fortawesome/free-regular-svg-icons';
 
-  import { OutcomeColors } from './slice_glyphs';
+  import {
+    getOutcomeColor,
+    GlyphBorderColor,
+    GlyphOutlineColor,
+    outcomeCategoricalColorScale,
+    OutcomeColors,
+    outcomeColorStops,
+  } from './slice_glyphs';
+  import SliceMetricCategoryBar from '../metric_charts/SliceMetricCategoryBar.svelte';
 
   export let intersectionCounts: any[] = [];
   export let labels: { stringRep: string; feature: any }[] = [];
@@ -35,7 +43,12 @@
   export let sliceColorMap: { [key: string]: string } = {};
 
   export let colorMetric: string | null = null;
-  export let colorMetricOptions: string[] = [];
+  export let colorMetricLegend: {
+    type?: 'continuous' | 'categorical';
+    min?: number;
+    max?: number;
+    categories?: { name: string; value: number }[];
+  } = {};
 
   export let groupedLayout: {
     labels?: { stringRep: string }[];
@@ -43,10 +56,16 @@
     layout?: {
       [key: string]: {
         slices: boolean[];
-        outcome: boolean;
+        outcome: number;
         x: number;
         y: number;
       };
+    };
+    overlap_metric_legend?: {
+      type?: 'continuous' | 'categorical';
+      min?: number;
+      max?: number;
+      categories?: { name: string; value: number }[];
     };
     enriched_cluster_features?: { [key: string]: string[] };
   } = {};
@@ -117,6 +136,10 @@
           (groupedLayout.labels ?? []).length == labels.length &&
           groupedLayout.labels.every(
             (l, i) => l.stringRep == labels[i].stringRep
+          ) &&
+          areObjectsEqual(
+            groupedLayout.overlap_metric_legend,
+            colorMetricLegend
           )))
     ) {
       if (oldErrorKey !== colorMetric) pointData = [];
@@ -539,6 +562,7 @@
           >
         </div>
         {#if !collapseIntersections}
+          {@const legendInfo = groupedLayout.overlap_metric_legend}
           <div style="max-height: 160px;" class="w-full mr-4 overflow-y-auto">
             {#each sortedIntersections as intersection, intIndex}
               {@const numSlices = intersection.slices.reduce(
@@ -573,54 +597,114 @@
                 title="{intersection.count} points included in {numSlices} slice{numSlices !=
                 1
                   ? 's'
-                  : ''}, with an error rate of {errorRateString}"
+                  : ''}"
               >
                 <SliceLegendGlyph {intersection} {sliceColors} />
                 <!-- <p class="flex-auto">{intersection.slices}</p> -->
                 <div class="flex-auto">
-                  <SliceMetricBar
-                    value={intersection[colorMetric] / intersection.count}
-                    color={OutcomeColors.True}
-                    width={wideMode ? 64 : null}
-                    showFullBar
-                    fullBarColor={OutcomeColors.False}
-                    horizontalLayout
-                    ><div
-                      slot="caption"
-                      class="ml-1"
-                      style="width: {wideMode ? '100px' : '0'};"
+                  {#if legendInfo?.type == 'categorical' && Array.isArray(intersection[colorMetric])}
+                    <SliceMetricCategoryBar
+                      width={wideMode ? 64 : null}
+                      horizontalLayout
+                      colorScale={outcomeCategoricalColorScale(
+                        intersection[colorMetric].length
+                      )}
+                      order={intersection[colorMetric].map(
+                        (item) => item.value
+                      )}
+                      counts={Object.fromEntries(
+                        intersection[colorMetric].map((v) => [v.value, v.count])
+                      )}
                     >
-                      {#if wideMode}
-                        {d3.format(',')(intersection.count)} ({errorRateString}
-                        <span
-                          class="inline-block rounded-full w-2 h-2 align-middle"
-                          style="background-color: #94a3b8;"
-                        />)
-                      {/if}
-                    </div></SliceMetricBar
-                  >
+                      <div
+                        slot="caption"
+                        class="ml-1 whitespace-nowrap"
+                        style="width: {wideMode ? '100px' : '0'};"
+                        let:hoveredIndex
+                      >
+                        {#if wideMode}
+                          {d3.format(',')(intersection.count)}
+                          {#if hoveredIndex != null}({d3.format('.1~%')(
+                              intersection[colorMetric][hoveredIndex].count /
+                                intersection.count
+                            )}
+                            {intersection[colorMetric][hoveredIndex]
+                              .value}){/if}
+                        {/if}
+                      </div>
+                    </SliceMetricCategoryBar>
+                  {:else}
+                    <SliceMetricBar
+                      value={legendInfo?.type == 'continuous'
+                        ? intersection[colorMetric]
+                        : intersection[colorMetric] / intersection.count}
+                      color={OutcomeColors.True}
+                      width={wideMode ? 64 : null}
+                      showFullBar
+                      fullBarColor={OutcomeColors.False}
+                      horizontalLayout
+                      ><div
+                        slot="caption"
+                        class="ml-1 whitespace-nowrap"
+                        style="width: {wideMode ? '100px' : '0'};"
+                      >
+                        {d3.format(',')(intersection.count)} ({#if wideMode}
+                          {#if legendInfo?.type == 'continuous'}
+                            M = {d3.format('.2~')(
+                              intersection[colorMetric]
+                            )}{:else}{errorRateString}
+                            <span
+                              class="inline-block rounded-full w-2 h-2 align-middle"
+                              style="background-color: {OutcomeColors.True};"
+                            />{/if})
+                        {/if}
+                      </div></SliceMetricBar
+                    >
+                  {/if}
                 </div>
               </div>
             {/each}
           </div>
         {/if}
-        {#if colorMetricOptions.length > 0}
-          <div class="mt-1 flex items-center w-full">
-            <div
-              class="rounded-full"
-              style="width: 12px; height: 12px; background-color: {OutcomeColors.True};"
-            />
-            <div>&nbsp;=&nbsp;</div>
-            <select
-              class="flat-select-small flex-auto"
-              bind:value={colorMetric}
-            >
-              {#each colorMetricOptions as metric}
-                <option value={metric}>{metric}</option>
-              {/each}
-            </select>
+        <div class="mt-2 w-full">
+          <div class="text-xs text-slate-600">
+            <strong>Color:</strong>
+            {colorMetric}
           </div>
-        {/if}
+          {#if groupedLayout.overlap_metric_legend?.type == 'continuous'}
+            <div class="flex items-center text-xs gap-2">
+              <div>
+                {d3.format('.2~')(groupedLayout.overlap_metric_legend?.min)}
+              </div>
+              <div
+                class="rounded-full flex-auto"
+                style="height: 6px; background: linear-gradient(to right, {outcomeColorStops.join(
+                  ', '
+                )});"
+              />
+              <div>
+                {d3.format('.2~')(groupedLayout.overlap_metric_legend?.max)}
+              </div>
+            </div>
+          {:else}
+            {@const colorScale = outcomeCategoricalColorScale(
+              (groupedLayout.overlap_metric_legend?.categories ?? []).length
+            )}
+            <div class="flex flex-wrap gap-2">
+              {#each groupedLayout.overlap_metric_legend?.categories ?? [] as category, i}
+                <div>
+                  <span
+                    class="rounded-full mr-1 inline-block"
+                    style="width: 8px; height: 8px; background-color: {colorScale[
+                      i
+                    ]}; border: 1px solid {GlyphBorderColor};"
+                  />
+                  {category.name}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
   </div>

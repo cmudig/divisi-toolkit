@@ -256,7 +256,9 @@
       />
     </div>
   {/if}
-  <div class="flex-auto min-h-0 h-full min-w-full overflow-auto relative">
+  <div
+    class="flex-auto min-h-0 h-full min-w-full overflow-auto overscroll-contain relative"
+  >
     <SliceTable
       slices={customSlices.map((s, i) =>
         !!customSliceResults[s.stringRep] &&

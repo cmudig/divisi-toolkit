@@ -16,6 +16,7 @@
   export let colorScale = interpolateViridis;
   export let color: string | null = null;
   export let fullBarColor: string = '#e5e7eb';
+  export let outlineColor: string | null = null;
   export let hoverable = false;
   export let title: string | null = null;
   export let horizontalLayout = false;
@@ -26,6 +27,9 @@
   $: if (values != null) {
     offsets = cumulativeSum(values);
   } else offsets = [];
+
+  let height = 6;
+  $: height = !!outlineColor ? 8 : 6;
 </script>
 
 <div class:flex={horizontalLayout} class="items-center gap-1">
@@ -37,7 +41,11 @@
   <div
     class="parent-bar relative rounded-full overflow-hidden"
     class:mb-1={!horizontalLayout}
-    style="width: {width == null ? '100%' : `${width}px`}; height: 6px;"
+    style="width: {width == null
+      ? '100%'
+      : `${width}px`}; height: {height}px; {!!outlineColor
+      ? `border: 1px solid ${outlineColor};`
+      : ''}"
   >
     {#if showFullBar}
       <TableCellBar
