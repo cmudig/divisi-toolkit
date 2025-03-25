@@ -34,8 +34,8 @@
 
   export let sliceColorMap: { [key: string]: string } = {};
 
-  export let errorKey: string | null = null;
-  export let errorKeyOptions: string[] = [];
+  export let colorMetric: string | null = null;
+  export let colorMetricOptions: string[] = [];
 
   export let groupedLayout: {
     labels?: { stringRep: string }[];
@@ -48,7 +48,7 @@
         y: number;
       };
     };
-    enriched_cluster_features: { [key: string]: string[] };
+    enriched_cluster_features?: { [key: string]: string[] };
   } = {};
 
   export let hoveredSlices = null;
@@ -105,7 +105,7 @@
   $: if (
     intersectionCounts.length > 0 &&
     (labels !== oldLabels ||
-      oldErrorKey !== errorKey ||
+      oldErrorKey !== colorMetric ||
       oldGroupedLayout !== groupedLayout)
   ) {
     sliceCount = intersectionCounts[0].slices.length;
@@ -113,13 +113,13 @@
     if (
       sliceCount == labels.length &&
       (Object.keys(groupedLayout.layout ?? {}).length == 0 ||
-        (groupedLayout.overlap_plot_metric == errorKey &&
+        (groupedLayout.overlap_plot_metric == colorMetric &&
           (groupedLayout.labels ?? []).length == labels.length &&
           groupedLayout.labels.every(
             (l, i) => l.stringRep == labels[i].stringRep
           )))
     ) {
-      if (oldErrorKey !== errorKey) pointData = [];
+      if (oldErrorKey !== colorMetric) pointData = [];
 
       generatePointData();
       sortedIntersections = intersectionCounts.sort(
@@ -131,7 +131,7 @@
       else sliceColors = [];
 
       oldLabels = labels;
-      oldErrorKey = errorKey;
+      oldErrorKey = colorMetric;
       oldGroupedLayout = groupedLayout;
     }
   }
@@ -546,8 +546,9 @@
                 0
               )}
               {@const errorRateString = d3.format('.1%')(
-                intersection[errorKey] / intersection.count
+                intersection[colorMetric] / intersection.count
               )}
+              <!-- svelte-ignore a11y-click-events-have-key-events -->
               <div
                 class="text-left bg-transparent flex items-center w-full justify-end gap-2 transition-opacity duration-700 delay-100 cursor-pointer"
                 class:opacity-30={!!hoveredSliceInfo &&
@@ -578,7 +579,7 @@
                 <!-- <p class="flex-auto">{intersection.slices}</p> -->
                 <div class="flex-auto">
                   <SliceMetricBar
-                    value={intersection[errorKey] / intersection.count}
+                    value={intersection[colorMetric] / intersection.count}
                     color={OutcomeColors.True}
                     width={wideMode ? 64 : null}
                     showFullBar
@@ -603,15 +604,18 @@
             {/each}
           </div>
         {/if}
-        {#if errorKeyOptions.length > 0}
+        {#if colorMetricOptions.length > 0}
           <div class="mt-1 flex items-center w-full">
             <div
               class="rounded-full"
               style="width: 12px; height: 12px; background-color: {OutcomeColors.True};"
             />
             <div>&nbsp;=&nbsp;</div>
-            <select class="flat-select-small flex-auto" bind:value={errorKey}>
-              {#each errorKeyOptions as metric}
+            <select
+              class="flat-select-small flex-auto"
+              bind:value={colorMetric}
+            >
+              {#each colorMetricOptions as metric}
                 <option value={metric}>{metric}</option>
               {/each}
             </select>

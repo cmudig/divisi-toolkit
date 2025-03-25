@@ -89,7 +89,7 @@ class DivisiWidget(anywidget.AnyWidget):
     projection = traitlets.Instance(Projection, allow_none=True)
     
     grouped_map_layout = traitlets.Dict({}, allow_none=True).tag(sync=True)
-    overlap_plot_metric = traitlets.Unicode("").tag(sync=True)
+    overlap_plot_metric = traitlets.Unicode("", allow_none=True).tag(sync=True)
     hover_map_indexes = traitlets.Dict({}).tag(sync=True)
     selected_intersection_index = traitlets.Int(-1).tag(sync=True)
     
@@ -235,14 +235,12 @@ class DivisiWidget(anywidget.AnyWidget):
             self.search_engine = SamplingSubgroupSearch.from_state_dict(self.discrete_data, self.ranking_functions, sf_state["search_state"])
             self.search_engine.results.score_cache = self._score_cache
             self.rule_filter = self.search_engine.rule_filter
-
-            search_engine_hash = self.search_engine.get_configuration_hash()
             
-            # Projection data is valid as long as the search engine hash matches
+            # Projection data is valid as long as the data hash matches and the discovery mask is the same
             if os.path.exists(os.path.join(self.state_path, "projection.pkl")):
                 with open(os.path.join(self.state_path, "projection.pkl"), "rb") as file:
                     projection_data = pickle.load(file)
-                    if projection_data["search_engine_hash"] == search_engine_hash:
+                    if projection_data["data_hash"] == data_hash and (projection_data["discovery_mask"] == self.search_engine.discovery_mask).all():
                         self.projection = Projection.from_dict(projection_data["projection"])
                     else:
                         print("Search engine hashes don't match, not loading projection")
@@ -265,8 +263,17 @@ class DivisiWidget(anywidget.AnyWidget):
         except Exception as e:
             print("Error loading state; resetting")
             traceback.print_exc()
+            self.derived_metric_config = {}
+            self.hidden_metrics = []
+            self.ranking_function_config = {}
+            self.ranking_weights = {}
+            self.saved_slices = []
+            self.selected_slices = []
+            self.custom_slices = []
+            self.overlap_plot_metric = ''
+            self.projection_method = 'tsne'
             
-    @traitlets.observe("derived_metric_config", "hidden_metrics", "ranking_function_config", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric", "rule_filter")
+    @traitlets.observe("derived_metric_config", "hidden_metrics", "ranking_function_config", "slices", "saved_slices", "selected_slices", "custom_slices", "overlap_plot_metric", "rule_filter")
     def _write_state(self, change=None):
         if not hasattr(self, "original_search_engine") or self.original_search_engine is None: return
         
@@ -301,10 +308,11 @@ class DivisiWidget(anywidget.AnyWidget):
 
     def _save_projection(self):
         if self.projection is not None and (not hasattr(self, "_projection_save_hash") or not os.path.exists(os.path.join(self.state_path, "projection.pkl"))):
-            self._projection_save_hash = self.original_search_engine.get_configuration_hash()
+            self._projection_save_hash = self.discrete_data.get_hash()
             with open(os.path.join(self.state_path, "projection.pkl"), "wb") as file:
                 pickle.dump({
-                    "search_engine_hash": self._projection_save_hash,
+                    "data_hash": self._projection_save_hash,
+                    "discovery_mask": self.search_engine.discovery_mask,
                     "projection": self.projection.to_dict()
                 }, file)
         elif self.projection is None and os.path.exists(os.path.join(self.state_path, "projection.pkl")):

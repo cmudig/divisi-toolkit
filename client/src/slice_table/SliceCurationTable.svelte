@@ -24,8 +24,10 @@
   export let selectedSlices = [];
   export let savedSlices = [];
 
+  export let hiddenMetrics: string[] = [];
+
   let metricNames = [];
-  let metricInfo = {};
+  let metricInfo: { [key: string]: any } = {};
 
   let allSlices: Array<Slice> = [];
   $: allSlices = [...(!!baseSlice ? [baseSlice] : []), ...slices];
@@ -81,9 +83,21 @@
       } else {
         metricInfo[n] = {};
       }
-      metricInfo[n].visible = (oldMetricInfo[n] || { visible: true }).visible;
+      metricInfo[n].visible = (
+        oldMetricInfo[n] || { visible: !hiddenMetrics.includes(n) }
+      ).visible;
     });
     console.log('metric info:', metricInfo, testMetrics);
+  }
+
+  let oldHiddenMetrics: string[] = [];
+  $: if (oldHiddenMetrics !== hiddenMetrics) {
+    metricInfo = Object.fromEntries(
+      Object.entries(metricInfo).map((e) => [
+        e[0],
+        { ...e[1], visible: !hiddenMetrics.includes(e[0]) },
+      ])
+    );
   }
 </script>
 

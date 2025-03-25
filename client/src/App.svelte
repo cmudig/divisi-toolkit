@@ -446,6 +446,7 @@
           savedSlices={$savedSlices}
           {allowedValues}
           baseSlice={$baseSlice}
+          bind:hiddenMetrics={$hiddenMetrics}
           bind:sliceRequests={$sliceScoreRequests}
           bind:sliceRequestResults={$sliceScoreResults}
           on:saveslice={(e) => {
@@ -476,9 +477,29 @@
           : ''}"
       >
         <div class="w-full h-full relative">
-          {#if $groupedMapLayout != null}
+          {#if !$overlapPlotMetric}
+            <div
+              class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
+            >
+              <div class="text-slate-600">
+                No binary metrics are available to plot.
+              </div>
+            </div>
+          {:else if $loadingProjection}
+            <div
+              class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
+            >
+              <div class="text-slate-600">Loading projection...</div>
+            </div>
+          {:else if $groupedMapLayout == null}
+            <div
+              class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
+            >
+              <div class="text-slate-600">No projection computed yet.</div>
+            </div>
+          {:else}
             <SliceOverlapPlot
-              bind:errorKey={$overlapPlotMetric}
+              bind:colorMetric={$overlapPlotMetric}
               bind:selectedSlices={$selectedSlices}
               bind:searchScopeInfo={$searchScopeInfo}
               searchScopeEnrichedFeatures={$searchScopeEnrichedFeatures}
@@ -486,19 +507,13 @@
               areObjectsEqual($hoveredSlice, $hoverMapIndexes.slice)
                 ? new Set($hoverMapIndexes.clusters)
                 : new Set()}
-              errorKeyOptions={binaryMetrics}
+              colorMetricOptions={binaryMetrics}
               bind:savedSlices={$savedSlices}
               bind:sliceColorMap={$sliceColorMap}
               intersectionCounts={$sliceIntersectionCounts}
               labels={$sliceIntersectionLabels}
               groupedLayout={$groupedMapLayout}
             />
-          {:else}
-            <div
-              class="flex flex-col w-full h-full items-center justify-center bg-slate-100"
-            >
-              <div class="text-slate-600">No projection computed yet.</div>
-            </div>
           {/if}
         </div></ResizablePanel
       >
