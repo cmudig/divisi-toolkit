@@ -27,15 +27,13 @@
   } from './utils/utils';
   import SliceCurationTable from './slice_table/SliceCurationTable.svelte';
   import ResizablePanel from './utils/ResizablePanel.svelte';
-  import * as d3 from 'd3';
   import Fa from 'svelte-fa';
 
   export let model;
 
   let numSlices = traitlet(model, 'num_slices', 10);
-  let numSamples = traitlet(model, 'num_samples', 50);
+  let samplerParameters = traitlet(model, 'sampler_parameters', {});
   let shouldRerun = traitlet(model, 'should_rerun', false);
-  let numSamplesDrawn = traitlet(model, 'num_samples_drawn', 0);
   let runningSampler = traitlet(model, 'running_sampler', false);
   let shouldCancel = traitlet(model, 'should_cancel', false);
   let samplerRunProgress = traitlet(model, 'sampler_run_progress', 0.0);
@@ -389,6 +387,7 @@
             bind:shouldClearProjection={$shouldClearProjection}
             bind:loadingProjection={$loadingProjection}
             bind:projectionMethod={$projectionMethod}
+            bind:samplerParameters={$samplerParameters}
             hasProjection={$groupedMapLayout != null}
           />
         </div>
@@ -403,7 +402,6 @@
       {#if viewingTab == 0}
         <SliceSearchView
           runningSampler={$runningSampler}
-          bind:numSamples={$numSamples}
           positiveOnly={$positiveOnly}
           bind:shouldCancel={$shouldCancel}
           bind:rankingWeights={$rankingWeights}

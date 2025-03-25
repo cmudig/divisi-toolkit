@@ -178,7 +178,7 @@ def explore_groups_beam_search(inputs,
                                initial_slice=None,
                                positive_only=None,
                                max_features=5, 
-                               min_items=5, 
+                               min_items_fraction=5, 
                                min_weight=0.0, 
                                max_weight=5.0, 
                                num_candidates=20,
@@ -254,7 +254,7 @@ def explore_groups_beam_search(inputs,
                     # features_to_score.append(feature_to_add)
                     new_slice_scores = {}
                     slice_mask = Rule(feature_to_add).make_mask(mat_for_masks, existing_mask=base_mask, univariate_masks=univariate_masks, device=device)
-                    if slice_mask.sum() < min_items:
+                    if slice_mask.sum() / slice_mask.shape[0] < min_items_fraction:
                         seen_slices[new_slice] = None
                         continue
                     itemized_masks = [univariate_masks[f] for f in new_slice.univariate_features()]
@@ -263,45 +263,7 @@ def explore_groups_beam_search(inputs,
                     prescored_slices.append(new_slice.rescore(new_slice_scores))
                     
             new_scored_slices = []
-            
-            # mask_width = len(features_to_score)
-            # combined_masks = base_mask.repeat(mask_width, 1).T
-            # itemized_masks = [univariate_masks[f].repeat(mask_width, 1).T for f in base_slice.univariate_features()]
-            # itemized_masks.append(torch.zeros(*combined_masks.shape, dtype=torch.bool).to(device))
-            # for i, feature_to_add in enumerate(features_to_score):
-            #     # Generate a mask for the slice and add it to the mask matrix
-            #     itemized_masks[-1][:,i] = feature_to_add.make_mask(mat_for_masks, univariate_masks=univariate_masks, device=device)
-            #     combined_masks[:,i] &= itemized_masks[-1][:,i]
-            #     new_scored_slices.append(base_slice.subslice(feature_to_add))
-                
-            # # Remove slices that are too small
-            # mask_sums = combined_masks.sum(0)
-            # new_scored_slices = [s for i, s in enumerate(new_scored_slices) if mask_sums[i] >= min_items]
-            # combined_masks = combined_masks[:,mask_sums >= min_items]
-            # itemized_masks = [m[:,mask_sums >= min_items] for m in itemized_masks]
-            # mask_width = (mask_sums >= min_items).sum()
-            # for i, s in enumerate(new_scored_slices):
-            #     if mask_sums[i] < min_items:
-            #         seen_slices[s] = None
-
-            # if mask_width > 0:
-            #     num_evaluated += 1
-            #     batch_size = 64
-            #     row_use_counts += combined_masks.long().sum(1)
-            #     for start_idx in range(0, len(new_scored_slices), batch_size):
-            #         end_idx = min(len(new_scored_slices), start_idx + batch_size)
-                    
-            #         computed_scores = torch.zeros((len(ranking_fns), end_idx - start_idx)).to(device)
-            #         for i, (key, scorer) in enumerate(ranking_fns.items()):
-            #             computed_scores[i] = scorer.calculate_score(new_slice, 
-            #                                                         combined_masks[:,start_idx:end_idx], 
-            #                                                         [m[:,start_idx:end_idx] for m in itemized_masks])
-                    
-            #         new_scored_slices[start_idx:end_idx] = [new_slice.rescore({fn_name: score.item() for fn_name, score in zip(ranking_fns, computed_scores[:,i])})
-            #                             for i, new_slice in enumerate(new_scored_slices[start_idx:end_idx])]
-            # else:
-            #     new_scored_slices = []
-                
+                            
             for new_slice in prescored_slices + new_scored_slices:
                 seen_slices[new_slice] = new_slice.score_values
                 scored_slices.add(new_slice)
@@ -328,7 +290,7 @@ class SamplingSubgroupSearch:
                  source_mask=None, 
                  rule_filter=None, 
                  max_features=3, 
-                 min_items=100, 
+                 min_items_fraction=0.01, 
                  num_candidates=20,
                  final_num_candidates=None,
                  holdout_fraction=0.0,
@@ -348,7 +310,7 @@ class SamplingSubgroupSearch:
         self.source_mask = source_mask
         self.rule_filter = rule_filter
         self.max_features = max_features
-        self.min_items = min_items
+        self.min_items_fraction = min_items_fraction
         self.num_candidates = num_candidates
         self.final_num_candidates = final_num_candidates
         self.holdout_fraction = holdout_fraction
@@ -397,7 +359,7 @@ class SamplingSubgroupSearch:
             source_mask=kwargs.get("source_mask", self.source_mask), 
             rule_filter=kwargs.get("rule_filter", self.rule_filter),
             max_features=kwargs.get("max_features", self.max_features), 
-            min_items=kwargs.get("min_items", self.min_items), 
+            min_items_fraction=kwargs.get("min_items_fraction", self.min_items_fraction), 
             num_candidates=kwargs.get("num_candidates", self.num_candidates),
             final_num_candidates=kwargs.get("final_num_candidates", self.final_num_candidates),
             holdout_fraction=kwargs.get("holdout_fraction", self.holdout_fraction),
@@ -424,7 +386,7 @@ class SamplingSubgroupSearch:
                 "source_mask": self.source_mask, 
                 "rule_filter": self.rule_filter,
                 "max_features": self.max_features, 
-                "min_items": self.min_items, 
+                "min_items_fraction": self.min_items_fraction, 
                 "num_candidates": self.num_candidates,
                 "final_num_candidates": self.final_num_candidates,
                 "holdout_fraction": self.holdout_fraction,
@@ -558,8 +520,10 @@ class SamplingSubgroupSearch:
 
     def _progress_fn_emitter(self, iterable, total):
         for i, item in enumerate(iterable):
-            self.progress_fn(i, total)
+            should_stop = self.progress_fn(i, total)
             yield item
+            if should_stop:
+                break
         self.progress_fn(total, total)
         
     def rescore(self, new_score_fns):
@@ -576,7 +540,7 @@ class SamplingSubgroupSearch:
                                                 discovery_inputs,
                                                 discovery_score_fns,
                                                 self.max_features,
-                                                min_items=self.min_items,
+                                                min_items_fraction=self.min_items_fraction,
                                                 device=self.device,
                                                 univariate_masks=univariate_masks)
         
@@ -659,7 +623,7 @@ class SamplingSubgroupSearch:
             
             worker = partial(explore_groups_worker, rule_filter=rule_filter,
                                                     max_features=self.max_features,
-                                                    min_items=self.min_items * sample_size,
+                                                    min_items_fraction=self.min_items_fraction,
                                                     initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
@@ -697,7 +661,7 @@ class SamplingSubgroupSearch:
                                                     seen_slices=self.seen_slices,
                                                     rule_filter=rule_filter,
                                                     max_features=self.max_features,
-                                                    min_items=self.min_items * sample_size,
+                                                    min_items_fraction=self.min_items_fraction,
                                                     initial_slice=self.initial_slice,
                                                     num_candidates=self.num_candidates,
                                                     min_weight=self.min_weight,
@@ -738,7 +702,7 @@ class SamplingSubgroupSearch:
                                                 discovery_inputs,
                                                 discovery_score_fns,
                                                 self.max_features,
-                                                min_items=self.min_items,
+                                                min_items_fraction=self.min_items_fraction,
                                                 device=self.device,
                                                 univariate_masks=univariate_masks)
         
@@ -795,7 +759,7 @@ def find_slices_by_sampling(inputs,
                             rule_filter=None, 
                             initial_slice=None,
                             max_features=3, 
-                            min_items=100, 
+                            min_items_fraction=100, 
                             num_samples=10, 
                             num_candidates=20,
                             holdout_fraction=0.0,
@@ -821,7 +785,7 @@ def find_slices_by_sampling(inputs,
         this slice.
     :param max_features: The maximum number of features allowed to be selected
         in a slice.
-    :param min_items: The minimum number of rows that must match a slice for it
+    :param min_items_fraction: The minimum fraction of rows that must match a slice for it
         to be considered.
     :param num_samples: The number of rows to sample from input when computing
         slices.
@@ -848,7 +812,7 @@ def find_slices_by_sampling(inputs,
                                 rule_filter=rule_filter,
                                 initial_slice=initial_slice,
                                 max_features=max_features, 
-                                min_items=min_items, 
+                                min_items_fraction=min_items_fraction, 
                                 num_candidates=num_candidates,
                                 holdout_fraction=holdout_fraction,
                                 positive_only=positive_only,

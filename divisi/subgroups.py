@@ -380,13 +380,13 @@ class IntersectionRule(Rule):
                                  self.score_values)
         
 
-def score_subgroups_batch(slices_to_score, inputs, ranking_fns, max_features, min_items=None, device='cpu', univariate_masks=None):
+def score_subgroups_batch(slices_to_score, inputs, ranking_fns, max_features, min_items_fraction=None, device='cpu', univariate_masks=None):
     univariate_masks = univariate_masks if univariate_masks is not None else {}
     scored_slices = {}
     
     for new_slice in slices_to_score:
         mask = new_slice.make_mask(inputs, univariate_masks=univariate_masks, device=device)
-        if min_items is not None and mask.sum() < min_items:
+        if min_items_fraction is not None and mask.sum() / mask.shape[0] < min_items_fraction:
             scored_slices[new_slice] = None
             continue
         
@@ -396,38 +396,7 @@ def score_subgroups_batch(slices_to_score, inputs, ranking_fns, max_features, mi
             computed_scores[key] = scorer.calculate_score(new_slice, mask, itemized_masks).item()
         
         scored_slices[new_slice] = new_slice.rescore(computed_scores)
-    
-    # for num_features in range(1, max_features + 1):
-    #     combined_masks = []
-    #     itemized_masks = [[] for _ in range(num_features)]
-    #     matched_slices = []
-    #     for new_slice in slices_to_score:
-    #         if len(new_slice.univariate_features()) != num_features: continue
             
-    #         mask = new_slice.make_mask(inputs, univariate_masks=univariate_masks, device=device)
-    #         if min_items is not None and mask.sum() < min_items:
-    #             scored_slices[new_slice] = None
-    #             continue
-            
-    #         combined_masks.append(mask)
-    #         for i, feature in enumerate(new_slice.univariate_features()):
-    #             itemized_masks[i].append(feature.make_mask(inputs, univariate_masks=univariate_masks, device=device))
-    #         matched_slices.append(new_slice)
-            
-    #     if combined_masks:
-    #         batch_size = 64
-    #         for start_idx in range(0, len(combined_masks), batch_size):
-    #             end_idx = min(len(combined_masks), start_idx + batch_size)
-    #             combined_masks_batch = torch.stack(combined_masks[start_idx:end_idx], 1)
-    #             itemized_masks_batch = [torch.stack(m[start_idx:end_idx], 1) for m in itemized_masks]
-                
-    #             computed_scores = torch.zeros((len(ranking_fns), combined_masks_batch.shape[1])).to(device)
-    #             for i, (key, scorer) in enumerate(ranking_fns.items()):
-    #                 computed_scores[i] = scorer.calculate_score(new_slice, combined_masks_batch, itemized_masks_batch)
-                
-    #             for i, new_slice in enumerate(matched_slices[start_idx:end_idx]):
-    #                 scored_slice = new_slice.rescore({fn_name: score.item() for fn_name, score in zip(ranking_fns, computed_scores[:,i])})
-    #                 scored_slices[new_slice] = scored_slice
     return scored_slices
 
 class RankedSubgroupList:

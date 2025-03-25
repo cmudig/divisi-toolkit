@@ -32,7 +32,6 @@
   export let sliceColorMap: { [key: string]: string } = {};
 
   export let runningSampler = false;
-  export let numSamples = 10;
   export let shouldCancel = false;
   export let samplerRunProgress = 0.0;
 

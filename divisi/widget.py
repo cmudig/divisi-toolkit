@@ -33,14 +33,26 @@ DEV_CSS_URL = ""
 
 # from `npx vite build`
 BUNDLE_DIR = pathlib.Path(__file__).parent / "static"
+
+DEFAULT_SAMPLER_PARAMETERS = {
+    "num_samples": 50,
+    "num_candidates": 100,
+    "min_items_fraction": 0.01,
+    "similarity_threshold": 0.9,
+    "scoring_fraction": 1.0,
+    "max_features": 3,
+    "n_workers": None
+}
     
 class DivisiWidget(anywidget.AnyWidget):
     name = traitlets.Unicode().tag(sync=True)
     
+    search_engine = traitlets.Instance(SamplingSubgroupSearch, allow_none=True)
+    
     slice_color_map = traitlets.Dict({}).tag(sync=True)
 
     num_slices = traitlets.Int(10).tag(sync=True)
-    num_samples = traitlets.Int(50).tag(sync=True)
+    sampler_parameters = traitlets.Dict(DEFAULT_SAMPLER_PARAMETERS).tag(sync=True)
     should_rerun = traitlets.Bool(False).tag(sync=True)
     should_cancel = traitlets.Bool(False).tag(sync=True)
     should_clear = traitlets.Bool(False).tag(sync=True)
@@ -164,11 +176,9 @@ class DivisiWidget(anywidget.AnyWidget):
                 self.discrete_data,
                 self.ranking_functions,
                 source_mask=parse_metric_expression(self.source_mask_expr, self.derived_metrics) if self.source_mask_expr else None,
-                min_items=len(discrete_data) * 0.5 * self.min_items_fraction,
-                holdout_fraction=0.5,
-                max_features=self.max_features,
                 rule_filter=kwargs.get("rule_filter", None),
-                similarity_threshold=0.9
+                holdout_fraction=kwargs.get("holdout_fraction", 0.5),
+                **{k: v for k, v in kwargs.get("sampler_parameters", DEFAULT_SAMPLER_PARAMETERS).items() if k != 'num_samples'}
             )
             self.rule_filter = self.search_engine.rule_filter
             self.search_engine.results.score_cache = self._score_cache
@@ -383,6 +393,32 @@ class DivisiWidget(anywidget.AnyWidget):
         self.update_grouped_map_layout()
         self.slice_score_request()
             
+    @traitlets.observe("search_engine")
+    def _sync_parameters_with_sampler(self, change=None):
+        search_engine = change.new if change is not None else self.search_engine
+        if search_engine is None: return
+        
+        self._setting_search_engine = True
+        new_params = {**self.sampler_parameters} if hasattr(self, "sampler_parameters") else {**DEFAULT_SAMPLER_PARAMETERS}
+        for k in DEFAULT_SAMPLER_PARAMETERS.keys():
+            if hasattr(search_engine, k):
+                new_params[k] = getattr(search_engine, k)
+        self.sampler_parameters = new_params
+        delattr(self, "_setting_search_engine")
+        
+    @traitlets.observe("sampler_parameters")
+    def update_sampler_parameters(self, change=None):
+        if hasattr(self, "_setting_search_engine"): return
+        
+        new_params = change.new if change is not None else self.sampler_parameters
+        for k, v in new_params.items():
+            if k not in DEFAULT_SAMPLER_PARAMETERS: continue
+            if k != "num_samples":
+                setattr(self.search_engine, k, v)
+                setattr(self.original_search_engine, k, v)
+                
+        self._write_state()
+        
     @traitlets.observe("should_rerun")
     def rerun_flag_changed(self, change):
         if change.new:
@@ -413,21 +449,23 @@ class DivisiWidget(anywidget.AnyWidget):
         self.sampler_run_progress = 0.0
         self.num_slices = 10
         self.search_scope_for_results = {**self.search_scope_info}
+        num_samples = self.sampler_parameters.get("num_samples", 50)
         
         try:
-            sample_step = max(self.num_samples // 5, 50)
+            sample_step = max(num_samples // 5, 50)
             i = 0
             base_progress = 0
-            while i < self.num_samples:
+            while i < num_samples:
                 def update_sampler_progress(progress, total):
-                    self.sampler_run_progress = base_progress + progress / self.num_samples
+                    self.sampler_run_progress = base_progress + progress / num_samples
+                    return self.should_cancel
                 self.search_engine.progress_fn = update_sampler_progress
                 
-                results, sampled_idxs = self.search_engine.sample(min(sample_step, self.num_samples - i))
+                results, sampled_idxs = self.search_engine.sample(min(sample_step, num_samples - i))
                 results.score_cache = self._score_cache
                 self.num_samples_drawn += len(sampled_idxs)
                 self.rerank_results()
-                base_progress += len(sampled_idxs) / self.num_samples
+                base_progress += len(sampled_idxs) / num_samples
                 i += sample_step
                 if self.should_cancel:
                     break

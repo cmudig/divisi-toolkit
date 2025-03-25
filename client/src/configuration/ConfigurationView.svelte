@@ -18,6 +18,7 @@
   import SearchScopeConfiguration from './SearchScopeConfiguration.svelte';
   import { type RuleFilter, RuleFilterType } from './rulefilters';
   import RuleFilterEditor from './RuleFilterEditor.svelte';
+  import SamplerConfiguration from './SamplerConfiguration.svelte';
 
   export let showSearchScopeConfig: boolean = true;
   export let searchScopeNeedsRerun: boolean = false;
@@ -36,6 +37,18 @@
   export let shouldClearProjection: boolean = false;
   export let loadingProjection: boolean = false;
   export let projectionMethod: string = '';
+
+  export let showSamplerConfig: boolean = true;
+  export let samplerConfigExpanded: boolean = false;
+  export let samplerParameters: {
+    num_samples: number;
+    min_items_fraction: number;
+    max_features: number;
+    num_candidates: number;
+    scoring_fraction: number;
+    similarity_threshold: number;
+    n_workers: number;
+  } | null = null;
 
   export let metricInfo: {
     [key: string]: {
@@ -329,6 +342,29 @@
       {searchScopeNeedsRerun}
       {positiveOnly}
     />
+  {/if}
+
+  {#if showSamplerConfig}
+    <div class="px-2 mb-2 mt-4 flex items-center gap-2">
+      <button
+        class="hover:text-slate-600 text-slate-400 bg-transparent py-1 pr-1 shrink-0 grow-0"
+        on:click={(e) => (samplerConfigExpanded = !samplerConfigExpanded)}
+        ><Fa
+          icon={samplerConfigExpanded ? faChevronDown : faChevronRight}
+          class="inline"
+        /></button
+      >
+      <div class="flex-auto">
+        <div class="font-bold">SAMPLER PARAMETERS</div>
+        <div class="text-xs text-slate-600">
+          Configure how thoroughly and efficiently to search for subgroups.
+        </div>
+      </div>
+    </div>
+
+    {#if samplerConfigExpanded}
+      <SamplerConfiguration bind:samplerSettings={samplerParameters} />
+    {/if}
   {/if}
 
   {#if showProjectionConfig}
