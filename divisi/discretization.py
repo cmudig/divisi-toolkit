@@ -143,6 +143,8 @@ class DiscretizedData:
             feature masks. Create a dictionary variable and pass to this method
             if computing many masks on the same dataset.
         """
+        from .subgroups import Rule, RuleFeatureBase, RuleFeature
+        
         if not encoded:
             rule = self.encode_rule(rule)
         elif isinstance(rule, RuleFeatureBase):
