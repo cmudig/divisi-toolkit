@@ -25,7 +25,7 @@ dependencies = [
     "torch",
     "tqdm"
 ]
-version = "0.2.0"
+version = "0.3.0"
 
 [project.urls]
 Homepage = "https://github.com/cmudig/divisi-toolkit"

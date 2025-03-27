@@ -10,3 +10,5 @@ global-exclude *.pyo
 global-exclude .DS_Store
 global-exclude .git
 prune **/.ipynb_checkpoints
+prune example_data/
+prune client/
