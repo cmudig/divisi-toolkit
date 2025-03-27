@@ -23544,10 +23544,10 @@ function Pc(t) {
       e = P("div"), V && V.c(), n = G(), i = P("div"), l = P("div");
       for (let Z = 0; Z < r.length; Z += 1)
         r[Z].c();
-      a = G(), o = P("button"), le(f.$$.fragment), u = G(), h = P("div"), J && J.c(), c = G(), d = P("div"), m = P("div"), _ = P("div"), _.textContent = "Subgroup Intersections", p = G(), b = P("button"), le(w.$$.fragment), y = G(), ue && ue.c(), N = G(), C = P("div"), R = P("div"), S = P("strong"), S.textContent = "Color:", D = G(), F = ce(
+      a = G(), o = P("button"), le(f.$$.fragment), u = G(), h = P("div"), J && J.c(), c = G(), d = P("div"), m = P("div"), _ = P("div"), _.textContent = "Subgroup Intersections", p = G(), b = P("button"), le(w.$$.fragment), y = G(), ue && ue.c(), N = G(), C = P("div"), R = P("div"), S = P("span"), S.textContent = "Color:", D = G(), F = ce(
         /*colorMetric*/
         t[7]
-      ), L = G(), pe.c(), g(l, "class", "flex items-start flex-wrap gap-2"), g(o, "class", "bg-transparent p-1 hover:opacity-50 text-slate-600"), g(i, "class", "absolute top-0 left-0 right-0 pt-2 px-2"), g(_, "class", "flex-auto text-xs font-bold text-slate-500"), g(b, "class", "bg-transparent p-1 hover:opacity-50 text-slate-600"), g(m, "class", "flex items-center w-full"), g(R, "class", "text-xs text-slate-600"), g(C, "class", "mt-2 w-full"), g(d, "class", "p-1 bg-slate-100/80 rounded pointer-events-auto select-none"), g(h, "class", I = "absolute bottom-0 right-0 mb-2 mx-2 pointer-events-none " + /*hoveredPointIndex*/
+      ), L = G(), pe.c(), g(l, "class", "flex items-start flex-wrap gap-2"), g(o, "class", "bg-transparent p-1 hover:opacity-50 text-slate-600"), g(i, "class", "absolute top-0 left-0 right-0 pt-2 px-2"), g(_, "class", "flex-auto text-xs font-bold text-slate-500"), g(b, "class", "bg-transparent p-1 hover:opacity-50 text-slate-600"), g(m, "class", "flex items-center w-full"), g(S, "class", "font-bold text-slate-500"), g(R, "class", "text-xs text-slate-700"), g(C, "class", "mt-2 w-full"), g(d, "class", "p-1 bg-slate-100/80 rounded pointer-events-auto select-none"), g(h, "class", I = "absolute bottom-0 right-0 mb-2 mx-2 pointer-events-none " + /*hoveredPointIndex*/
       (t[12] != null || /*searchScopeEnrichedFeatures*/
       t[6].length > 0 ? "left-0 flex gap-2 justify-between items-end" : "")), g(e, "class", H = "w-full h-full relative bg-slate-100 " + /*draggingOverContainer*/
       (t[24] ? "border-2 border-blue-400" : ""));

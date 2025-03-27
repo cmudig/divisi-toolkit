@@ -4,7 +4,7 @@ from .utils import powerset
 
 class RankingFunctionBase:
     """
-    Base class for score functions that take as input a Slice object and a
+    Base class for score functions that take as input a Rule object and a
     boolean mask, and return a non-negative numerical score value.
     """
 
@@ -28,7 +28,7 @@ class RankingFunctionBase:
         """
         Calculates the score for a single slice.
         
-        :param slice: a `Slice` object representing the feature values used to
+        :param slice: a `Rule` object representing the feature values used to
             determine the mask
         :param mask: a boolean array to specify whether a particular data point
             should be included or not
@@ -466,7 +466,7 @@ class InteractionEffect(RankingFunctionBase):
         return InteractionEffect(metric, eps=meta_dict.get("eps", 1e-6))
 
 
-class SliceSimilarityScore(RankingFunctionBase):
+class SubgroupSimilarity(RankingFunctionBase):
     """
     A score function whose value is higher when a given slice mask has high
     Jaccard similarity, superslice overlap, or subslice overlap to a particular
@@ -480,7 +480,7 @@ class SliceSimilarityScore(RankingFunctionBase):
     """
     
     def __init__(self, reference_mask, metric='jaccard'):
-        super().__init__("slice_similarity", reference_mask)
+        super().__init__("subgroup_similarity", reference_mask)
         self.data = self.data.float()
         self.metric = metric
         
@@ -499,7 +499,7 @@ class SliceSimilarityScore(RankingFunctionBase):
         raise NotImplementedError()
     
     def subslice(self, indexes):
-        return SliceSimilarityScore(self.data[indexes], metric=self.metric).to(self.device)
+        return SubgroupSimilarity(self.data[indexes], metric=self.metric).to(self.device)
 
     def meta_dict(self):
         base = super().meta_dict()
@@ -508,9 +508,9 @@ class SliceSimilarityScore(RankingFunctionBase):
     
     @classmethod
     def from_dict(cls, meta_dict, data):
-        return SliceSimilarityScore(data, metric=meta_dict["metric"])
+        return SubgroupSimilarity(data, metric=meta_dict["metric"])
     
     @classmethod
     def from_configuration(cls, meta_dict, metrics):
         metric = parse_metric_expression(meta_dict["mask"], metrics)
-        return SliceSimilarityScore(metric, metric=meta_dict.get("similarity_type", 'jaccard'))
+        return SubgroupSimilarity(metric, metric=meta_dict.get("similarity_type", 'jaccard'))

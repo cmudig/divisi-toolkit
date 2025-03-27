@@ -679,7 +679,6 @@ class SamplingSubgroupSearch:
             for ranking in best_groups.values():
                 slices_to_score |= set(ranking.items)
                 
-        print("Before adding superslices:", len(slices_to_score))
         for slice_obj in list(slices_to_score):
             univariate = slice_obj.univariate_features()
             for superslice_features in powerset(univariate):
@@ -688,7 +687,6 @@ class SamplingSubgroupSearch:
                 superslice = IntersectionRule(superslice_features)
                 if superslice in slices_to_score: continue
                 slices_to_score.add(superslice)
-        print("After adding superslices:", len(slices_to_score))
                 
         if sample_size == 1.0:
             old_scored_slices = [s for s in slices_to_score if s.score_values]
@@ -696,7 +694,6 @@ class SamplingSubgroupSearch:
         else:
             old_scored_slices = []
             
-        print("Scoring collected slices", len(slices_to_score))
         univariate_masks = {}
         rescored_slices = score_subgroups_batch(slices_to_score,
                                                 discovery_inputs,
@@ -777,7 +774,7 @@ def find_slices_by_sampling(inputs,
     :param source_mask: if provided, a boolean mask indicating which rows should
         be sampled from for slice finding. This will encourage finding slices
         that match a particular criterion of interest (e.g. model errors).
-    :param rule_filter: if provided, a function that takes a `Slice` object and
+    :param rule_filter: if provided, a function that takes a `Rule` object and
         returns False if the slice should not be explored. Subslices of these
         slices will not be explored either.
     :param initial_slice: if provided, a slice that will be used as the base

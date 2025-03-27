@@ -667,8 +667,8 @@
           </div>
         {/if}
         <div class="mt-2 w-full">
-          <div class="text-xs text-slate-600">
-            <strong>Color:</strong>
+          <div class="text-xs text-slate-700">
+            <span class="font-bold text-slate-500">Color:</span>
             {colorMetric}
           </div>
           {#if groupedLayout.overlap_metric_legend?.type == 'continuous'}

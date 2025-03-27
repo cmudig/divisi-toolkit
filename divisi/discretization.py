@@ -88,17 +88,22 @@ class DiscretizedData:
         """Returns a new DiscretizedData with only the rows matching the given mask."""
         return DiscretizedData(self.df[mask], self.value_names)
     
-    def describe_slice(self, slice_obj):
+    def decode_rule(self, slice_obj):
         """
-        Returns a dictionary representing the structure of the given slice with
+        Returns a Rule representing the structure of the given rule with
         pre-discretization feature and value names.
         
-        :param slice_obj: A Slice to describe.
-        :return: A dictionary corresponding to the slice's `feature_values`,
+        :param slice_obj: A Rule to describe.
+        :return: A Rule corresponding to the same slice,
             but using column and value names from pre-discretization.
         """
-        from .subgroups import RuleFeature
+        from .subgroups import RuleFeature, Rule, RuleFeatureBase
 
+        if isinstance(slice_obj, Rule):
+            slice_obj = slice_obj.feature
+        elif isinstance(slice_obj, dict):
+            slice_obj = RuleFeatureBase.from_dict(slice_obj)
+            
         def transform(feature):
             col_values = self.value_names[feature.feature_name]
             transformed_values = []
@@ -107,22 +112,46 @@ class DiscretizedData:
                     raise KeyError(f"{val} not in value map for {col_values[0]} ({feature.feature_name}): {col_values[1]}")
                 transformed_values.append(col_values[1][val])
             return RuleFeature(col_values[0], transformed_values)
-        return slice_obj.feature.transform_features(transform).to_dict()
+        return Rule(slice_obj.transform_features(transform))
     
-    def encode_slice(self, decoded_feature_values):
+    def encode_rule(self, decoded_feature_values):
         """
-        Creates a Slice representing the given feature value dictionary, but
+        Creates a Rule representing the given feature value dictionary or Rule, but
         converted back into the discretized numerical representation.
         """
         from .subgroups import Rule, RuleFeatureBase, RuleFeature
         
-        described_slice = RuleFeatureBase.from_dict(decoded_feature_values)
+        if isinstance(decoded_feature_values, Rule):
+            described_slice = decoded_feature_values.feature
+        elif isinstance(decoded_feature_values, dict):
+            described_slice = RuleFeatureBase.from_dict(decoded_feature_values)
+            
         def invert(feature):
             enc_key, enc_mapping = self.inverse_value_mapping[feature.feature_name]
             return RuleFeature(enc_key, [enc_mapping[dec_value] for dec_value in feature.allowed_values])
         
         return Rule(described_slice.transform_features(invert))
     
+    def mask_for_rule(self, rule, encoded=False, univariate_masks=None):
+        """
+        Generates a numpy array masking the data according to the given rule.
+        
+        :param rule: the Rule instance to generate a mask for 
+        :param encoded: If True, assumes the rule already uses indices in the
+            discretized dataframe, otherwise converts the rule.
+        :param univariate_masks: A dictionary that enables caching of single-
+            feature masks. Create a dictionary variable and pass to this method
+            if computing many masks on the same dataset.
+        """
+        if not encoded:
+            rule = self.encode_rule(rule)
+        elif isinstance(rule, RuleFeatureBase):
+            rule = Rule(rule)
+        elif isinstance(rule, dict):
+            rule = Rule(RuleFeatureBase.from_dict(rule))
+            
+        return rule.make_mask(self.df, univariate_masks=univariate_masks).cpu().numpy()
+        
     def encode_filter(self, filter_obj):
         """
         Converts the given slice filter object to use feature and value names

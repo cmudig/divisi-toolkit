@@ -239,7 +239,7 @@ def run_recursive(results_path, discrete_df, metrics, ranking_fns, **kwargs):
             "method": "recursive",
             "min_items_fraction": kwargs.get("min_items_fraction"),
             "time": float(b - a),
-            "results": divisi.utils.convert_to_native_types([discrete_df.describe_slice(s) for s in results]),
+            "results": divisi.utils.convert_to_native_types([discrete_df.decode_rule(s).feature.to_dict() for s in results]),
             "num_scored": num_scored
         }], file)
 
@@ -274,7 +274,7 @@ def run_sampling(results_path, discrete_df, metrics, ranking_fns, **kwargs):
             "num_candidates": kwargs.get("num_candidates", 50),
             "min_items_fraction": kwargs.get("min_items_fraction"),
             "time": float(b - a),
-            "results": divisi.utils.convert_to_native_types([discrete_df.describe_slice(s) for s in fast_results]),
+            "results": divisi.utils.convert_to_native_types([discrete_df.decode_rule(s).feature.to_dict() for s in fast_results]),
             "num_scored": len(slice_finder.all_scores)
         }], file)
         
@@ -320,7 +320,7 @@ def run_divexplore(results_path, discrete_df, metrics, ranking_fns, **kwargs):
             "method": "divexplore",
             "min_items_fraction": kwargs.get("min_items_fraction"),
             "time": float(b - a),
-            "results": divisi.utils.convert_to_native_types([discrete_df.describe_slice(s) for s in results]),
+            "results": divisi.utils.convert_to_native_types([discrete_df.decode_rule(s).feature.to_dict() for s in results]),
             "num_scored": len(scores)
         }], file)
 

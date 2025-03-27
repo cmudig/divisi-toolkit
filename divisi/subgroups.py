@@ -272,7 +272,7 @@ class Rule:
     
     def rescore(self, new_scores):
         """
-        Returns a Slice object with identical feature values but a new dictionary
+        Returns a Rule object with identical feature values but a new dictionary
         of scores.
         """
         return Rule(self.feature, new_scores)
@@ -308,7 +308,7 @@ class Rule:
         return mask
 
     def __str__(self):
-        base = f"<Slice: "
+        base = f"<Rule: "
         base += str(self.feature)
         if self.score_values:
             base += "; scores: "
@@ -324,8 +324,8 @@ class Rule:
 
 class IntersectionRule(Rule):
     """
-    A special case of a Slice that consists of an AND'ed set of features, where
-    each feature can be a SliceFeature or a SliceFeatureOr. Unlike normal Slice
+    A special case of a Rule that consists of an AND'ed set of features, where
+    each feature can be a SliceFeature or a SliceFeatureOr. Unlike normal Rule
     objects, IntersectionSlice instances are order-invariant when testing for
     equality and hashing.
     """
@@ -350,7 +350,7 @@ class IntersectionRule(Rule):
     
     def subslice(self, other_feature):
         """
-        Creates a new Slice object with the given slice feature.
+        Creates a new Rule object with the given slice feature.
         """
         if self.feature.empty:
             return IntersectionRule([other_feature])
@@ -358,7 +358,7 @@ class IntersectionRule(Rule):
 
     def rescore(self, new_scores):
         """
-        Returns a Slice object with identical feature values but a new dictionary
+        Returns a Rule object with identical feature values but a new dictionary
         of scores.
         """
         # make sure the order of the slice is preserved
@@ -368,7 +368,7 @@ class IntersectionRule(Rule):
         """
         Sorts the features in the slice by the amount that they change the value
         returned by the given score function. The score function should take a
-        Slice object and return a numerical value. The feature that causes the
+        Rule object and return a numerical value. The feature that causes the
         greatest decrease in the score function value relative to the overall
         slice will be placed first.
         """
@@ -412,7 +412,7 @@ class RankedSubgroupList:
     
     def __init__(self, results, data, ranking_functions, eval_indexes=None, min_weight=0.0, max_weight=5.0, similarity_threshold=0.9, device='cpu', normalize_weights=True):
         """
-        :param results: A list of Slice objects representing the results of a
+        :param results: A list of Rule objects representing the results of a
             slice-finding operation
         :param data: The original discrete-valued dataframe or DiscretizedData
             used to compute scores
@@ -468,13 +468,13 @@ class RankedSubgroupList:
             results = results[:k]
         return original_score_indexes[results]
     
-    def encode_slice(self, feature_set):
+    def encode_rule(self, feature_set):
         """
         Returns a discretized version of the slice defined by the given dictionary
         representation of a slice feature.
         """
         try:
-            return self.data.encode_slice(feature_set)
+            return self.data.encode_rule(feature_set)
         except AttributeError:
             return Rule(feature_set)
         
@@ -503,7 +503,7 @@ class RankedSubgroupList:
             used to compute scores on the eval data.
             
         :return: A tuple of (slices, scores) and optionally masks, where slices
-            is a list of `Slice` objects, scores is a dataframe of eval scores
+            is a list of `Rule` objects, scores is a dataframe of eval scores
             according to each score function, and masks is a sparse csr_matrix
             of binary masks for each slice.
         """
@@ -535,7 +535,7 @@ class RankedSubgroupList:
             return (*result, mask_mat)
         return result
         
-    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None, order_features=True, normalize_weights=None):
+    def rank(self, weights, num_to_rescore=100, n_slices=10, similarity_threshold=None, order_features=True, normalize_weights=None, decode=True):
         """
         Ranks and returns the top slices according to a given set of weights,
         filtering results that contain a very similar set of instances.
@@ -553,8 +553,12 @@ class RankedSubgroupList:
         :param normalize_weights: If True (default), divide each score function's
             values by the max values they take to ensure that weights can be 
             adjusted in a user-friendly way.
+        :param decode: If True and the results object was initialized as a
+            DiscretizedData, convert returned subgroups to the original feature
+            names. If False, subgroups will be returned in terms of column and 
+            value indices.
         
-        :return: A list of Slice objects with scores from the held-out
+        :return: A list of Rule objects with scores from the held-out
             evaluation data.
         """
         
@@ -588,6 +592,13 @@ class RankedSubgroupList:
             return sum(scores.get(n, 0) * w for n, w in weights.items())
         ranked_results = [slice_obj.sort_features(_score) if isinstance(slice_obj, IntersectionRule) and order_features else slice_obj
                           for slice_obj in ranked_results]
+        
+        # Convert to original representation if requested
+        if decode:
+            try:
+                ranked_results = [self.data.decode_rule(r) for r in ranked_results]
+            except AttributeError:
+                pass
         return ranked_results
     
     def slice_mask(self, slice_obj):
@@ -600,7 +611,7 @@ class RankedSubgroupList:
         """
         Creates JSON-serializable slice descriptions for a slice.
         
-        :param slice: A Slice object
+        :param slice: A Rule object
         :param metrics: If provided, a dictionary mapping metric names to
             series/arrays matching the shape of the original inputs. These metrics
             will be aggregated (histogram for continuous values, mean for
@@ -617,7 +628,7 @@ class RankedSubgroupList:
             "stringRep": slice_obj.string_rep()
         }
         try:
-            slice_desc["feature"] = self.data.describe_slice(slice_obj)
+            slice_desc["feature"] = self.data.decode_rule(slice_obj).feature.to_dict()
         except AttributeError:
             slice_desc["feature"] = slice_obj.feature.to_dict()
             

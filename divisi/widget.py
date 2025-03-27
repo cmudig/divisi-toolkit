@@ -352,8 +352,8 @@ class DivisiWidget(anywidget.AnyWidget):
         ranking_fn_configs = {}
         ranking_weights = {}
         
-        ranking_fn_configs["Slice Size"] = {"type": "SubgroupSize", "ideal_fraction": 0.1, "spread": 0.05}
-        ranking_weights["Slice Size"] = 0.5
+        ranking_fn_configs["Subgroup Size"] = {"type": "SubgroupSize", "ideal_fraction": 0.1, "spread": 0.05}
+        ranking_weights["Subgroup Size"] = 0.5
         ranking_fn_configs["Simple Rule"] = {"type": "SimpleRule"}
         ranking_weights["Simple Rule"] = 0.5
         
@@ -491,7 +491,8 @@ class DivisiWidget(anywidget.AnyWidget):
             #     if n in weights_to_use and n in self.ranking_functions and config["type"] == "OutcomeRate":
             #         weights_to_use[f"{n}_interaction"] = weights_to_use[n]
             ranked_results = self.search_engine.results.rank(weights_to_use, 
-                                                            n_slices=self.num_slices)
+                                                            n_slices=self.num_slices,
+                                                            decode=False)
             self.update_slices(ranked_results)
         
     def update_slices(self, ranked_results):
@@ -505,7 +506,7 @@ class DivisiWidget(anywidget.AnyWidget):
     @traitlets.observe("custom_slices")
     def update_custom_slices(self, change=None):
         if not self.search_engine or not self.search_engine.results: return
-        encoded_slices = [self.search_engine.results.encode_slice(s['feature']) 
+        encoded_slices = [self.search_engine.results.encode_rule(s['feature']) 
                           for s in self.custom_slices]
         self.custom_slice_results = {s['stringRep']: {**self.get_slice_description(enc), "stringRep": s['stringRep']}
                                      for s, enc in zip(self.custom_slices, encoded_slices)}
@@ -513,7 +514,7 @@ class DivisiWidget(anywidget.AnyWidget):
     @traitlets.observe("slice_score_requests")
     def slice_score_request(self, change=None):
         if not self.search_engine or not self.search_engine.results: return
-        self.slice_score_results = {k: self.get_slice_description(self.search_engine.results.encode_slice(f)) 
+        self.slice_score_results = {k: self.get_slice_description(self.search_engine.results.encode_rule(f)) 
                                     for k, f in self.slice_score_requests.items()}
         
     def _base_score_weights_for_spec(self, search_specs, spec, slice_finder):
@@ -526,7 +527,7 @@ class DivisiWidget(anywidget.AnyWidget):
     def update_top_feature(self, change=None):
         mask = None
         if self.hovered_slice or 'within_slice' in self.search_scope_info:
-            hover_slice = self.search_engine.results.encode_slice(self.search_scope_info.get('within_slice', self.hovered_slice.get('feature')))
+            hover_slice = self.search_engine.results.encode_rule(self.search_scope_info.get('within_slice', self.hovered_slice.get('feature')))
             mask = hover_slice.make_mask(self.search_engine.results.eval_df,
                                          univariate_masks=self.search_engine.results.univariate_masks,
                                          device=self.search_engine.results.device)
@@ -575,7 +576,7 @@ class DivisiWidget(anywidget.AnyWidget):
         exclusion_criteria = None
         
         if "within_slice" in search_info and not search_info.get("partial", False):
-            contained_in_slice = base_finder.results.encode_slice(search_info["within_slice"])
+            contained_in_slice = base_finder.results.encode_rule(search_info["within_slice"])
             if contained_in_slice.feature != RuleFeatureBase():
                 raw_inputs = base_finder.inputs.df if hasattr(base_finder.inputs, 'df') else base_finder.inputs
                 ref_mask = contained_in_slice.make_mask(raw_inputs).cpu().numpy()
@@ -691,7 +692,7 @@ class DivisiWidget(anywidget.AnyWidget):
         if not self.hovered_slice or not self.search_engine or not self.search_engine.results or self.map_clusters is None:
             self.hover_map_indexes = {}
         else:
-            hover_slice = self.search_engine.results.encode_slice(self.hovered_slice['feature']) 
+            hover_slice = self.search_engine.results.encode_rule(self.hovered_slice['feature']) 
             mask = hover_slice.make_mask(self.search_engine.results.eval_df,
                                          univariate_masks=self.search_engine.results.univariate_masks,
                                          device=self.search_engine.results.device)
@@ -712,7 +713,7 @@ class DivisiWidget(anywidget.AnyWidget):
         # Calculate the sizes of all intersections of the given sets
         manager = self.search_engine.results
         for s in self.selected_slices:
-            slice_obj = manager.encode_slice(s['feature'])
+            slice_obj = manager.encode_rule(s['feature'])
             slice_masks[slice_obj] = manager.slice_mask(slice_obj).cpu().numpy()
                     
         slice_order = list(slice_masks.keys())
